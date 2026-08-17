@@ -1,0 +1,152 @@
+@import "tailwindcss";
+
+/*
+ * Design-Tokens (fixe Kundenpalette).
+ * Regel: --color-accent (#B8D94C) hat auf hellen Flächen zu wenig Kontrast
+ * (~1,6:1) und darf ausschließlich auf --color-deep eingesetzt werden.
+ */
+@theme {
+  --color-primary: #527a32;
+  --color-accent: #b8d94c;
+  --color-deep: #17251b;
+  --color-cream: #f7f7f3;
+  --color-mist: #eceee8;
+  --color-ink: #202520;
+
+  --font-display: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html {
+  /* Kein natives smooth-scrolling – Lenis übernimmt (Doppel-Smoothing vermeiden). */
+  scroll-behavior: auto;
+}
+
+body {
+  background-color: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background-color: var(--color-primary);
+  color: #fff;
+}
+
+/* Empfohlene Lenis-Basis-Styles */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis:not(.lenis-autoToggle).lenis-stopped {
+  overflow: clip;
+}
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+.lenis.lenis-autoToggle {
+  transition-property: overflow;
+  transition-duration: 1ms;
+  transition-behavior: allow-discrete;
+}
+
+/* Sichtbare, konsistente Fokus-Ringe (auf dunklen Flächen via .on-dark überschrieben) */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+.on-dark :focus-visible,
+.on-dark:focus-visible {
+  outline-color: var(--color-accent);
+}
+
+/*
+ * Scroll-Reveal: Elemente starten sichtbar (No-JS-Fallback) und werden erst
+ * per JS in den Ausgangszustand versetzt – kein Inhalt geht ohne JS verloren.
+ */
+.reveal-init {
+  opacity: 0;
+  transform: translateY(24px);
+}
+.reveal-in {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 0.7s var(--ease-out-soft),
+    transform 0.7s var(--ease-out-soft);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+/*
+ * Hero-Beats: Default-Zustand ohne JS – Beat 1 sichtbar, alle weiteren
+ * ausgeblendet. Die Scroll-Choreografie überschreibt die Inline-Styles.
+ */
+.hero-beat {
+  opacity: 0;
+  visibility: hidden;
+  will-change: opacity, transform;
+}
+.hero-beat[data-beat="0"] {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Einblendung des Beat-Labels („0X — Willkommen") beim Beat-Wechsel */
+@keyframes beat-label {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.beat-label-enter {
+  animation: beat-label 0.5s var(--ease-out-soft);
+}
+
+/* Sanfte Endlos-Animation des Scroll-Cues */
+@keyframes scroll-cue {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(8px);
+    opacity: 0.4;
+  }
+}
+.animate-scroll-cue {
+  animation: scroll-cue 2.2s ease-in-out infinite;
+}
+
+/* Druckansicht: nichts darf durch Scroll-Reveals verborgen bleiben */
+@media print {
+  .reveal-init {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* Reduced Motion: alle Animationen/Übergänge effektiv abschalten */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal-init {
+    opacity: 1;
+    transform: none;
+  }
+}
