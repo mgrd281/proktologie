@@ -5,11 +5,11 @@ import { site } from "@/content/site";
 /**
  * Strukturierte Daten für Local SEO.
  *
- * Solange site.isPlaceholderData true ist, werden Adresse, Telefon, E-Mail
- * und Öffnungszeiten bewusst WEGGELASSEN: Suchmaschinen dürfen keine
- * Musterdaten als echte Praxisdaten indexieren. Beim Eintragen der echten
- * Stammdaten in content/site.ts das Flag auf false setzen – die Felder
- * erscheinen dann automatisch.
+ * Adresse und Telefon sind echte, geprüfte Praxisdaten und werden immer
+ * ausgegeben. Solange site.isPlaceholderData true ist, bleiben E-Mail und
+ * Öffnungszeiten (noch Musterdaten) bewusst WEGGELASSEN – Suchmaschinen
+ * dürfen keine Musterdaten indexieren. Beim Eintragen der echten Werte in
+ * content/site.ts das Flag auf false setzen.
  */
 
 export function buildPhysicianJsonLd() {
@@ -20,6 +20,15 @@ export function buildPhysicianJsonLd() {
     url: site.url,
     medicalSpecialty: "Proktologie",
     areaServed: ["Hamburg-Eimsbüttel", "Hamburg"],
+    telephone: site.phone,
+    address: {
+      "@type": "PostalAddress",
+      streetAddress: site.address.street,
+      postalCode: site.address.zip,
+      addressLocality: site.address.city,
+      addressRegion: "Hamburg",
+      addressCountry: "DE",
+    },
     availableService: leistungen.map((leistung) => ({
       "@type": "MedicalProcedure",
       name: leistung.title,
@@ -30,16 +39,7 @@ export function buildPhysicianJsonLd() {
 
   return {
     ...base,
-    telephone: site.phone,
     email: site.email,
-    address: {
-      "@type": "PostalAddress",
-      streetAddress: site.address.street,
-      postalCode: site.address.zip,
-      addressLocality: site.address.city,
-      addressRegion: "Hamburg",
-      addressCountry: "DE",
-    },
     // Aus site.hours abgeleitet – eine Quelle für UI und Markup
     openingHoursSpecification: site.hours
       .filter((entry) => entry.dayOfWeek.length > 0 && entry.opens && entry.closes)

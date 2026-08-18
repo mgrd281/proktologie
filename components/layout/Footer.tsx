@@ -43,7 +43,8 @@ export function Footer() {
             </h2>
             {site.isPlaceholderData && (
               <p className="mt-3 text-xs text-amber-200/90 italic">
-                Musterangaben – werden vor Veröffentlichung ersetzt.
+                E-Mail-Adresse noch Musterangabe – wird vor Veröffentlichung
+                ersetzt.
               </p>
             )}
             <address className="mt-5 space-y-2.5 text-sm text-cream/70 not-italic">

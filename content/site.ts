@@ -6,10 +6,8 @@
  * Diese Datei speist Header, Footer, Praxis-Sektion, Kontakt und JSON-LD.
  */
 
-// [PLATZHALTER] Telefonnummer der Praxis (Anzeigeformat).
-// Der klickbare tel:-Link wird unten automatisch daraus abgeleitet –
-// nur diese eine Konstante pflegen.
-const phone = "+49 40 000 000 00";
+// Echte Praxis-Telefonnummer (von der Bestandsseite übernommen und geprüft).
+const phone = "040 490 80 21";
 
 /** Sprechzeiten: `opens`/`closes` speisen das JSON-LD, `days`/`time` die UI. */
 export interface OpeningHours {
@@ -29,11 +27,11 @@ export const site = {
   district: "Eimsbüttel",
 
   /**
-   * Solange true, enthalten Adresse/Telefon/E-Mail/Sprechzeiten Musterdaten:
-   * – das JSON-LD lässt die Kontaktfelder dann weg (Suchmaschinen dürfen
-   *   keine erfundenen Praxisdaten indexieren)
-   * – die UI zeigt sichtbare „Musterangaben"-Hinweise
-   * Beim Eintragen der echten Daten auf false setzen.
+   * Adresse und Telefon sind bereits echt. Solange dieses Flag true ist,
+   * gelten E-Mail und Sprechzeiten noch als Musterdaten:
+   * – das JSON-LD lässt genau diese Felder weg
+   * – die UI zeigt dort sichtbare „Musterangabe"-Hinweise
+   * Beim Eintragen der echten E-Mail + Sprechzeiten auf false setzen.
    */
   isPlaceholderData: true as boolean,
 
@@ -41,16 +39,16 @@ export const site = {
   url: "https://www.proktologie-eimsbuettel.de",
 
   address: {
-    // [PLATZHALTER] Straße und Hausnummer der Praxis
-    street: "Musterstraße 12",
-    zip: "20255",
+    // Echte Praxisadresse (von der Bestandsseite übernommen und geprüft)
+    street: "Schäferkampsallee 56",
+    zip: "20357",
     city: "Hamburg",
     district: "Eimsbüttel",
   },
 
   phone,
-  // tel:-Link automatisch aus der Anzeige-Nummer abgeleitet – immer konsistent
-  phoneHref: `tel:${phone.replace(/[^+\d]/g, "")}`,
+  // E.164-Format für den klickbaren Link (entspricht der Anzeige-Nummer)
+  phoneHref: "tel:+49404908021",
 
   // [PLATZHALTER] E-Mail-Adresse der Praxis
   email: "praxis@proktologie-eimsbuettel.de",
@@ -80,7 +78,7 @@ export const site = {
    * solange die Seite nur betrachtet wird).
    */
   mapsUrl:
-    "https://www.google.com/maps/search/?api=1&query=Proktologie+Eimsb%C3%BCttel+Hamburg",
+    "https://www.google.com/maps/search/?api=1&query=Sch%C3%A4ferkampsallee+56%2C+20357+Hamburg",
 
   /**
    * Formular-Endpoint für das Kontaktformular.

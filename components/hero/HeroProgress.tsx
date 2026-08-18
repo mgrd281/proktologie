@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@/lib/cn";
 import { heroBeats } from "@/content/hero";
 
 interface HeroProgressProps {
@@ -8,11 +9,13 @@ interface HeroProgressProps {
 }
 
 /**
- * Fortschritts-UI des Heros:
- * – rechts oben „0X — Label" (wechselt mit dem aktiven Beat)
- * – links eine vertikale Rail aus 7 klickbaren Segmenten; der Füllstand
- *   des aktiven Segments wird von der Choreografie über
- *   `[data-seg-fill]`-Elemente direkt animiert.
+ * Sequenz-Navigation des Heros:
+ * – rechts oben „0X — Label" (wechselt mit dem aktiven Kapitel)
+ * – links unten die beschriftete Kapitelliste (01 Willkommen …
+ *   07 Termin); das aktive Kapitel folgt dem aktuellen Frame, der
+ *   Füllstand der Linien wird von der Scroll-Choreografie über
+ *   `[data-seg-fill]` direkt animiert (scaleX), Klick springt per
+ *   Lenis zum Kapitel.
  */
 export function HeroProgress({ active, onSelect }: HeroProgressProps) {
   const beat = heroBeats[active];
@@ -37,33 +40,58 @@ export function HeroProgress({ active, onSelect }: HeroProgressProps) {
       </div>
 
       <nav
-        aria-label="Hero-Abschnitte"
+        aria-label="Hero-Kapitel"
         className="absolute bottom-10 left-8 hidden lg:block"
       >
-        <ol className="flex flex-col gap-2.5">
-          {heroBeats.map((item, index) => (
-            <li key={item.id}>
-              <button
-                type="button"
-                onClick={() => onSelect(index)}
-                aria-label={`Zu Abschnitt ${index + 1}: ${item.label}`}
-                aria-current={index === active ? "true" : undefined}
-                className="group flex h-7 w-8 items-center"
-              >
-                <span
-                  className={`relative block h-full w-[3px] overflow-hidden rounded-full transition-colors duration-300 ${
-                    index < active ? "bg-accent/60" : "bg-white/15"
-                  } group-hover:bg-white/35`}
+        <ol className="flex flex-col gap-1">
+          {heroBeats.map((item, index) => {
+            const isActive = index === active;
+            const isPast = index < active;
+            return (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(index)}
+                  aria-label={`Zu Kapitel ${index + 1}: ${item.label}`}
+                  aria-current={isActive ? "true" : undefined}
+                  className="group flex min-h-7 items-center gap-3 text-left"
                 >
                   <span
-                    data-seg-fill={index}
-                    className="absolute inset-0 origin-top bg-accent"
-                    style={{ transform: index < active ? "scaleY(1)" : "scaleY(0)" }}
-                  />
-                </span>
-              </button>
-            </li>
-          ))}
+                    className={cn(
+                      "text-[10px] font-medium tabular-nums transition-colors duration-300",
+                      isActive ? "text-accent" : "text-cream/40",
+                    )}
+                  >
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <span
+                    className={cn(
+                      "relative block h-px w-7 overflow-hidden rounded-full transition-colors duration-300",
+                      isPast ? "bg-accent/50" : "bg-white/15",
+                    )}
+                  >
+                    <span
+                      data-seg-fill={index}
+                      className="absolute inset-0 origin-left bg-accent"
+                      style={{
+                        transform: isPast ? "scaleX(1)" : "scaleX(0)",
+                      }}
+                    />
+                  </span>
+                  <span
+                    className={cn(
+                      "text-[11px] tracking-[0.08em] transition-colors duration-300",
+                      isActive
+                        ? "text-white"
+                        : "text-cream/45 group-hover:text-cream/80",
+                    )}
+                  >
+                    {item.label}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
         </ol>
       </nav>
     </>

@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Reveal } from "@/components/ui/Reveal";
 import { SectionHeading } from "@/components/ui/SectionHeading";
+import { TeamPhoto } from "@/components/ui/TeamPhoto";
 import { ctaLabel } from "@/content/navigation";
 import { praxisSection } from "@/content/sections";
 import { site } from "@/content/site";
@@ -26,6 +27,10 @@ export function Praxis() {
           </p>
         </Reveal>
 
+        <Reveal delay={60}>
+          <TeamPhoto className="mt-14" />
+        </Reveal>
+
         <div className="mt-14 grid gap-5 lg:grid-cols-[1fr_1fr_1.3fr]">
           <Reveal className="h-full">
             <div className="flex h-full flex-col rounded-2xl bg-white p-7 ring-1 ring-ink/5 md:p-8">
@@ -44,11 +49,6 @@ export function Praxis() {
                 <br />
                 {site.address.zip} {site.address.city} – {site.address.district}
               </address>
-              {site.isPlaceholderData && (
-                <p className="mt-4 text-xs font-medium text-amber-800 italic">
-                  {praxisSection.placeholderNote}
-                </p>
-              )}
               <a
                 href={site.mapsUrl}
                 target="_blank"
@@ -81,7 +81,7 @@ export function Praxis() {
               </dl>
               {site.isPlaceholderData && (
                 <p className="mt-4 text-xs font-medium text-amber-800 italic">
-                  {praxisSection.placeholderNote}
+                  {praxisSection.hoursPlaceholderNote}
                 </p>
               )}
               <p className="mt-auto pt-5 text-sm leading-relaxed text-ink/70">
