@@ -13,7 +13,7 @@ export const intro = {
 export const praxisSection = {
   kicker: "Praxis & Team",
   title: "Mitten in Eimsbüttel – gut erreichbar",
-  text: "Unsere Praxis liegt zentral in Hamburg-Eimsbüttel und ist mit Bus, Bahn, Rad und Auto gut zu erreichen. Ruhige, moderne Räume und ein eingespieltes Team sorgen dafür, dass Sie sich vom ersten Moment an gut aufgehoben fühlen.",
+  text: "Unsere Praxis liegt zentral in Hamburg-Eimsbüttel, direkt an der U-Bahn-Haltestelle Christuskirche. Ruhige, moderne Räume, ein eigener Praxis-OP und ein eingespieltes Team aus erfahrenen Medizinischen Fachangestellten sorgen dafür, dass Sie sich vom ersten Moment an gut aufgehoben fühlen.",
   teamAlt: "Das Team der Praxis Proktologie Eimsbüttel um Dr. Kai Kunstreich",
   teamCaption: "Ihr Praxisteam in Hamburg-Eimsbüttel",
   addressTitle: "Adresse",
@@ -29,6 +29,9 @@ export const kontakt = {
   text: "Rufen Sie uns an oder nutzen Sie das Kontaktformular – wir melden uns zeitnah bei Ihnen. Auf Wunsch rufen wir Sie diskret zurück.",
   phoneLabel: "Telefonisch erreichen Sie uns",
   emailLabel: "Oder per E-Mail",
+  faxLabel: "Fax",
+  doctolibNote: "Online-Termine können Sie über Doctolib vereinbaren.",
+  doctolibLabel: "Doctolib öffnen",
   discretionNote: "Ihre Anfrage behandeln wir selbstverständlich vertraulich.",
   form: {
     title: "Rückruf & Terminanfrage",

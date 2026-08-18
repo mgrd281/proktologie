@@ -50,7 +50,21 @@ export function Kontakt() {
                 <Icon name="mail" size={20} className="text-primary" />
                 {site.email}
               </a>
+              <p className="mt-2 text-sm text-ink/70">
+                {kontakt.faxLabel}: {site.fax}
+              </p>
             </div>
+            <p className="text-sm leading-relaxed text-ink/70">
+              {kontakt.doctolibNote}{" "}
+              <a
+                href={site.doctolibUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-primary underline underline-offset-2"
+              >
+                {kontakt.doctolibLabel}
+              </a>
+            </p>
             <p className="flex items-start gap-3 rounded-xl bg-mist px-5 py-4 text-sm leading-relaxed text-ink/70">
               <Icon name="shield" size={18} className="mt-0.5 shrink-0 text-primary" />
               {kontakt.discretionNote}

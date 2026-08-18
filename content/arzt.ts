@@ -1,23 +1,25 @@
 /**
- * Über den Arzt.
- * [PLATZHALTER]-Angaben (Facharztbezeichnung, Stationen) vor Launch
- * mit den tatsächlichen Qualifikationen abgleichen.
+ * Über den Arzt – Angaben von der Bestandsseite
+ * proktologie-eimsbuettel.de/team/ übernommen.
+ * Hinweis: Die Bestandsseite schreibt „ESBQ/FEBS" – die gängige
+ * Bezeichnung lautet EBSQ (European Board of Surgery Qualification);
+ * Schreibweise vor Launch bestätigen (siehe README-Checkliste).
  */
 
 export const arzt = {
   kicker: "Über den Arzt",
-  name: "Dr. Kai Kunstreich",
-  role: "[PLATZHALTER: Facharztbezeichnung, z. B. Facharzt für Chirurgie – Schwerpunkt Proktologie]",
+  name: "Dr. med. Kai Kunstreich",
+  role: "Facharzt für Chirurgie · Facharzt für Viszeralchirurgie · Europäischer Facharzt für Koloproktologie (EBSQ/FEBS)",
   philosophy: [
     "Als Proktologe in Hamburg-Eimsbüttel weiß ich: Proktologische Beschwerden sind für viele Patientinnen und Patienten mit Überwindung verbunden. Genau deshalb lege ich Wert auf eine Atmosphäre, in der Sie offen sprechen können – ohne Scham und ohne Zeitdruck.",
-    "Meine Überzeugung: Gute Medizin beginnt mit Zuhören. Erst wenn ich Ihre Situation verstanden habe, besprechen wir gemeinsam, welche Diagnostik sinnvoll ist und welche Behandlung zu Ihnen passt.",
+    "Gute Medizin beginnt mit Zuhören – und mit einer vorsichtigen, einfühlsamen Untersuchung, die Ihre Souveränität respektiert. Ich kläre Sie ausführlich über Befund und Möglichkeiten auf, damit Sie selbst eine gute Entscheidung treffen können, welche Behandlung Sie durchführen lassen möchten.",
   ],
   vita: [
-    "[PLATZHALTER: Studium und Approbation]",
-    "[PLATZHALTER: Facharztweiterbildung und Stationen]",
-    "[PLATZHALTER: Proktologische Schwerpunkte und Zusatzqualifikationen]",
-    "[PLATZHALTER: Mitgliedschaften in Fachgesellschaften]",
+    "Studium der Medizin in Hamburg",
+    "Facharztweiterbildung Chirurgie in Stade und Berlin, ab 2006 mit Schwerpunkt Proktologie",
+    "2009–2020 Chirurgische Abteilung des Albertinen-Krankenhauses Hamburg, Schwerpunkt Koloproktologie – seit 2012 als Oberarzt",
+    "Weitere fundierte Ausbildungsstationen im UKE und im Amalie-Sieveking-Krankenhaus",
   ],
   portraitAlt:
-    "Dr. Kai Kunstreich, Proktologe in Hamburg-Eimsbüttel, in seiner Praxis",
+    "Dr. med. Kai Kunstreich, Proktologe in Hamburg-Eimsbüttel, in seiner Praxis",
 };

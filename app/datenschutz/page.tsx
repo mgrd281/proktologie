@@ -3,7 +3,7 @@ import { site } from "@/content/site";
 
 export const metadata: Metadata = {
   title: "Datenschutzerklärung",
-  description: "Datenschutzerklärung der Praxis Proktologie Eimsbüttel – Dr. Kai Kunstreich, Hamburg.",
+  description: "Datenschutzerklärung der Praxis Proktologie Eimsbüttel – Dr. med. Kai Kunstreich, Hamburg.",
   alternates: { canonical: "/datenschutz/" },
   openGraph: {
     title: "Datenschutzerklärung | Proktologie Eimsbüttel",
@@ -20,7 +20,7 @@ export default function DatenschutzPage() {
   return (
     <div className="bg-cream">
       <div className="mx-auto max-w-3xl px-5 pt-36 pb-24 md:px-8">
-        <p className="text-xs font-semibold tracking-[0.2em] text-primary uppercase">
+        <p className="text-xs font-semibold tracking-[0.2em] text-primary-deep uppercase">
           Rechtliches
         </p>
         <h1 className="font-display mt-4 text-4xl font-medium text-ink">
@@ -31,10 +31,10 @@ export default function DatenschutzPage() {
           role="note"
           className="mt-8 rounded-xl border-l-4 border-amber-600 bg-amber-50 px-5 py-4 text-sm leading-relaxed text-amber-950"
         >
-          <strong>Muster-Hinweis:</strong> Dieser Text ist eine Vorlage. Er
-          muss vor Veröffentlichung an die tatsächlichen Gegebenheiten
-          (insbesondere Hosting und Formular-Verarbeitung) angepasst und
-          rechtlich geprüft werden.
+          <strong>Hinweis:</strong> Die Kontaktdaten sind echt; der Text
+          selbst ist eine Vorlage und muss vor Veröffentlichung an die
+          tatsächlichen Gegebenheiten (insbesondere Hosting und
+          Formular-Verarbeitung) angepasst und rechtlich geprüft werden.
         </div>
 
         <div className="mt-10 space-y-8 leading-relaxed text-ink/80">
@@ -45,7 +45,7 @@ export default function DatenschutzPage() {
             <p className="mt-3">
               Verantwortlich für die Datenverarbeitung auf dieser Website ist:
               <br />
-              [MUSTER] {site.name} – {site.doctor}, {site.address.street},{" "}
+              {site.name} – {site.doctor}, {site.address.street},{" "}
               {site.address.zip} {site.address.city}, Telefon {site.phone},
               E-Mail {site.email}.
             </p>

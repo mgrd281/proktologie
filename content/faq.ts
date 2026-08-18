@@ -33,7 +33,7 @@ export const faq: FaqItem[] = [
   {
     question: "Wie bereite ich mich auf die Untersuchung vor?",
     answer:
-      "Für die meisten Untersuchungen ist keine besondere Vorbereitung nötig – normale Körperhygiene genügt. Falls für eine Untersuchung doch eine kleine Vorbereitung sinnvoll ist, erklären wir Ihnen das rechtzeitig vor dem Termin.",
+      "Für die proktologische Untersuchung inklusive Proktoskopie und Rektoskopie ist keine besondere Darmvorbereitung erforderlich – normale Körperhygiene genügt. Falls im Einzelfall doch eine kleine Vorbereitung sinnvoll ist, erklären wir Ihnen das rechtzeitig vor dem Termin.",
   },
   {
     question: "Blut im Stuhl – muss ich mir Sorgen machen?",
@@ -49,5 +49,10 @@ export const faq: FaqItem[] = [
     question: "Wie diskret läuft der Praxisbesuch ab?",
     answer:
       "Diskretion gehört bei uns zum Konzept: vertrauliche Terminvergabe, ruhige Räume, Gespräche hinter verschlossener Tür und ein Team, das sensibel mit Ihrem Anliegen umgeht. Ihre Daten behandeln wir streng vertraulich.",
+  },
+  {
+    question: "Was tun bei akuten Beschwerden?",
+    answer:
+      "Starke Beschwerden oder Entzündungen können plötzlich auftreten. Für solche Fälle halten wir ein Kontingent an kurzfristigen Notfallterminen bereit – rufen Sie uns dazu bitte immer zuerst an. Bitte haben Sie Verständnis, dass bei Notfallterminen etwas mehr Wartezeit in der Praxis entstehen kann.",
   },
 ];

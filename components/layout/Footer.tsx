@@ -63,6 +63,8 @@ export function Footer() {
                   {site.phone}
                 </a>
                 <br />
+                Fax: {site.fax}
+                <br />
                 <a
                   href={`mailto:${site.email}`}
                   className="underline-offset-4 hover:text-white hover:underline"

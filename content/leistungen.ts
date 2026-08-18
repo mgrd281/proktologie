@@ -20,7 +20,7 @@ export const leistungen: Leistung[] = [
     slug: "haemorrhoiden",
     title: "Hämorrhoiden",
     teaser:
-      "Vergrößerte Hämorrhoiden gehören zu den häufigsten proktologischen Anliegen. Wir behandeln stadiengerecht – von der Beratung über schonende Verfahren bis zum ambulanten Eingriff.",
+      "Vergrößerte Hämorrhoiden behandeln wir stadiengerecht: je nach Befund mit Verödung oder Gummibandligatur – in der Regel ohne Betäubung möglich – bis hin zum ambulanten Eingriff.",
     icon: "leaf",
   },
   {
@@ -55,14 +55,21 @@ export const leistungen: Leistung[] = [
     slug: "diagnostik",
     title: "Proktologische Diagnostik",
     teaser:
-      "Proktoskopie, Rektoskopie und gründliche Untersuchung: Eine präzise Diagnose ist die Grundlage jeder guten Behandlung – behutsam und verständlich erklärt.",
+      "Proktoskopie und Rektoskopie mit modernen LED-Instrumenten: präzise, behutsam und ohne besondere Darmvorbereitung – verständlich erklärt, Schritt für Schritt.",
     icon: "scope",
   },
   {
     slug: "ambulante-behandlungen",
     title: "Ambulante Behandlungen",
     teaser:
-      "Viele Eingriffe führen wir ambulant und in örtlicher Betäubung durch. Sie sind noch am selben Tag wieder zu Hause – mit klarem Nachsorgeplan.",
+      "Viele Eingriffe führen wir in örtlicher Betäubung direkt in unserem eigenen, modernen Praxis-OP durch. Sie sind noch am selben Tag wieder zu Hause – mit klarem Nachsorgeplan.",
     icon: "home",
+  },
+  {
+    slug: "krebsvorsorge",
+    title: "Enddarm-Krebsvorsorge",
+    teaser:
+      "Im Rahmen der Krebsvorsorge untersuchen wir After und Mastdarm. Für die komplette Darmspiegelung kooperieren wir mit erfahrenen Praxen und Kliniken und helfen Ihnen, den richtigen Untersucher zu finden.",
+    icon: "shield",
   },
 ];
