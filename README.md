@@ -16,17 +16,22 @@ npm run lint       # ESLint
 Der Build erzeugt in `out/` eine vollständig statische Website, die auf jedem
 Webspace/Host funktioniert (kein Node-Server nötig).
 
-## Porträtfoto einfügen
+## Porträtfoto
 
-Das Foto von Dr. Kunstreich ist bewusst nicht im Repository. So fügen Sie es ein:
+Das freigestellte Porträt von Dr. Kunstreich liegt als
+**`public/images/dr-kunstreich.webp`** im Repository (WebP mit
+Transparenz, 1086 × 1448 px, aus dem gelieferten PNG optimiert).
 
-1. Datei als **`public/images/dr-kunstreich.jpg`** ablegen
-   (Hochformat ca. 3:4, mindestens 1200 × 1600 px, JPG).
-2. Neu bauen (`npm run build`) bzw. im Dev-Server neu laden — fertig.
+Foto austauschen: einfach diese Datei überschreiben (Hochformat 3:4,
+freigestellt mit transparentem Hintergrund) — kein Code-Change nötig.
+Sollte die Datei fehlen oder nicht laden, zeigt die Website automatisch
+ein gestaltetes Marken-Panel (`components/ui/DoctorPortrait.tsx`).
 
-Es ist **keine Code-Änderung nötig**: Fehlt die Datei, zeigt die Website
-automatisch ein gestaltetes Marken-Panel statt eines kaputten Bildes
-(`components/ui/DoctorPortrait.tsx`).
+Der Hero ist in unabhängigen Ebenen aufgebaut (Hintergrund-Ambiente →
+Typografie → Arzt-Freisteller → Interface). Die Hintergrund-Ebene
+(`components/hero/HeroBackground.tsx`) ist der dokumentierte Mount-Punkt
+für eine spätere scroll-getriebene Canvas-Bildsequenz; der Freisteller
+bleibt dabei eine eigene, separat animierbare Ebene.
 
 ## Vor Launch: Checkliste
 

@@ -1,5 +1,7 @@
+import { preload } from "react-dom";
 import { HeroCinematic } from "@/components/hero/HeroCinematic";
 import { HeroStatic } from "@/components/hero/HeroStatic";
+import { PORTRAIT_SRC } from "@/components/ui/DoctorPortrait";
 
 /**
  * Hero-Weiche – rein per CSS, ohne Hydration-Sprünge oder Layout-Shifts:
@@ -8,6 +10,10 @@ import { HeroStatic } from "@/components/hero/HeroStatic";
  * – ohne JavaScript: immer die statische Variante (noscript-Override)
  */
 export function Hero() {
+  // Freisteller früh laden (Hint landet im <head>) – kein sichtbares
+  // Nachladen, kein Layout-Shift (img hat feste width/height)
+  preload(PORTRAIT_SRC, { as: "image", fetchPriority: "high" });
+
   return (
     <section id="hero" aria-label="Einführung">
       <noscript>

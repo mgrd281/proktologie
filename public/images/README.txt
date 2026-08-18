@@ -1,5 +1,5 @@
-Porträtfoto hier ablegen:
+dr-kunstreich.webp  – freigestelltes Porträt (WebP mit Transparenz, 1086 x 1448)
 
-dr-kunstreich.jpg  (Hochformat ca. 3:4, mind. 1200 x 1600 px, JPG)
-
-Das Foto erscheint automatisch auf der Website – keine Code-Änderung nötig.
+Foto austauschen: diese Datei überschreiben (Hochformat 3:4, freigestellt,
+transparenter Hintergrund). Es erscheint automatisch auf der Website –
+keine Code-Änderung nötig.

@@ -1,5 +1,6 @@
 "use client";
 
+import { HeroBackground } from "@/components/hero/HeroBackground";
 import { HeroBeat } from "@/components/hero/HeroBeat";
 import { HeroProgress } from "@/components/hero/HeroProgress";
 import { DoctorPortrait } from "@/components/ui/DoctorPortrait";
@@ -116,25 +117,17 @@ export function HeroCinematic() {
         ref={stageRef}
         className="on-dark sticky top-0 h-dvh overflow-hidden bg-deep text-cream"
       >
-        {/* Persistentes Porträt (Beats 1–2), sanft in den Hintergrund geblendet */}
-        <div
-          ref={portraitRef}
-          className="absolute inset-y-0 right-0 w-[46%] origin-center will-change-[opacity,transform]"
-        >
-          <DoctorPortrait
-            alt={arzt.portraitAlt}
-            priority
-            className="h-full w-full"
-          />
-          <div
-            aria-hidden="true"
-            className="absolute inset-0 bg-gradient-to-r from-deep via-deep/25 to-transparent"
-          />
-          <div
-            aria-hidden="true"
-            className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-deep/70 to-transparent"
-          />
-        </div>
+        {/*
+         * Ebenen-Aufbau (unten → oben):
+         * 1. HeroBackground – Klinik-Ambiente, später durch die
+         *    Canvas-Bildsequenz ersetzbar (eigene Komponente)
+         * 2. Beat-Ebenen – Typografie und Beat-Visuals
+         * 3. Arzt-Freisteller – unabhängige Ebene, separat animierbar
+         *    (Parallax/Fade läuft bereits über portraitRef)
+         * 4. Progress-Rail, Scroll-Cue (Interface) – der fixe Header
+         *    liegt ohnehin darüber
+         */}
+        <HeroBackground />
 
         {heroBeats.map((beat, index) => (
           <HeroBeat
@@ -146,6 +139,19 @@ export function HeroCinematic() {
             isLast={index === N - 1}
           />
         ))}
+
+        {/* Freigestellter Arzt (Beats 1–2), bottom-anchored rechts */}
+        <div
+          ref={portraitRef}
+          className="pointer-events-none absolute inset-y-0 right-0 w-[46%] origin-bottom will-change-[opacity,transform] xl:right-[2%] xl:w-[42%]"
+        >
+          <DoctorPortrait
+            alt={arzt.portraitAlt}
+            priority
+            variant="cutout"
+            className="h-full w-full pt-16"
+          />
+        </div>
 
         <HeroProgress active={active} onSelect={handleSelect} />
 
