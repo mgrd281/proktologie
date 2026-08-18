@@ -6,6 +6,7 @@ import { Intro } from "@/components/sections/Intro";
 import { Kontakt } from "@/components/sections/Kontakt";
 import { Leistungen } from "@/components/sections/Leistungen";
 import { Praxis } from "@/components/sections/Praxis";
+import { Team } from "@/components/sections/Team";
 import { UeberDenArzt } from "@/components/sections/UeberDenArzt";
 import { WarumWir } from "@/components/sections/WarumWir";
 import { buildFaqJsonLd, buildPhysicianJsonLd } from "@/lib/jsonld";
@@ -19,6 +20,7 @@ export default function HomePage() {
       <Beschwerden />
       <Diagnostik />
       <UeberDenArzt />
+      <Team />
       <WarumWir />
       <Praxis />
       <Faq />
