@@ -51,23 +51,56 @@ Ebenen des Heros (unten → oben): Ambiente-Fallback → Canvas-Sequenz →
 Typografie → Arzt-Freisteller (separat animierbar) → Interface
 (Kapitel-Navigation).
 
-## Praxisteam
+## Praxisteam (scroll-getriebene 3D-Szene)
 
-Die Sektion „Unser Praxisteam" (`components/sections/Team.tsx`) zeigt das
-Gruppenfoto (`public/images/team.webp`) und sechs Einzelporträts.
+Die Sektion ist kein Kartenraster, sondern **eine räumliche Szene**: Die sechs
+echten Porträts liegen als Ebenen auf einem geschwungenen Pfad, durch den eine
+Kamera fährt. Der Scroll steuert nur die Kamera – die Ebenen bleiben, wo sie sind.
 
-**Personenangaben werden bewusst NICHT dargestellt**, solange sie nicht von
-der Praxis bestätigt sind: In `content/team.ts` stehen `name`, `role`,
-`bio` auf `null` und `languages` ist leer – nichts davon wurde erfunden.
-Bis zur Freigabe trägt jede Karte das neutrale Label „Praxisteam".
+```
+components/team/
+  TeamScene.tsx     Client-Engine: EIN rAF-Loop, LERP 0.1 auf den Zielfortschritt
+                    aus useScrollProgress. Schreibt pro Bild ausschließlich
+                    transform/opacity plus ein einziges SVG-`d`; React rendert
+                    nur beim Kapitelwechsel (8×).
+  TeamCard.tsx      Eine Porträt-Ebene (4:5, feine Kante, Tiefenschleier)
+  TeamProgress.tsx  „01 / 06" – die Stufen sind Buttons (Tastaturzugang)
+  TeamStatic.tsx    prefers-reduced-motion / ohne JS: ruhiges Editorial-Layout
+lib/team/scene.ts   GESAMTE Geometrie als reine Mathematik (kein DOM):
+                    Pfad, Kamera, Projektion, Deckkraft, Finale
+lib/team/scene.test.mjs  Geometrie-Tests ohne Browser
+```
 
-Echte Angaben ergänzen: in `content/team.ts` beim jeweiligen Eintrag
-`name` / `role` / `bio` / `languages` füllen – die Karten zeigen sie dann
-automatisch, ohne Code-Änderung. Alt-Texte sind neutral und
-geschlechtsneutral formuliert, weil auch das nicht bestätigt ist.
+Acht Haltepunkte über einen 640vh-Track (`t = Fortschritt · 7`): Intro (0),
+Mitglied 01–06 (1–6), Finale (7, Kamera zieht zurück → Gruppenkomposition +
+„Gemeinsam für Ihre Gesundheit." + Termin-CTA).
 
-Porträts austauschen: `public/images/team/portrait-N-420.webp` und
-`portrait-N-840.webp` überschreiben (Hochformat 4:5).
+Tests:
+
+```bash
+node --experimental-strip-types --test lib/team/scene.test.mjs
+```
+
+Weil die Geometrie vom DOM getrennt ist, lässt sich die Komposition ohne Browser
+prüfen – die Tests haben beim Bau zwei echte Fehler gefunden (Ebenen liefen auf
+die Projektionsebene zu; die Szene riss zum Ende hin ab).
+
+**Performance:** Im Animationspfad stehen nur `transform` und `opacity`. Kein
+`filter: blur()` auf bewegten Ebenen (Tiefenschärfe läuft über einen Schleier mit
+reiner Deckkraft), die Weichzeichnung des Hintergrunds steckt fest im Bild-Asset,
+und ein Idle-Guard beendet den Frame, solange sich nichts ändert. Auf Mobilgeräten
+gilt eine eigene Geometrie (flachere Perspektive, engere Staffelung, weniger
+gleichzeitig gezeichnete Ebenen) – kein geschrumpfter Desktop.
+
+**Bildmaterial:** Die sechs Porträts liegen unter `public/images/team/`
+(`portrait-N-{420,840}.webp`, 4:5). Die Umgebungsebene (`praxis-raum-*.webp`)
+ist derzeit aus dem echten Gruppenfoto abgeleitet; sobald eine dedizierte
+Empfangs-Aufnahme vorliegt, genügt es, diese Dateien zu ersetzen.
+
+**Personendaten:** Namen, Rollen, Kurzprofile und Sprachen sind weiterhin nicht
+bestätigt und stehen in `content/team.ts` auf `null`. Angezeigt wird das neutrale
+Label „Praxisteam"; sobald echte Angaben eingetragen sind, erscheinen sie
+automatisch in beiden Varianten. Es wurde nichts erfunden.
 
 ## Vor Launch: Checkliste
 
