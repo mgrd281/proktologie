@@ -77,23 +77,51 @@ Bestandsseite proktologie-eimsbuettel.de übernommen (echt). Offen bleibt:
 | Punkt | Details |
 |---|---|
 | Finale Domain | `content/site.ts` (`url`) + `metadataBase` bestätigen |
-| Doctolib-Profil | `content/site.ts` (`doctolibUrl`) — direkten Praxis-Link eintragen (aktuell generischer Doctolib-Link) |
+| Doctolib-Profil | `NEXT_PUBLIC_DOCTOLIB_BOOKING_URL` mit dem direkten Praxis-Link setzen — bis dahin sind alle Doctolib-CTAs ausgeblendet |
 | EBSQ-Schreibweise | Bestandsseite schreibt „ESBQ/FEBS", gängig ist „EBSQ" — mit dem Arzt bestätigen (`content/arzt.ts`) |
 | Sprechzeiten | Bestandsseite zeigt auf /about/ noch eine ältere 7–12-Variante — übernommen wurde die aktuelle 8–13/14–18-Variante; bestätigen |
 | Impressum/Datenschutz | Rechtlich prüfen lassen; verbleibende `[MUSTER]`-Lücken füllen (Aufsichtsbehörde, USt, Hosting, Speicherfristen, Stand) |
 | Formular-Endpoint | Bei Aktivierung (`formEndpoint`) Datenschutz Abschnitte 2 und 4 anpassen |
+| Doctolib-Sync | Für echte Verfügbarkeiten: offizieller Partner-/PVS-Zugang nötig — siehe „Terminbuchung“ unten |
 
 Suche im Projekt nach `PLATZHALTER` und `MUSTER`, um nichts zu übersehen.
 
-## Kontaktformular
+## Terminbuchung (5-Schritte-Flow)
 
-Das Formular funktioniert ohne Backend: Standardmäßig öffnet es das
-E-Mail-Programm der Besucher:in mit einer vorbefüllten Anfrage (`mailto:`).
+Die Termin-Sektion ist eine mehrstufige Booking-Experience
+(Terminart → Datum → Uhrzeit → Angaben → Bestätigung) in
+`components/booking/`. Sämtliche Verfügbarkeit läuft über das
+`BookingProvider`-Interface (`lib/booking/provider.ts`):
 
-Für echten Server-Versand (z. B. Formspree, Web3Forms, eigenes Endpoint) in
-`content/site.ts` die Konstante `formEndpoint` auf die POST-URL setzen —
-das Formular sendet dann JSON (`{ name, contact, callback, time, message }`).
-Danach die Datenschutzerklärung entsprechend ergänzen.
+| Provider | Modus | Verhalten |
+|---|---|---|
+| `RequestBookingProvider` (Default) | `request` | **Wunschtermin**: wählbare Tage/Zeiten werden aus den echten Sprechzeiten (`site.hoursJsonLd`) abgeleitet, die Praxis bestätigt persönlich. Es wird nie behauptet, ein Slot sei live verfügbar. |
+| `MockBookingProvider` | `request` | Nur Entwicklung/Screenshots (`NEXT_PUBLIC_BOOKING_PROVIDER=mock`): simuliert belegte Slots. Niemals produktiv einsetzen. |
+| `DoctolibBookingProvider` | `confirmed` | Bewusst **nicht implementiert** — wirft „nicht konfiguriert“. Wird erst gebaut, wenn ein offizieller Doctolib-Zugang existiert. |
+
+Versand der Terminanfrage ohne Backend per `mailto:`; alternativ
+`formEndpoint` in `content/site.ts` auf eine POST-URL setzen (JSON) und die
+Datenschutzerklärung ergänzen. Es werden keine personenbezogenen Daten in
+URLs, localStorage oder Logs abgelegt.
+
+### Doctolib — was für echte Synchronisation fehlt
+
+Es existiert **keine öffentliche Doctolib-API**; Scraping, private Endpoints
+oder ein „synchron“ behaupteter Zweitkalender sind ausgeschlossen. Für echte
+Integration werden benötigt:
+
+1. **Offizielle Buchungsseiten-URL** des Praxisprofils → als
+   `NEXT_PUBLIC_DOCTOLIB_BOOKING_URL` setzen. Solange sie fehlt, blendet
+   die Website alle Doctolib-CTAs aus (ein Link auf die generische
+   Doctolib-Startseite würde eine Buchbarkeit versprechen, die es dort
+   nicht gibt). Sobald gesetzt: Handoff-Link, sofort nutzbar.
+2. **Offizieller Partner-/PVS-Integrationszugang** über das Doctolib-Pro-Konto
+   der Praxis (Doctolib-Partnerprogramm) → erst damit darf ein
+   `DoctolibBookingProvider` mit `mode: "confirmed"` implementiert werden.
+   Die UI schaltet dann automatisch auf „Termin verbindlich buchen“ um.
+
+Doctolib-Synchronisation ist **nicht aktiv** und wird nirgends als aktiv
+dargestellt.
 
 ## Architektur
 
@@ -103,9 +131,10 @@ components/
   hero/         Cinematischer Scroll-Hero (Desktop) + statische Variante
   layout/       Header, Mobilmenü, Footer, Skip-Link
   sections/     Die Sektionen der Startseite
-  ui/           Wiederverwendbare Bausteine (Button, Accordion, Formular …)
+  booking/      Terminbuchung: Schritte, Kalender, Fortschritt, Rückruf
+  ui/           Wiederverwendbare Bausteine (Button, Accordion, Karte …)
 content/        GESAMTER deutscher Text als typisierte Konstanten
-lib/            Helfer (JSON-LD, Scroll-Progress-Hook)
+lib/            Helfer (JSON-LD, Scroll-Progress-Hook) + booking/ (Provider)
 providers/      Lenis-Provider (Smooth Scrolling, Anker-Navigation)
 ```
 

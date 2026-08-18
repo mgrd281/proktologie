@@ -91,7 +91,7 @@ export const heroBeats: HeroBeatContent[] = [
     label: "Termin",
     kicker: "Ihr nächster Schritt",
     headline: ["Der erste Schritt", "ist einfach"],
-    text: "Vereinbaren Sie einen Termin – telefonisch oder über unser Kontaktformular. Wir kümmern uns um den Rest.",
+    text: "Vereinbaren Sie einen Termin – telefonisch oder direkt über unsere Online-Terminanfrage. Wir kümmern uns um den Rest.",
     cta: { label: "Termin vereinbaren", href: "/#kontakt" },
     // Nummer kommt zentral aus content/site.ts – hier nichts pflegen
     secondary: { label: `${site.phone} anrufen`, href: site.phoneHref },

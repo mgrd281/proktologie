@@ -86,13 +86,20 @@ export default function DatenschutzPage() {
               4. Kontaktaufnahme und Terminanfrage
             </h2>
             <p className="mt-3">
-              Wenn Sie uns per Telefon, E-Mail oder über das Kontaktformular
-              kontaktieren, verarbeiten wir die von Ihnen mitgeteilten Angaben
-              (Name, Kontaktdaten, Inhalt der Anfrage) ausschließlich zur
-              Bearbeitung Ihrer Anfrage (Art.&nbsp;6 Abs.&nbsp;1 lit.&nbsp;b
-              DSGVO). Bitte übermitteln Sie über das Formular keine sensiblen
-              Gesundheitsdaten – medizinische Details besprechen wir im
-              persönlichen Gespräch. [MUSTER — tatsächlichen Übertragungsweg
+              Wenn Sie uns per Telefon, E-Mail oder über die
+              Online-Terminanfrage kontaktieren, verarbeiten wir die von Ihnen
+              mitgeteilten Angaben (Name, Kontaktdaten, Wunschtermin, Inhalt
+              der Anfrage) ausschließlich zur Bearbeitung Ihrer Anfrage
+              (Art.&nbsp;6 Abs.&nbsp;1 lit.&nbsp;b DSGVO). Sofern Sie bei der
+              Terminanfrage eine Terminart angeben (z.&nbsp;B. den Anlass Ihres
+              Besuchs), kann darin ein Gesundheitsbezug liegen; diese Angabe
+              verarbeiten wir nur auf Grundlage Ihrer ausdrücklichen
+              Einwilligung (Art.&nbsp;9 Abs.&nbsp;2 lit.&nbsp;a DSGVO), die Sie
+              vor dem Absenden erteilen und jederzeit mit Wirkung für die
+              Zukunft widerrufen können. Bitte übermitteln Sie darüber hinaus
+              keine sensiblen Gesundheitsdaten – medizinische Details
+              besprechen wir im persönlichen Gespräch. [MUSTER — tatsächlichen
+              Übertragungsweg
               des Formulars ergänzen; bei Einsatz eines Formular-Dienstleisters
               (z.&nbsp;B. Formspree) muss dieser hier als Empfänger inklusive
               Auftragsverarbeitung genannt und Abschnitt&nbsp;2 angepasst
