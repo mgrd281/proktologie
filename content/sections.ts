@@ -20,6 +20,10 @@ export const praxisSection = {
   hoursTitle: "Sprechzeiten",
   hoursNote: "Termine nach Vereinbarung – auch kurzfristig bei akuten Beschwerden.",
   mapsLabel: "Route in Google Maps öffnen",
+  mapIframeTitle: "Karte mit dem Standort der Praxis in Hamburg-Eimsbüttel",
+  mapPrivacyNote:
+    "Aus Datenschutzgründen wird die Karte erst auf Ihren Klick geladen. Dabei werden Daten an Google übertragen – Näheres in unserer Datenschutzerklärung.",
+  mapLoadLabel: "Karte laden",
   hoursPlaceholderNote: "Muster-Sprechzeiten – werden vor Veröffentlichung ersetzt.",
 };
 
