@@ -114,6 +114,21 @@ html.lenis body {
   animation: beat-label 0.5s var(--ease-out-soft);
 }
 
+/* Schritt-/Panel-Einblendung der Terminbuchung (Reduced Motion: global aus) */
+@keyframes step-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-step-in {
+  animation: step-in 0.3s var(--ease-out-soft);
+}
+
 /* Sanfte Endlos-Animation des Scroll-Cues */
 @keyframes scroll-cue {
   0%,
