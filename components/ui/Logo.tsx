@@ -54,7 +54,7 @@ export function LogoLockup({
         <span
           className={cn(
             "text-[10px] font-medium tracking-[0.34em] uppercase",
-            onDark ? "text-cream/60" : "text-ink/55",
+            onDark ? "text-cream/70" : "text-ink/70",
           )}
         >
           Proktologie

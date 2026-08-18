@@ -9,7 +9,7 @@ export const arzt = {
   name: "Dr. Kai Kunstreich",
   role: "[PLATZHALTER: Facharztbezeichnung, z. B. Facharzt für Chirurgie – Schwerpunkt Proktologie]",
   philosophy: [
-    "Proktologische Beschwerden sind für viele Patientinnen und Patienten mit Überwindung verbunden. Genau deshalb lege ich Wert auf eine Atmosphäre, in der Sie offen sprechen können – ohne Scham und ohne Zeitdruck.",
+    "Als Proktologe in Hamburg-Eimsbüttel weiß ich: Proktologische Beschwerden sind für viele Patientinnen und Patienten mit Überwindung verbunden. Genau deshalb lege ich Wert auf eine Atmosphäre, in der Sie offen sprechen können – ohne Scham und ohne Zeitdruck.",
     "Meine Überzeugung: Gute Medizin beginnt mit Zuhören. Erst wenn ich Ihre Situation verstanden habe, besprechen wir gemeinsam, welche Diagnostik sinnvoll ist und welche Behandlung zu Ihnen passt.",
   ],
   vita: [

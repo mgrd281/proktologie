@@ -32,14 +32,14 @@ export const beschwerden: BeschwerdeCluster[] = [
   {
     id: "schmerzen",
     symptom: "Schmerzen beim Stuhlgang oder im Sitzen",
-    text: "Schmerzen können auf eine Analfissur, eine Entzündung oder eine Thrombose hindeuten. Sie sind unangenehm, aber in aller Regel gut therapierbar.",
+    text: "Schmerzen können auf eine Analfissur, eine Entzündung oder eine Analvenenthrombose hindeuten. Sie sind unangenehm, aber in aller Regel gut therapierbar.",
     advice:
-      "Bei starken oder plötzlich auftretenden Schmerzen melden Sie sich gern kurzfristig – akute Beschwerden nehmen wir zeitnah dran.",
+      "Bei starken oder plötzlich auftretenden Schmerzen melden Sie sich gern kurzfristig – bei akuten Beschwerden erhalten Sie zeitnah einen Termin.",
   },
   {
     id: "veraenderungen",
     symptom: "Tastbare Knoten oder Veränderungen",
-    text: "Eine tastbare Schwellung oder Hautfalte ist oft eine Mariske, eine Hämorrhoide oder eine kleine Thrombose – selten etwas Ernstes.",
+    text: "Eine tastbare Schwellung oder Hautfalte ist oft eine Mariske, eine vergrößerte Hämorrhoide oder eine kleine Analvenenthrombose – selten etwas Ernstes.",
     advice:
       "Sicherheit gibt eine kurze Untersuchung. Danach wissen Sie, ob überhaupt eine Behandlung nötig ist – vieles darf man auch einfach beobachten.",
   },

@@ -46,7 +46,14 @@ export function ContactForm() {
     if (!consent) nextErrors.consent = f.errors.consent;
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
-      setStatus({ kind: "idle" });
+      // Fehler hörbar machen und Fokus zum ersten fehlerhaften Feld führen
+      setStatus({ kind: "error", text: f.errors.summary });
+      const firstInvalid = (["name", "contact", "consent"] as const).find(
+        (key) => nextErrors[key],
+      );
+      if (firstInvalid) {
+        form.querySelector<HTMLElement>(`#kontakt-${firstInvalid}`)?.focus();
+      }
       return;
     }
 
@@ -84,7 +91,7 @@ export function ContactForm() {
   }
 
   const inputClasses =
-    "w-full rounded-xl border border-ink/15 bg-white px-4 py-3 text-ink placeholder:text-ink/40 focus:border-primary";
+    "w-full rounded-xl border border-ink/15 bg-white px-4 py-3 text-ink placeholder:text-ink/55 focus:border-primary";
 
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-5">
@@ -118,7 +125,7 @@ export function ContactForm() {
           id="kontakt-contact"
           name="contact"
           type="text"
-          autoComplete="tel email"
+          autoComplete="tel"
           required
           aria-required="true"
           aria-invalid={Boolean(errors.contact)}
@@ -170,7 +177,7 @@ export function ContactForm() {
           aria-describedby="kontakt-message-hint"
           className={inputClasses}
         />
-        <p id="kontakt-message-hint" className="mt-1.5 text-sm text-ink/60">
+        <p id="kontakt-message-hint" className="mt-1.5 text-sm text-ink/70">
           {f.messageHint}
         </p>
       </div>
@@ -210,16 +217,25 @@ export function ContactForm() {
         </Button>
       </div>
 
+      {/* Zwei dauerhaft gemountete Live-Regionen – Rollenwechsel zur Laufzeit
+          wird von Screenreadern nicht zuverlässig erkannt */}
       <p
-        role={status.kind === "error" ? "alert" : "status"}
+        role="status"
         className={cn(
-          "text-sm",
-          status.kind === "success" && "text-primary",
-          status.kind === "error" && "text-red-800",
-          status.kind === "idle" && "sr-only",
+          "text-sm font-medium text-primary",
+          status.kind !== "success" && "sr-only",
         )}
       >
-        {status.kind === "idle" ? "" : status.text}
+        {status.kind === "success" ? status.text : ""}
+      </p>
+      <p
+        role="alert"
+        className={cn(
+          "text-sm font-medium text-red-800",
+          status.kind !== "error" && "sr-only",
+        )}
+      >
+        {status.kind === "error" ? status.text : ""}
       </p>
     </form>
   );

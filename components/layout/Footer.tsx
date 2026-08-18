@@ -9,7 +9,7 @@ export function Footer() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="on-dark bg-deep text-cream">
+    <footer id="site-footer" className="on-dark bg-deep text-cream">
       <div className="mx-auto max-w-7xl px-5 py-16 md:px-8 md:py-20">
         <div className="grid gap-12 md:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
           <div>
@@ -41,6 +41,11 @@ export function Footer() {
             <h2 className="text-xs font-semibold tracking-[0.2em] text-accent uppercase">
               {footerContent.contactTitle}
             </h2>
+            {site.isPlaceholderData && (
+              <p className="mt-3 text-xs text-amber-200/90 italic">
+                Musterangaben – werden vor Veröffentlichung ersetzt.
+              </p>
+            )}
             <address className="mt-5 space-y-2.5 text-sm text-cream/70 not-italic">
               <p>
                 {site.name}
@@ -86,7 +91,7 @@ export function Footer() {
           </nav>
         </div>
 
-        <div className="mt-14 flex flex-col gap-2 border-t border-white/10 pt-7 text-xs text-cream/45 md:flex-row md:items-center md:justify-between">
+        <div className="mt-14 flex flex-col gap-2 border-t border-white/10 pt-7 text-xs text-cream/55 md:flex-row md:items-center md:justify-between">
           <p>
             © {year} {site.name} – {site.doctor}
           </p>

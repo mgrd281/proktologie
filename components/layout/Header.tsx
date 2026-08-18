@@ -8,6 +8,7 @@ import { MobileMenu } from "@/components/layout/MobileMenu";
 import { ctaHref, ctaLabel, navigation } from "@/content/navigation";
 import { useLenis } from "@/providers/LenisProvider";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 /**
@@ -19,6 +20,9 @@ export function Header() {
   const [solid, setSolid] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const burgerRef = useRef<HTMLButtonElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
+  const wasOpenRef = useRef(false);
+  const pathname = usePathname();
   const { stop, start } = useLenis();
 
   useEffect(() => {
@@ -44,31 +48,50 @@ export function Header() {
       window.removeEventListener("resize", onScroll);
       cancelAnimationFrame(raf);
     };
-  }, []);
+    // Bei Routenwechsel neu auswerten (Header bleibt über Navigationen gemountet)
+  }, [pathname]);
 
-  // Body-Scroll bei geöffnetem Menü sperren
+  // Geöffnetes Menü: Scroll sperren und Hintergrund inert schalten
   useEffect(() => {
+    const background = [
+      headerRef.current,
+      document.getElementById("main"),
+      document.getElementById("site-footer"),
+    ].filter((el): el is HTMLElement => el !== null);
+
     if (menuOpen) {
+      wasOpenRef.current = true;
       stop();
       document.documentElement.style.overflow = "hidden";
+      background.forEach((el) => (el.inert = true));
     } else {
       start();
       document.documentElement.style.overflow = "";
+      background.forEach((el) => (el.inert = false));
+      // Fokus zurück zum Auslöser – erst NACH Aufheben von inert möglich
+      if (wasOpenRef.current) {
+        wasOpenRef.current = false;
+        burgerRef.current?.focus();
+      }
     }
     return () => {
       start();
       document.documentElement.style.overflow = "";
+      background.forEach((el) => (el.inert = false));
     };
   }, [menuOpen, stop, start]);
 
   const closeMenu = () => {
+    // Lenis sofort wieder starten, damit ein Anker-Klick im selben
+    // Event-Durchlauf nicht von einem gestoppten Lenis verschluckt wird
+    start();
     setMenuOpen(false);
-    burgerRef.current?.focus();
   };
 
   return (
     <>
       <header
+        ref={headerRef}
         className={cn(
           "fixed inset-x-0 top-0 z-50 transition-colors duration-500",
           solid

@@ -21,8 +21,14 @@ export function Kontakt() {
           </p>
 
           <div className="mt-10 space-y-7">
+            {site.isPlaceholderData && (
+              <p className="text-xs font-medium text-amber-800 italic">
+                Telefonnummer und E-Mail-Adresse sind Musterangaben – sie
+                werden vor Veröffentlichung ersetzt.
+              </p>
+            )}
             <div>
-              <p className="text-xs font-semibold tracking-[0.2em] text-ink/50 uppercase">
+              <p className="text-xs font-semibold tracking-[0.2em] text-ink/70 uppercase">
                 {kontakt.phoneLabel}
               </p>
               <a
@@ -34,7 +40,7 @@ export function Kontakt() {
               </a>
             </div>
             <div>
-              <p className="text-xs font-semibold tracking-[0.2em] text-ink/50 uppercase">
+              <p className="text-xs font-semibold tracking-[0.2em] text-ink/70 uppercase">
                 {kontakt.emailLabel}
               </p>
               <a

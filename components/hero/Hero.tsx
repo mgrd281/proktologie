@@ -1,33 +1,24 @@
-"use client";
-
 import { HeroCinematic } from "@/components/hero/HeroCinematic";
 import { HeroStatic } from "@/components/hero/HeroStatic";
-import { usePrefersReducedMotion } from "@/lib/hooks/usePrefersReducedMotion";
 
 /**
- * Hero-Weiche:
- * – Desktop (ab lg): cinematische Scroll-Erzählung
- * – Mobile/Tablet: statische Variante (per CSS umgeschaltet – kein
- *   Hydration-Mismatch, beide Varianten stehen im statischen HTML)
- * – prefers-reduced-motion: statische Variante auf allen Viewports
+ * Hero-Weiche – rein per CSS, ohne Hydration-Sprünge oder Layout-Shifts:
+ * – Desktop (ab lg) mit erlaubter Bewegung: cinematische Scroll-Erzählung
+ * – Mobile/Tablet ODER prefers-reduced-motion: statische Variante
+ * – ohne JavaScript: immer die statische Variante (noscript-Override)
  */
 export function Hero() {
-  const reducedMotion = usePrefersReducedMotion();
-
   return (
     <section id="hero" aria-label="Einführung">
-      {reducedMotion ? (
+      <noscript>
+        <style>{`.hero-cinematic{display:none !important}.hero-static-wrap{display:block !important}`}</style>
+      </noscript>
+      <div className="hero-cinematic hidden motion-safe:lg:block">
+        <HeroCinematic />
+      </div>
+      <div className="hero-static-wrap motion-safe:lg:hidden">
         <HeroStatic />
-      ) : (
-        <>
-          <div className="hidden lg:block">
-            <HeroCinematic />
-          </div>
-          <div className="lg:hidden">
-            <HeroStatic />
-          </div>
-        </>
-      )}
+      </div>
     </section>
   );
 }

@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/cn";
 import { LogoMark } from "@/components/ui/Logo";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Porträt von Dr. Kunstreich mit elegantem Fallback.
@@ -30,6 +30,16 @@ export function DoctorPortrait({
   const [status, setStatus] = useState<"loading" | "loaded" | "error">(
     "loading",
   );
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  // load/error können bereits VOR der Hydration gefeuert haben (statisches
+  // HTML, eager geladenes Bild aus dem Cache) – React spielt solche Events
+  // nicht nach. Deshalb den bereits feststehenden Zustand einmalig ablesen.
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img || !img.complete) return;
+    setStatus(img.naturalWidth > 0 ? "loaded" : "error");
+  }, []);
 
   return (
     <div className={cn("relative overflow-hidden bg-deep", className)}>
@@ -75,6 +85,7 @@ export function DoctorPortrait({
       {status !== "error" && (
         // eslint-disable-next-line @next/next/no-img-element -- statischer Export ohne Bildoptimierungs-Server
         <img
+          ref={imgRef}
           src={PORTRAIT_SRC}
           alt={alt}
           width={1200}

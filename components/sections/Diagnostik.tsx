@@ -30,7 +30,7 @@ export function Diagnostik() {
                 <div className="border-t border-ink/10 pt-7">
                   <span
                     aria-hidden="true"
-                    className="font-display text-4xl font-light text-primary/40"
+                    className="font-display text-4xl font-light text-primary"
                   >
                     {schritt.step}
                   </span>

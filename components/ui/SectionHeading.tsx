@@ -34,7 +34,7 @@ export function SectionHeading({
       <p
         className={cn(
           "text-xs font-semibold tracking-[0.2em] uppercase",
-          onDark ? "text-accent" : "text-primary",
+          onDark ? "text-accent" : "text-primary-deep",
         )}
       >
         {kicker}

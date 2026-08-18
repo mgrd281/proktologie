@@ -62,7 +62,9 @@ export default function LenisProvider({ children }: { children: ReactNode }) {
     scrollTo: (target, offset = HEADER_OFFSET) => {
       const lenis = lenisRef.current;
       if (lenis) {
-        lenis.scrollTo(target, { offset });
+        // force: sonst verwirft Lenis den Aufruf, solange es gestoppt ist
+        // (z. B. im selben Klick, der das Mobilmenü gerade schließt)
+        lenis.scrollTo(target, { offset, force: true });
         return;
       }
       // Fallback ohne Lenis (u. a. Reduced Motion): natives Springen
@@ -98,6 +100,12 @@ export default function LenisProvider({ children }: { children: ReactNode }) {
       event.preventDefault();
       value.scrollTo(el);
       window.history.pushState(null, "", `#${match[1]}`);
+      // Fokus mitnehmen (wie bei nativer Anker-Navigation) – wichtig für
+      // Tastatur-Nutzer, insbesondere den Skip-Link (WCAG 2.4.1)
+      if (!/^(a|button|input|select|textarea)$/i.test(el.tagName)) {
+        el.tabIndex = -1;
+      }
+      el.focus({ preventScroll: true });
     };
     document.addEventListener("click", onClick);
     return () => document.removeEventListener("click", onClick);

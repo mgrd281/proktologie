@@ -3,6 +3,8 @@
  * Reihenfolge und Indizes steuern die Scroll-Choreografie.
  */
 
+import { site } from "@/content/site";
+
 export interface HeroBeatContent {
   /** ASCII-ID, dient auch als React-Key */
   id: string;
@@ -91,7 +93,7 @@ export const heroBeats: HeroBeatContent[] = [
     headline: ["Der erste Schritt", "ist einfach"],
     text: "Vereinbaren Sie einen Termin – telefonisch oder über unser Kontaktformular. Wir kümmern uns um den Rest.",
     cta: { label: "Termin vereinbaren", href: "/#kontakt" },
-    // [PLATZHALTER] Telefonnummer – zentral in content/site.ts pflegen
-    secondary: { label: "+49 40 000 000 00 anrufen", href: "tel:+4940000000" },
+    // Nummer kommt zentral aus content/site.ts – hier nichts pflegen
+    secondary: { label: `${site.phone} anrufen`, href: site.phoneHref },
   },
 ];

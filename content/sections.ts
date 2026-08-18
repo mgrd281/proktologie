@@ -46,6 +46,7 @@ export const kontakt = {
       name: "Bitte geben Sie Ihren Namen an.",
       contact: "Bitte geben Sie eine Telefonnummer oder E-Mail-Adresse an.",
       consent: "Bitte bestätigen Sie die Datenschutzerklärung.",
+      summary: "Bitte prüfen Sie die markierten Felder.",
     },
     successMailto:
       "Ihr E-Mail-Programm öffnet sich mit der vorbereiteten Anfrage. Bitte senden Sie die E-Mail ab, um die Anfrage abzuschließen.",

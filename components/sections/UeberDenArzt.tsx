@@ -26,7 +26,7 @@ export function UeberDenArzt() {
         </Reveal>
 
         <Reveal delay={120}>
-          <p className="text-xs font-semibold tracking-[0.2em] text-primary uppercase">
+          <p className="text-xs font-semibold tracking-[0.2em] text-primary-deep uppercase">
             {arzt.kicker}
           </p>
           <h2
@@ -35,7 +35,7 @@ export function UeberDenArzt() {
           >
             {arzt.name}
           </h2>
-          <p className="mt-3 text-sm font-medium text-ink/55">{arzt.role}</p>
+          <p className="mt-3 text-sm font-medium text-ink/70">{arzt.role}</p>
 
           <div className="mt-7 space-y-5">
             {arzt.philosophy.map((paragraph) => (

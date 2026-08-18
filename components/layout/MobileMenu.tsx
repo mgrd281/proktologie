@@ -44,6 +44,13 @@ export function MobileMenu({ open, onClose }: MobileMenuProps) {
       const first = items[0];
       const last = items[items.length - 1];
       const active = document.activeElement;
+      // Fokus außerhalb des Panels (z. B. auf <body> nach Tap ins Leere):
+      // zurück in den Dialog holen statt hinter das Overlay zu tabben
+      if (!(active instanceof Node) || !panel.contains(active)) {
+        event.preventDefault();
+        first.focus();
+        return;
+      }
       if (event.shiftKey && active === first) {
         event.preventDefault();
         last.focus();

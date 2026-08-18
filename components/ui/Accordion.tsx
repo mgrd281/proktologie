@@ -48,9 +48,15 @@ export function Accordion({ items }: { items: FaqItem[] }) {
               id={panelId}
               role="region"
               aria-labelledby={buttonId}
+              // inert + visibility: eingeklappte Antworten auch aus dem
+              // Accessibility-Tree nehmen (0fr/overflow-hidden allein lässt
+              // den Text für Screenreader lesbar)
+              inert={!isOpen}
               className={cn(
-                "grid transition-[grid-template-rows] duration-400 ease-out",
-                isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+                "grid transition-[grid-template-rows,visibility] duration-400 ease-out",
+                isOpen
+                  ? "grid-rows-[1fr]"
+                  : "invisible grid-rows-[0fr]",
               )}
             >
               <div className="overflow-hidden">

@@ -11,7 +11,7 @@ export function Intro() {
     >
       <div className="mx-auto grid max-w-7xl gap-12 px-5 py-24 md:px-8 md:py-32 lg:grid-cols-[1.2fr_1fr] lg:gap-20">
         <Reveal>
-          <p className="text-xs font-semibold tracking-[0.2em] text-primary uppercase">
+          <p className="text-xs font-semibold tracking-[0.2em] text-primary-deep uppercase">
             {intro.kicker}
           </p>
           <h2

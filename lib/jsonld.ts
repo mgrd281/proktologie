@@ -4,20 +4,34 @@ import { site } from "@/content/site";
 
 /**
  * Strukturierte Daten für Local SEO.
- * Die Kontaktdaten stammen aus content/site.ts und sind dort als
- * [PLATZHALTER] markiert – vor Launch ersetzen.
+ *
+ * Solange site.isPlaceholderData true ist, werden Adresse, Telefon, E-Mail
+ * und Öffnungszeiten bewusst WEGGELASSEN: Suchmaschinen dürfen keine
+ * Musterdaten als echte Praxisdaten indexieren. Beim Eintragen der echten
+ * Stammdaten in content/site.ts das Flag auf false setzen – die Felder
+ * erscheinen dann automatisch.
  */
 
 export function buildPhysicianJsonLd() {
-  return {
+  const base = {
     "@context": "https://schema.org",
     "@type": ["Physician", "MedicalBusiness"],
     name: `${site.name} – ${site.doctor}`,
     url: site.url,
-    telephone: site.phone,
-    email: site.email,
     medicalSpecialty: "Proktologie",
     areaServed: ["Hamburg-Eimsbüttel", "Hamburg"],
+    availableService: leistungen.map((leistung) => ({
+      "@type": "MedicalProcedure",
+      name: leistung.title,
+    })),
+  };
+
+  if (site.isPlaceholderData) return base;
+
+  return {
+    ...base,
+    telephone: site.phone,
+    email: site.email,
     address: {
       "@type": "PostalAddress",
       streetAddress: site.address.street,
@@ -26,24 +40,15 @@ export function buildPhysicianJsonLd() {
       addressRegion: "Hamburg",
       addressCountry: "DE",
     },
-    openingHoursSpecification: [
-      {
+    // Aus site.hours abgeleitet – eine Quelle für UI und Markup
+    openingHoursSpecification: site.hours
+      .filter((entry) => entry.dayOfWeek.length > 0 && entry.opens && entry.closes)
+      .map((entry) => ({
         "@type": "OpeningHoursSpecification",
-        dayOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday"],
-        opens: "08:00",
-        closes: "17:00",
-      },
-      {
-        "@type": "OpeningHoursSpecification",
-        dayOfWeek: "Friday",
-        opens: "08:00",
-        closes: "13:00",
-      },
-    ],
-    availableService: leistungen.map((leistung) => ({
-      "@type": "MedicalProcedure",
-      name: leistung.title,
-    })),
+        dayOfWeek: entry.dayOfWeek,
+        opens: entry.opens,
+        closes: entry.closes,
+      })),
   };
 }
 

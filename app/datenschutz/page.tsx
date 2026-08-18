@@ -5,6 +5,10 @@ export const metadata: Metadata = {
   title: "Datenschutzerklärung",
   description: "Datenschutzerklärung der Praxis Proktologie Eimsbüttel – Dr. Kai Kunstreich, Hamburg.",
   alternates: { canonical: "/datenschutz/" },
+  openGraph: {
+    title: "Datenschutzerklärung | Proktologie Eimsbüttel",
+    url: "/datenschutz/",
+  },
 };
 
 /**
@@ -86,13 +90,29 @@ export default function DatenschutzPage() {
               DSGVO). Bitte übermitteln Sie über das Formular keine sensiblen
               Gesundheitsdaten – medizinische Details besprechen wir im
               persönlichen Gespräch. [MUSTER — tatsächlichen Übertragungsweg
-              des Formulars ergänzen]
+              des Formulars ergänzen; bei Einsatz eines Formular-Dienstleisters
+              (z.&nbsp;B. Formspree) muss dieser hier als Empfänger inklusive
+              Auftragsverarbeitung genannt und Abschnitt&nbsp;2 angepasst
+              werden]
             </p>
           </section>
 
           <section>
             <h2 className="font-display text-xl font-medium text-ink">
-              5. Ihre Rechte
+              5. Speicherdauer
+            </h2>
+            <p className="mt-3">
+              Personenbezogene Daten aus Kontaktanfragen speichern wir nur so
+              lange, wie es für die Bearbeitung Ihres Anliegens erforderlich
+              ist oder gesetzliche Aufbewahrungspflichten bestehen. [MUSTER —
+              konkrete Fristen bzw. Kriterien gemäß Art.&nbsp;13 Abs.&nbsp;2
+              lit.&nbsp;a DSGVO ergänzen]
+            </p>
+          </section>
+
+          <section>
+            <h2 className="font-display text-xl font-medium text-ink">
+              6. Ihre Rechte
             </h2>
             <p className="mt-3">
               Sie haben das Recht auf Auskunft (Art.&nbsp;15 DSGVO),
@@ -107,7 +127,7 @@ export default function DatenschutzPage() {
 
           <section>
             <h2 className="font-display text-xl font-medium text-ink">
-              6. Beschwerderecht
+              7. Beschwerderecht
             </h2>
             <p className="mt-3">
               Sie haben das Recht, sich bei einer Datenschutz-Aufsichtsbehörde
@@ -119,7 +139,7 @@ export default function DatenschutzPage() {
 
           <section>
             <h2 className="font-display text-xl font-medium text-ink">
-              7. Stand dieser Erklärung
+              8. Stand dieser Erklärung
             </h2>
             <p className="mt-3">[MUSTER — Datum des Inkrafttretens eintragen]</p>
           </section>

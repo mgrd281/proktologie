@@ -44,9 +44,11 @@ export function Praxis() {
                 <br />
                 {site.address.zip} {site.address.city} – {site.address.district}
               </address>
-              <p className="mt-4 text-xs text-ink/45 italic">
-                {praxisSection.placeholderNote}
-              </p>
+              {site.isPlaceholderData && (
+                <p className="mt-4 text-xs font-medium text-amber-800 italic">
+                  {praxisSection.placeholderNote}
+                </p>
+              )}
               <a
                 href={site.mapsUrl}
                 target="_blank"
@@ -77,9 +79,11 @@ export function Praxis() {
                   </div>
                 ))}
               </dl>
-              <p className="mt-4 text-xs text-ink/45 italic">
-                {praxisSection.placeholderNote}
-              </p>
+              {site.isPlaceholderData && (
+                <p className="mt-4 text-xs font-medium text-amber-800 italic">
+                  {praxisSection.placeholderNote}
+                </p>
+              )}
               <p className="mt-auto pt-5 text-sm leading-relaxed text-ink/70">
                 {praxisSection.hoursNote}
               </p>

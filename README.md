@@ -28,19 +28,23 @@ Es ist **keine Code-Änderung nötig**: Fehlt die Datei, zeigt die Website
 automatisch ein gestaltetes Marken-Panel statt eines kaputten Bildes
 (`components/ui/DoctorPortrait.tsx`).
 
-## Platzhalter vor Launch ersetzen
+## Vor Launch: Checkliste
 
 Alle Musterangaben sind im Code mit `[PLATZHALTER]` bzw. `[MUSTER]` markiert:
 
 | Wo | Was |
 |---|---|
-| `content/site.ts` | Adresse, Telefon, E-Mail, Sprechzeiten, Domain, Maps-Link |
+| `content/site.ts` | Adresse, Telefon (eine Konstante — der `tel:`-Link wird abgeleitet), E-Mail, Sprechzeiten, Domain, Maps-Link |
+| `content/site.ts` | **`isPlaceholderData` auf `false` setzen**, sobald die echten Daten eingetragen sind — erst dann erscheinen Kontaktdaten im JSON-LD und die „Musterangaben"-Hinweise verschwinden |
 | `content/arzt.ts` | Facharztbezeichnung und Vita-Stationen |
+| `app/layout.tsx` + Copy | Die Bezeichnung „Proktologe/Facharzt" mit der tatsächlichen, verliehenen Qualifikation abgleichen (HWG/MBO-Ä — irreführende Titelwerbung vermeiden) |
 | `app/impressum/page.tsx` | Impressumsangaben (§ 5 DDG) — rechtlich prüfen lassen |
-| `app/datenschutz/page.tsx` | Datenschutzerklärung — rechtlich prüfen lassen |
-| `lib/jsonld.ts` | Öffnungszeiten im JSON-LD an echte Sprechzeiten angleichen |
+| `app/datenschutz/page.tsx` | Datenschutzerklärung — rechtlich prüfen lassen; bei Aktivierung eines Formular-Endpoints Abschnitte 2 und 4 anpassen |
 
 Suche im Projekt nach `PLATZHALTER` und `MUSTER`, um nichts zu übersehen.
+Solange `isPlaceholderData` auf `true` steht, veröffentlicht das JSON-LD
+bewusst keine Adresse/Telefon/E-Mail/Öffnungszeiten (Suchmaschinen sollen
+keine Musterdaten indexieren).
 
 ## Kontaktformular
 
@@ -62,7 +66,7 @@ components/
   sections/     Die Sektionen der Startseite
   ui/           Wiederverwendbare Bausteine (Button, Accordion, Formular …)
 content/        GESAMTER deutscher Text als typisierte Konstanten
-lib/            Helfer (JSON-LD, Hooks für Scroll/Reduced Motion)
+lib/            Helfer (JSON-LD, Scroll-Progress-Hook)
 providers/      Lenis-Provider (Smooth Scrolling, Anker-Navigation)
 ```
 

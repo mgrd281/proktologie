@@ -5,6 +5,10 @@ export const metadata: Metadata = {
   title: "Impressum",
   description: "Impressum der Praxis Proktologie Eimsbüttel – Dr. Kai Kunstreich, Hamburg.",
   alternates: { canonical: "/impressum/" },
+  openGraph: {
+    title: "Impressum | Proktologie Eimsbüttel",
+    url: "/impressum/",
+  },
 };
 
 /**
