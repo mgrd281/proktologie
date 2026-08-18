@@ -20,7 +20,7 @@ import { FrameStore } from "@/components/hero/sequence/frameStore";
  * Scroll → Lenis → normalisierter Fortschritt (setProgress) →
  * LERP-Interpolation im eigenen rAF-Loop → Canvas zeichnet den Frame.
  *
- * – Der Fortschritt kommt von außen (HeroCinematic/useScrollProgress);
+ * – Der Fortschritt kommt von außen (MasterSequence/useScrollProgress);
  *   hier läuft nur die Glättung (current += (target − current) · LERP)
  *   und das Zeichnen.
  * – Ist der exakt angeforderte Frame noch nicht dekodiert, zeichnet der

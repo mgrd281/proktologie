@@ -263,6 +263,39 @@ html.lenis body {
   }
 }
 
+/*
+ * Kamerafahrt: In der hellen Phase (Empfangsraum) müssen Leiste, Zähler und
+ * Hinweise dunkel werden – sonst verschwinden sie auf dem hellen Grund.
+ */
+[data-phase="bright"] .cinema-rail-label,
+[data-phase="bright"] .cinema-counter {
+  color: color-mix(in srgb, var(--color-ink) 78%, transparent);
+}
+[data-phase="bright"] .cinema-rail-line {
+  background-color: color-mix(in srgb, var(--color-ink) 45%, transparent);
+}
+
+/*
+ * Die Leiste liegt zeitweise über sehr hellen Flächen – dem weißen Kittel
+ * des Arztes, den Porträts. Ein weicher Hof in der jeweiligen Gegenfarbe
+ * hält Ziffern und Striche lesbar, ohne sie mit einem Kasten zu hinterlegen.
+ */
+.cinema-rail-label,
+.cinema-counter {
+  text-shadow: 0 1px 10px rgba(23, 37, 27, 0.55);
+  transition-property: color, opacity, text-shadow;
+}
+.cinema-rail-line {
+  box-shadow: 0 0 6px rgba(23, 37, 27, 0.5);
+}
+[data-phase="bright"] .cinema-rail-label,
+[data-phase="bright"] .cinema-counter {
+  text-shadow: 0 1px 10px rgba(247, 246, 241, 0.8);
+}
+[data-phase="bright"] .cinema-rail-line {
+  box-shadow: 0 0 6px rgba(247, 246, 241, 0.8);
+}
+
 /* Sanfte Endlos-Animation des Scroll-Cues */
 @keyframes scroll-cue {
   0%,

@@ -27,11 +27,85 @@ freigestellt mit transparentem Hintergrund) — kein Code-Change nötig.
 Sollte die Datei fehlen oder nicht laden, zeigt die Website automatisch
 ein gestaltetes Marken-Panel (`components/ui/DoctorPortrait.tsx`).
 
-## Scroll-Sequenz (Canvas-Engine)
+## Die Kamerafahrt der Startseite
 
-Der Desktop-Hero ist eine echte scroll-gescrubbte Bildsequenz:
-Scroll → Lenis → normalisierter Fortschritt → LERP (0,14) → Canvas-Frame.
-Engine: `components/hero/sequence/` (config, FrameStore, CanvasSequence).
+Die Startseite beginnt nicht mit einem Hero und irgendwann später einer
+Team-Sektion, sondern mit **einer durchgehenden Fahrt** über sieben Zustände:
+
+```
+01 Willkommen · 02 Dr. Kunstreich · 03 Beschwerden · 04 Diagnostik
+05 Behandlung · 06 Team · 07 Praxis   → danach die normale Seite
+```
+
+Ein Track (900vh), eine sticky Bühne, **ein** Fortschritt, **ein**
+`requestAnimationFrame`-Loop. Kein Layer hört selbst auf Scroll.
+
+```
+Scroll → Lenis (duration 1.2, exponentieller Ausklang)
+       → useScrollProgress(track)            Ziel (roh, rAF-gedrosselt)
+       → current += (target - current)·0.14  Trägheit/Nachlauf
+       → alle Ebenen als Senken (transform/opacity, sonst nichts)
+```
+
+Der rohe `window.scrollY` wird nirgends direkt auf eine Transformation
+abgebildet: Lenis liefert die Trägheit des Scrollens, der LERP die der Kamera.
+Deshalb läuft die Bewegung nach dem Radstopp noch sichtbar nach.
+
+```
+lib/cinema/timeline.ts        Dramaturgie als reine Mathematik (kein DOM)
+lib/cinema/timeline.test.mjs  Tests ohne Browser
+components/cinema/
+  MasterSequence.tsx          Track, Bühne, der eine Loop, alle Schreibvorgänge
+  MasterRail.tsx              die eine Leiste 01–07 (Buttons, Tastaturzugang)
+  CinemaStatic.tsx            reduzierte Bewegung / ohne JS
+  layers/StateText.tsx        Typografie eines Zustands
+  layers/TeamStage.tsx        die sechs Porträt-Ebenen (reine Senke)
+  layers/PraxisLayer.tsx      Zustand 07: Adresse, Sprechzeiten, Wege
+```
+
+### Warum es keine harten Kanten gibt
+
+Kern der Zeitachse ist `band(p, inStart, inEnd, outStart, outEnd)`. Jede Ebene
+bekommt ein Band, das **früher beginnt und später endet** als ihr Zustand –
+daraus entsteht die Überblendung statt des Schnitts:
+
+| Ebene | Band | liest sich als |
+|---|---|---|
+| Lichtsequenz (Canvas) | 0.00 → 0.78 | trägt 01–05, verblasst in den Raum |
+| Arzt-Freisteller | 0.00 → 0.60 | steht in 02 vorn, weicht zurück |
+| Empfangsraum | 0.54 → Ende | setzt mitten in „Behandlung“ ein |
+| Team-Porträts | 0.56 → 0.96 | erscheinen, bevor 06 beginnt |
+| Praxis | 0.78 → Ende | beginnt, während Team noch läuft |
+| Bahn, Glow, Leiste | 0.00 → 1.00 | die drei durchgehenden Motive |
+| Auslauf | 0.94 → 1.00 | Bühne löst sich in Cream auf |
+
+Der Auslauf skaliert die Bühne **nicht** (das legte die Seitenkanten frei),
+sondern blendet in genau den Farbton, mit dem die folgende Sektion beginnt;
+Leiste, Zähler und Scroll-Hinweis gehen mit. Der Header schaltet bei
+`HEADER_SOLID_AT` (0.60) auf deckend – kurz **bevor** der Empfangsraum hell
+wird, sonst stünde helle Schrift auf hellem Grund.
+
+Zustand 06 führt zusätzlich einen eigenen Unterzähler (01/06 … 06/06). Er
+ersetzt die Master-Leiste nicht, sondern steht daneben.
+
+### Tests
+
+```bash
+node --experimental-strip-types --test lib/cinema/timeline.test.mjs
+node --experimental-strip-types --test lib/team/scene.test.mjs
+```
+
+Die Zeitachsen-Tests kodieren die Abnahmefragen: Decken die sieben Zustände
+0–1 lückenlos ab? Trägt zu **jedem** Fortschritt eine Ebene das Bild? Sind an
+jeder Zustandsgrenze **beide** Nachbarn gleichzeitig sichtbar? Beginnt Team vor
+0.64 und Praxis vor Team-Ende? Laufen Bahn, Glow und Leiste ohne Unterbrechung?
+Weil die Dramaturgie vom DOM getrennt ist, ist das ohne Browser prüfbar.
+
+## Bildsequenz der Zustände 01–05 (Canvas-Engine)
+
+Die Umgebung der ersten fünf Zustände ist eine scroll-gescrubbte Bildsequenz.
+Engine: `components/hero/sequence/` (config, FrameStore, CanvasSequence). Sie
+hört selbst nicht auf Scroll – die Kamerafahrt ruft `setProgress(p)`.
 
 - **Frames:** `public/hero-frames/frame-0001.webp … frame-0500.webp`
   (aktuell generierte Platzhalter). Finale Renders ersetzen die Dateien
@@ -44,59 +118,39 @@ Engine: `components/hero/sequence/` (config, FrameStore, CanvasSequence).
   `public/hero-frames/hero-mobile.webm` / `hero-mobile.mp4` ablegen
   (Poster: `poster.webp`); bis dahin fällt der Slot automatisch auf die
   Porträt-Karte zurück.
-- **Reduced Motion:** statischer Hero (Poster-Charakter), Engine startet
-  nicht.
 
-Ebenen des Heros (unten → oben): Ambiente-Fallback → Canvas-Sequenz →
-Typografie → Arzt-Freisteller (separat animierbar) → Interface
-(Kapitel-Navigation).
+**Fotos aus Behandlung und Diagnostik fehlen noch.** Bis sie vorliegen, tragen
+die Zustände 03–05 Typografie, die Lichtsequenz und den Freisteller. Neue Fotos
+werden als weitere Umgebungsebene in dieselben Bänder gehängt – ohne Umbau.
 
-## Praxisteam (scroll-getriebene 3D-Szene)
+## Die sechs Porträts (Zustand 06)
 
-Die Sektion ist kein Kartenraster, sondern **eine räumliche Szene**: Die sechs
-echten Porträts liegen als Ebenen auf einem geschwungenen Pfad, durch den eine
-Kamera fährt. Der Scroll steuert nur die Kamera – die Ebenen bleiben, wo sie sind.
+Zustand 06 ist kein Kartenraster, sondern **eine räumliche Szene**: Die sechs
+echten Porträts liegen als Ebenen auf einem geschwungenen Pfad, durch den die
+Kamera fährt. Die Ebenen bleiben, wo sie sind – bewegt wird die Kamera.
 
 ```
-components/team/
-  TeamScene.tsx     Client-Engine: EIN rAF-Loop, LERP 0.1 auf den Zielfortschritt
-                    aus useScrollProgress. Schreibt pro Bild ausschließlich
-                    transform/opacity plus ein einziges SVG-`d`; React rendert
-                    nur beim Kapitelwechsel (8×).
-  TeamCard.tsx      Eine Porträt-Ebene (4:5, feine Kante, Tiefenschleier)
-  TeamProgress.tsx  „01 / 06" – die Stufen sind Buttons (Tastaturzugang)
-  TeamStatic.tsx    prefers-reduced-motion / ohne JS: ruhiges Editorial-Layout
-lib/team/scene.ts   GESAMTE Geometrie als reine Mathematik (kein DOM):
-                    Pfad, Kamera, Projektion, Deckkraft, Finale
+lib/team/scene.ts        GESAMTE Geometrie als reine Mathematik (kein DOM):
+                         Pfad, Kamera, Projektion, Deckkraft, Finale
 lib/team/scene.test.mjs  Geometrie-Tests ohne Browser
+components/cinema/layers/TeamStage.tsx  reine Senke: render(local, weight, pointer)
+components/team/TeamCard.tsx            eine Porträt-Ebene (4:5, feine Kante)
+components/team/TeamStatic.tsx          ruhiges Editorial-Layout ohne Bewegung
 ```
 
-Acht Haltepunkte über einen 640vh-Track (`t = Fortschritt · 7`): Intro (0),
-Mitglied 01–06 (1–6), Finale (7, Kamera zieht zurück → Gruppenkomposition +
-„Gemeinsam für Ihre Gesundheit." + Termin-CTA).
-
-**Eröffnung:** Im Intro steht die Kamera zurück und rechts der ersten Ebene –
+**Eröffnung:** Zu Beginn steht die Kamera zurück und rechts der ersten Ebene –
 dadurch steht das ganze Team als Reihe im Raum und wird nach hinten kleiner,
 links bleibt die dunkle Textspalte frei. Damit die Reihe nach hinten nicht
 ineinanderläuft, wachsen die Seitenschritte des Pfades (`X_GROWTH`): der
 Bildschirmabstand schrumpft sonst schneller als die Ebenenbreite.
-
-Tests:
-
-```bash
-node --experimental-strip-types --test lib/team/scene.test.mjs
-```
-
-Weil die Geometrie vom DOM getrennt ist, lässt sich die Komposition ohne Browser
-prüfen – die Tests haben beim Bau zwei echte Fehler gefunden (Ebenen liefen auf
-die Projektionsebene zu; die Szene riss zum Ende hin ab).
 
 **Performance:** Im Animationspfad stehen nur `transform` und `opacity`. Kein
 `filter: blur()` auf bewegten Ebenen (Tiefenschärfe läuft über einen Schleier mit
 reiner Deckkraft), die Weichzeichnung des Hintergrunds steckt fest im Bild-Asset,
 und ein Idle-Guard beendet den Frame, solange sich nichts ändert. Auf Mobilgeräten
 gilt eine eigene Geometrie (flachere Perspektive, engere Staffelung, weniger
-gleichzeitig gezeichnete Ebenen) – kein geschrumpfter Desktop.
+gleichzeitig gezeichnete Ebenen) – kein geschrumpfter Desktop. Weil dort Text
+zwangsläufig über den Porträts liegt, kommt und geht mit ihnen ein Leseschleier.
 
 **Bildmaterial:** Die sechs Porträts liegen unter `public/images/team/`
 (`portrait-N-{420,840}.webp`, 4:5).
@@ -111,13 +165,12 @@ Sobald die echte Empfangsaufnahme vorliegt (ohne Personen, Querformat):
 
 1. `public/images/praxis-raum-{1600,960}.webp` und die weichen Varianten
    `praxis-raum-soft-*.webp` ersetzen,
-2. in `app/globals.css` `.team-env-blur { opacity: 0 }` auf ca. `0.85` setzen,
-3. in `components/team/TeamScene.tsx` `ENV_REVEAL` von `0` auf ca. `0.6`
-   setzen – dann tritt der echte Raum im Finale hervor.
+2. in `app/globals.css` `.team-env-blur { opacity: 0.1 }` auf ca. `0.85`
+   heben – aus der Textur wird dann das Motiv.
 
 **Personendaten:** Namen, Rollen, Kurzprofile und Sprachen sind weiterhin nicht
 bestätigt und stehen in `content/team.ts` auf `null`. Angezeigt wird das neutrale
-Label „Praxisteam"; sobald echte Angaben eingetragen sind, erscheinen sie
+Label „Praxisteam“; sobald echte Angaben eingetragen sind, erscheinen sie
 automatisch in beiden Varianten. Es wurde nichts erfunden.
 
 ## Vor Launch: Checkliste
@@ -182,13 +235,16 @@ schon ab Schritt 1 der Buchungskarte sichtbar daneben.
 ```
 app/            Routen, Layout, globale Styles, Sitemap/Robots/Icon
 components/
-  hero/         Cinematischer Scroll-Hero (Desktop) + statische Variante
+  cinema/       Die Kamerafahrt: Track, Bühne, Leiste, Ebenen
+  hero/         Bildsequenz-Engine, Beat-Grafiken, statische Fassung
+  team/         Porträt-Ebene und ruhige Team-Fassung
   layout/       Header, Mobilmenü, Footer, Skip-Link
   sections/     Die Sektionen der Startseite
   booking/      Terminbuchung: Schritte, Kalender, Fortschritt, Rückruf
   ui/           Wiederverwendbare Bausteine (Button, Accordion, Karte …)
 content/        GESAMTER deutscher Text als typisierte Konstanten
-lib/            Helfer (JSON-LD, Scroll-Progress-Hook) + booking/ (Provider)
+lib/            Helfer (JSON-LD, Scroll-Progress-Hook), cinema/ (Zeitachse),
+                team/ (Szenengeometrie), booking/ (Provider)
 providers/      Lenis-Provider (Smooth Scrolling, Anker-Navigation)
 ```
 
@@ -207,9 +263,13 @@ daher ist kein Consent-Banner erforderlich.
 
 ## Barrierefreiheit & Performance
 
-- Skip-Link, sichtbare Fokus-Ringe, Fokus-Falle im Mobilmenü, `inert` für
-  inaktive Hero-Beats, beschriftete Formularfelder mit Fehlermeldungen
-- `prefers-reduced-motion`: statischer Hero, kein Lenis, keine Animationen
-- Mobile erhält eine vereinfachte Hero-Variante ohne Scroll-Kopplung
-- Scroll-Choreografie schreibt nur `opacity`/`transform` (compositor-only),
-  keine React-Renders pro Frame
+- Skip-Link, sichtbare Fokus-Ringe, Fokus-Falle im Mobilmenü, beschriftete
+  Formularfelder mit Fehlermeldungen; die Leiste 01–07 ist per Tastatur
+  bedienbar und springt weich zum jeweiligen Zustand
+- `prefers-reduced-motion`: Die Kamerafahrt wird gar nicht erst erzeugt –
+  stattdessen stehen dieselben Inhalte ruhig untereinander, kein Lenis
+- Ohne JavaScript greift dieselbe ruhige Fassung (`<noscript>`)
+- Mobil gilt eine eigene, einfachere Komposition – dieselbe Erzählung,
+  weniger gleichzeitig bewegte Ebenen
+- Die Fahrt schreibt pro Bild nur `opacity`/`transform` (compositor-only);
+  React rendert ausschließlich beim Zustandswechsel (7×)
