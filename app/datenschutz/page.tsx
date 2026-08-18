@@ -56,11 +56,14 @@ export default function DatenschutzPage() {
               2. Grundsätze: sparsame Datenverarbeitung
             </h2>
             <p className="mt-3">
-              Diese Website ist bewusst datensparsam gestaltet: Es werden keine
-              Cookies gesetzt, keine Analyse- oder Tracking-Dienste eingesetzt
-              und keine Inhalte von Drittservern (z.&nbsp;B. Karten-Widgets
-              oder extern geladene Schriftarten) eingebunden. Die verwendeten
-              Schriften werden von unserem eigenen Server ausgeliefert.
+              Diese Website ist bewusst datensparsam gestaltet: Es werden
+              keine Cookies zu Analyse- oder Marketingzwecken gesetzt und
+              keine Tracking-Dienste eingesetzt. Die verwendeten Schriften
+              werden von unserem eigenen Server ausgeliefert; es erfolgt kein
+              Abruf bei Google Fonts. Inhalte von Drittservern werden nicht
+              automatisch geladen – die einzige Ausnahme ist die Google-Maps-
+              Karte, die ausschließlich nach Ihrem ausdrücklichen Klick
+              geladen wird (siehe Abschnitt&nbsp;5).
             </p>
           </section>
 
@@ -99,7 +102,34 @@ export default function DatenschutzPage() {
 
           <section>
             <h2 className="font-display text-xl font-medium text-ink">
-              5. Speicherdauer
+              5. Google Maps (Zwei-Klick-Lösung)
+            </h2>
+            <p className="mt-3">
+              Auf der Seite „Praxis &amp; Team&ldquo; bieten wir eine Karte des
+              Anbieters Google Ireland Limited (Gordon House, Barrow Street,
+              Dublin 4, Irland) an. Die Karte wird{" "}
+              <strong>nicht automatisch geladen</strong>: Zunächst sehen Sie
+              lediglich eine lokal erzeugte Vorschau. Erst wenn Sie auf
+              „Karte laden&ldquo; klicken, wird die Karte von Google abgerufen.
+            </p>
+            <p className="mt-3">
+              Mit diesem Klick willigen Sie in die Übermittlung ein
+              (Art.&nbsp;6 Abs.&nbsp;1 lit.&nbsp;a DSGVO). Dabei werden
+              insbesondere Ihre IP-Adresse sowie Browser- und Gerätedaten an
+              Google übertragen; eine Übermittlung in die USA kann nicht
+              ausgeschlossen werden. Ihre Einwilligung gilt nur für den
+              jeweiligen Seitenaufruf – laden Sie die Seite neu, ist die
+              Karte wieder deaktiviert. Sie können den Standort jederzeit
+              auch ohne Kartenladen über den Textlink „Route in Google Maps
+              öffnen&ldquo; in einem neuen Tab aufrufen. Weitere Informationen:
+              Datenschutzerklärung von Google
+              (policies.google.com/privacy).
+            </p>
+          </section>
+
+          <section>
+            <h2 className="font-display text-xl font-medium text-ink">
+              6. Speicherdauer
             </h2>
             <p className="mt-3">
               Personenbezogene Daten aus Kontaktanfragen speichern wir nur so
@@ -112,7 +142,7 @@ export default function DatenschutzPage() {
 
           <section>
             <h2 className="font-display text-xl font-medium text-ink">
-              6. Ihre Rechte
+              7. Ihre Rechte
             </h2>
             <p className="mt-3">
               Sie haben das Recht auf Auskunft (Art.&nbsp;15 DSGVO),
@@ -127,7 +157,7 @@ export default function DatenschutzPage() {
 
           <section>
             <h2 className="font-display text-xl font-medium text-ink">
-              7. Beschwerderecht
+              8. Beschwerderecht
             </h2>
             <p className="mt-3">
               Sie haben das Recht, sich bei einer Datenschutz-Aufsichtsbehörde
@@ -139,7 +169,7 @@ export default function DatenschutzPage() {
 
           <section>
             <h2 className="font-display text-xl font-medium text-ink">
-              8. Stand dieser Erklärung
+              9. Stand dieser Erklärung
             </h2>
             <p className="mt-3">[MUSTER — Datum des Inkrafttretens eintragen]</p>
           </section>
