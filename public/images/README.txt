@@ -9,6 +9,9 @@ weichgezeichnete Variante praxis-raum-soft-*.webp). Aktuell aus dem echten
 Gruppenfoto abgeleitet.
 
 Empfangsfoto austauschen: die vier praxis-raum-Dateien mit dem neuen Motiv
-überschreiben (Querformat, ~3:2). Die weiche Variante entsteht mit
-`sharp(...).blur(w/90).modulate({ brightness: 0.78, saturation: 0.75 })`.
-Kein Code muss angefasst werden.
+überschreiben (Querformat, ~3:2, möglichst ohne Personen). Die weiche
+Variante entsteht mit `sharp(...).blur(w/34).modulate({ brightness: 1.06 })`.
+
+Danach zwei Werte anheben, damit der Raum sichtbar wird (siehe README):
+  app/globals.css              .team-env-blur { opacity: 0 }  ->  0.85
+  components/team/TeamScene.tsx  ENV_REVEAL = 0               ->  0.6

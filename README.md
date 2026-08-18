@@ -75,6 +75,12 @@ Acht Haltepunkte über einen 640vh-Track (`t = Fortschritt · 7`): Intro (0),
 Mitglied 01–06 (1–6), Finale (7, Kamera zieht zurück → Gruppenkomposition +
 „Gemeinsam für Ihre Gesundheit." + Termin-CTA).
 
+**Eröffnung:** Im Intro steht die Kamera zurück und rechts der ersten Ebene –
+dadurch steht das ganze Team als Reihe im Raum und wird nach hinten kleiner,
+links bleibt die dunkle Textspalte frei. Damit die Reihe nach hinten nicht
+ineinanderläuft, wachsen die Seitenschritte des Pfades (`X_GROWTH`): der
+Bildschirmabstand schrumpft sonst schneller als die Ebenenbreite.
+
 Tests:
 
 ```bash
@@ -93,9 +99,21 @@ gilt eine eigene Geometrie (flachere Perspektive, engere Staffelung, weniger
 gleichzeitig gezeichnete Ebenen) – kein geschrumpfter Desktop.
 
 **Bildmaterial:** Die sechs Porträts liegen unter `public/images/team/`
-(`portrait-N-{420,840}.webp`, 4:5). Die Umgebungsebene (`praxis-raum-*.webp`)
-ist derzeit aus dem echten Gruppenfoto abgeleitet; sobald eine dedizierte
-Empfangs-Aufnahme vorliegt, genügt es, diese Dateien zu ersetzen.
+(`portrait-N-{420,840}.webp`, 4:5).
+
+**Umgebung – Zwischenstand:** Der Raum ist derzeit gebaut (Licht, Boden,
+Tresenkante als Verläufe in `.team-env`). Grund: Die einzige vorhandene
+Raumaufnahme ist das Gruppenfoto – als Hintergrund stünden dort dieselben
+Personen ein zweites Mal, groß und unscharf, hinter ihren eigenen Porträts.
+Die Foto-Ebenen sind fertig verdrahtet, aber ausgeblendet.
+
+Sobald die echte Empfangsaufnahme vorliegt (ohne Personen, Querformat):
+
+1. `public/images/praxis-raum-{1600,960}.webp` und die weichen Varianten
+   `praxis-raum-soft-*.webp` ersetzen,
+2. in `app/globals.css` `.team-env-blur { opacity: 0 }` auf ca. `0.85` setzen,
+3. in `components/team/TeamScene.tsx` `ENV_REVEAL` von `0` auf ca. `0.6`
+   setzen – dann tritt der echte Raum im Finale hervor.
 
 **Personendaten:** Namen, Rollen, Kurzprofile und Sprachen sind weiterhin nicht
 bestätigt und stehen in `content/team.ts` auf `null`. Angezeigt wird das neutrale

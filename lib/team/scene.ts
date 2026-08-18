@@ -35,6 +35,14 @@ export interface SceneGeometry {
   pullback: number;
   /** Ebenenbreite in px (Höhe = ×1.25, Seitenverhältnis 4:5). */
   cardWidth: number;
+  /** Kamerarückzug im Intro, in Vielfachen von spacingZ. */
+  introPullback: number;
+  /**
+   * Seitlicher Stand der Kamera im Intro (px, positiv = rechts der ersten
+   * Ebene). Dadurch beginnt die Reihe links der Bildmitte und flieht nach
+   * rechts – links bleibt die dunkle Textspalte frei.
+   */
+  introShiftX: number;
   /**
    * Tiefe, ab der eine Ebene ganz ausgeblendet wird. Auf Mobilgeräten
    * bewusst knapp: weniger gleichzeitig gezeichnete Bildebenen entlasten
@@ -46,12 +54,14 @@ export interface SceneGeometry {
 /** Desktop: weite, editorial-asymmetrische Bühne. */
 export const DESKTOP: SceneGeometry = {
   perspective: 1400,
-  spacingZ: 520,
-  spacingX: 540,
-  maxYaw: 16,
+  spacingZ: 640,
+  spacingX: 380,
+  maxYaw: 14,
   pullback: 1750,
   cardWidth: 420,
-  visibleDepth: 5200,
+  introPullback: 1.8,
+  introShiftX: 383,
+  visibleDepth: 6200,
 };
 
 /**
@@ -60,20 +70,35 @@ export const DESKTOP: SceneGeometry = {
  */
 export const MOBILE: SceneGeometry = {
   perspective: 900,
-  spacingZ: 380,
-  spacingX: 250,
+  spacingZ: 420,
+  spacingX: 210,
   maxYaw: 7,
   pullback: 1250,
   cardWidth: 285,
-  visibleDepth: 1150,
+  // Mobil bleibt die Eröffnung enger: ein dominantes Porträt, Nachbarn angeschnitten
+  introPullback: 1.2,
+  introShiftX: 150,
+  visibleDepth: 2600,
 };
 
-/** Seitlicher Schwung des Pfades – verhindert eine gerade Linie. */
-const WAVE = [-140, 90, -70, 130, -110, 50];
+/**
+ * Wachstumsfaktor der Seitenschritte entlang des Pfades.
+ *
+ * Der Grund ist perspektivisch: Weiter entfernte Ebenen werden kleiner,
+ * und ihr Abstand auf dem Bildschirm schrumpft schneller als ihre Breite.
+ * Mit konstantem Weltabstand würde die Reihe nach hinten ineinanderlaufen.
+ * Wachsende Schritte halten die Lücken proportional zur Ebenenbreite – so
+ * entsteht die Fluchtpunkt-Reihe entlang des Empfangstresens.
+ */
+const X_GROWTH = 1.15;
 /** Tiefen-Feinversatz, damit die Staffelung nicht mechanisch wirkt. */
-const DEPTH = [0, -90, 40, -60, 30, -20];
-/** Höhenversatz – editorial, nie alle Ebenen auf einer Linie. */
-const Y_OFFSET = [-40, 34, -72, 52, -18, 64];
+const DEPTH = [0, -60, 40, -50, 30, -20];
+/**
+ * Höhenversatz. Klein gehalten: Die Ebenen stehen wie auf einer Linie am
+ * Tresen – dass sie nach hinten aufsteigen, erledigt die Perspektive von
+ * selbst. Die feine Variation nimmt der Reihe nur das Mechanische.
+ */
+const Y_OFFSET = [0, -14, 9, -18, 6, -10];
 
 /**
  * Richtung, in die eine passierte Ebene aus dem Bild gleitet: entgegen der
@@ -103,10 +128,26 @@ export interface Vec3 {
   z: number;
 }
 
+/** Kumulierte Seitenposition der Ebene i (vor der Zentrierung). */
+function lateralOffset(index: number, geo: SceneGeometry): number {
+  let sum = 0;
+  for (let step = 0; step < index; step++) {
+    sum += geo.spacingX * X_GROWTH ** step;
+  }
+  return sum;
+}
+
+/** Mittelwert aller Seitenpositionen – zentriert die Reihe um x = 0. */
+function lateralCenter(geo: SceneGeometry): number {
+  let sum = 0;
+  for (let i = 0; i < MEMBER_COUNT; i++) sum += lateralOffset(i, geo);
+  return sum / MEMBER_COUNT;
+}
+
 /** Ruheposition der Ebene i im Szenenraum. */
 export function basePosition(index: number, geo: SceneGeometry): Vec3 {
   return {
-    x: (index - (MEMBER_COUNT - 1) / 2) * geo.spacingX + WAVE[index],
+    x: lateralOffset(index, geo) - lateralCenter(geo),
     y: Y_OFFSET[index],
     z: -index * geo.spacingZ + DEPTH[index],
   };
@@ -138,12 +179,16 @@ export function cameraAt(t: number, geo: SceneGeometry): Vec3 {
   if (clamped <= 1) {
     const first = basePosition(0, geo);
     const e = smoothstep(0, 1, clamped);
-    // Im Intro steht die Kamera links der ersten Ebene: die Porträts
-    // liegen dadurch rechts in der Tiefe, links bleibt Raum für die Headline.
+    /*
+     * Im Intro steht die Kamera deutlich zurück und links neben der ersten
+     * Ebene: Dadurch stehen alle sechs Porträts gleichzeitig rechts im Bild
+     * und werden nach hinten kleiner – die Eröffnung zeigt das ganze Team,
+     * links bleibt die dunkle Textspalte frei.
+     */
     return {
-      x: lerp(first.x - geo.spacingX * 1.15, first.x, e),
-      y: lerp(first.y - 40, first.y, e),
-      z: lerp(first.z + geo.spacingZ * 1.6, first.z, e),
+      x: lerp(first.x + geo.introShiftX, first.x, e),
+      y: lerp(first.y - 30, first.y, e),
+      z: lerp(first.z + geo.spacingZ * geo.introPullback, first.z, e),
     };
   }
 
@@ -235,7 +280,7 @@ export function cardState(
   // Deckkraft: fällt mit der Tiefe, aber nie unter den Boden – so bleibt die
   // Szene zusammenhängend und die nächste Person ist immer schon zu ahnen.
   const depth = Math.abs(z);
-  const far = 1 - smoothstep(geo.spacingZ * 0.9, geo.spacingZ * 4, depth);
+  const far = 1 - smoothstep(geo.spacingZ * 1.5, geo.spacingZ * 6, depth);
   // Passierte Ebenen bleiben als Vordergrund präsent (Boden 0.35), statt
   // hart zu verschwinden – „Karte weg, neue Karte da" wäre genau falsch.
   // Im Finale löst sich dieser Vordergrund-Status auf: die Kamera zieht
@@ -246,15 +291,31 @@ export function cardState(
   // Im Finale hebt sich die Begrenzung auf: dort gehören alle sechs ins Bild.
   const range = 1 - smoothstep(geo.visibleDepth * 0.75, geo.visibleDepth, depth);
   const inRange = range + (1 - range) * groupBlend;
-  const opacity = clamp(Math.min(0.3 + far * 0.7, passed) * inRange, 0, 1);
+  const opacity = clamp(Math.min(0.85 + far * 0.15, passed) * inRange, 0, 1);
 
   // Vordergrund-Ebenen leicht defokussieren (wie eine echte Kamera),
   // Tiefe stufenweise – die Stufe wird als Klasse gesetzt, nicht pro Frame.
   const foreground = drifted > 80 && groupBlend < 0.5;
-  const blurStep: CardState["blurStep"] =
-    foreground ? 1 : depth < geo.spacingZ * 0.8 ? 0 : depth < geo.spacingZ * 2 ? 1 : 2;
+  const blurStep: CardState["blurStep"] = foreground
+    ? 1
+    : depth < geo.spacingZ * 2
+      ? 0
+      : depth < geo.spacingZ * 4.5
+        ? 1
+        : 2;
 
   return { x, y, z, rotateX: pitch, rotateY: yaw, opacity, blurStep };
+}
+
+/**
+ * Unterkante einer Ebene im Szenenraum: Dort setzt die Lichtbahn an, damit
+ * sie über den Boden läuft und nicht durch die Gesichter.
+ */
+export function cardFootPoint(
+  state: Pick<CardState, "x" | "y" | "z">,
+  geo: SceneGeometry,
+): Pick<CardState, "x" | "y" | "z"> {
+  return { x: state.x, y: state.y + (geo.cardWidth * 1.25) / 2, z: state.z };
 }
 
 /**
