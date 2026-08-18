@@ -27,11 +27,36 @@ freigestellt mit transparentem Hintergrund) — kein Code-Change nötig.
 Sollte die Datei fehlen oder nicht laden, zeigt die Website automatisch
 ein gestaltetes Marken-Panel (`components/ui/DoctorPortrait.tsx`).
 
-Der Hero ist in unabhängigen Ebenen aufgebaut (Hintergrund-Ambiente →
-Typografie → Arzt-Freisteller → Interface). Die Hintergrund-Ebene
-(`components/hero/HeroBackground.tsx`) ist der dokumentierte Mount-Punkt
-für eine spätere scroll-getriebene Canvas-Bildsequenz; der Freisteller
-bleibt dabei eine eigene, separat animierbare Ebene.
+## Scroll-Sequenz (Canvas-Engine)
+
+Der Desktop-Hero ist eine echte scroll-gescrubbte Bildsequenz:
+Scroll → Lenis → normalisierter Fortschritt → LERP (0,14) → Canvas-Frame.
+Engine: `components/hero/sequence/` (config, FrameStore, CanvasSequence).
+
+- **Frames:** `public/hero-frames/frame-0001.webp … frame-0500.webp`
+  (aktuell generierte Platzhalter). Finale Renders ersetzen die Dateien
+  1:1 bei identischem Namensschema – kein Code-Change nötig.
+- **Speicher:** Blobs komplett vorgeladen; dekodiert werden eine dauerhafte
+  Grob-Leiter (jeder 8. Frame, halbe Auflösung) plus ein volles
+  Gleitfenster ±40 Frames um den Playhead (LRU). Fehlt ein Frame, zeichnet
+  der Loop den nächstgelegenen verfügbaren.
+- **Mobile:** keine 500 Frames – Videoslot. Dateien
+  `public/hero-frames/hero-mobile.webm` / `hero-mobile.mp4` ablegen
+  (Poster: `poster.webp`); bis dahin fällt der Slot automatisch auf die
+  Porträt-Karte zurück.
+- **Reduced Motion:** statischer Hero (Poster-Charakter), Engine startet
+  nicht.
+
+Ebenen des Heros (unten → oben): Ambiente-Fallback → Canvas-Sequenz →
+Typografie → Arzt-Freisteller (separat animierbar) → Interface
+(Fortschrittsbalken, Kapitel-Navigation, FRAME-Indikator).
+
+## Teamfoto
+
+Drop-in wie beim Porträt: Datei als `public/images/team.webp` ablegen
+(Querformat, ~1600 px) – erscheint automatisch prominent in
+„Praxis & Team" und dient später als Material für Sequenz-Kapitel 06.
+Fehlt die Datei, wird der Block komplett ausgeblendet.
 
 ## Vor Launch: Checkliste
 

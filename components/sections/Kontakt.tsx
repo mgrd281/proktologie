@@ -23,8 +23,8 @@ export function Kontakt() {
           <div className="mt-10 space-y-7">
             {site.isPlaceholderData && (
               <p className="text-xs font-medium text-amber-800 italic">
-                Telefonnummer und E-Mail-Adresse sind Musterangaben – sie
-                werden vor Veröffentlichung ersetzt.
+                Die E-Mail-Adresse ist noch eine Musterangabe – sie wird vor
+                Veröffentlichung ersetzt.
               </p>
             )}
             <div>

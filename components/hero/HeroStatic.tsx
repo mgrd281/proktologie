@@ -1,7 +1,6 @@
 import { Button } from "@/components/ui/Button";
-import { DoctorPortrait } from "@/components/ui/DoctorPortrait";
+import { HeroMobileMedia } from "@/components/hero/HeroMobileMedia";
 import { Icon } from "@/components/ui/Icon";
-import { arzt } from "@/content/arzt";
 import { heroBeats } from "@/content/hero";
 
 /**
@@ -49,11 +48,7 @@ export function HeroStatic() {
             )}
           </div>
 
-          <DoctorPortrait
-            alt={arzt.portraitAlt}
-            priority
-            className="aspect-[3/4] max-h-[52svh] w-full max-w-sm justify-self-center rounded-2xl lg:mb-2 lg:justify-self-end"
-          />
+          <HeroMobileMedia className="aspect-[3/4] max-h-[52svh] w-full max-w-sm justify-self-center lg:mb-2 lg:justify-self-end" />
         </div>
 
         <nav aria-label="Direkt zu den wichtigsten Abschnitten" className="mt-12">

@@ -11,14 +11,16 @@ export const intro = {
 };
 
 export const praxisSection = {
-  kicker: "Praxis & Standort",
+  kicker: "Praxis & Team",
   title: "Mitten in Eimsbüttel – gut erreichbar",
-  text: "Unsere Praxis liegt zentral in Hamburg-Eimsbüttel und ist mit Bus, Bahn, Rad und Auto gut zu erreichen. Ruhige, moderne Räume sorgen dafür, dass Sie sich vom ersten Moment an gut aufgehoben fühlen.",
+  text: "Unsere Praxis liegt zentral in Hamburg-Eimsbüttel und ist mit Bus, Bahn, Rad und Auto gut zu erreichen. Ruhige, moderne Räume und ein eingespieltes Team sorgen dafür, dass Sie sich vom ersten Moment an gut aufgehoben fühlen.",
+  teamAlt: "Das Team der Praxis Proktologie Eimsbüttel um Dr. Kai Kunstreich",
+  teamCaption: "Ihr Praxisteam in Hamburg-Eimsbüttel",
   addressTitle: "Adresse",
   hoursTitle: "Sprechzeiten",
   hoursNote: "Termine nach Vereinbarung – auch kurzfristig bei akuten Beschwerden.",
   mapsLabel: "Route in Google Maps öffnen",
-  placeholderNote: "Musterangaben – werden vor Veröffentlichung ersetzt.",
+  hoursPlaceholderNote: "Muster-Sprechzeiten – werden vor Veröffentlichung ersetzt.",
 };
 
 export const kontakt = {

@@ -31,7 +31,8 @@ export function HeroBeat({ beat, index, active, isFirst, isLast }: HeroBeatProps
     >
       <div
         className={cn(
-          "mx-auto flex h-full max-w-7xl items-center px-8 pt-20",
+          // pb-24: hält die linke Spalte über der Kapitel-Navigation
+          "mx-auto flex h-full max-w-7xl items-center px-8 pt-20 pb-24",
           isLast && "justify-center text-center",
         )}
       >

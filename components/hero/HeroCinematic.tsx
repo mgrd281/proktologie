@@ -3,6 +3,10 @@
 import { HeroBackground } from "@/components/hero/HeroBackground";
 import { HeroBeat } from "@/components/hero/HeroBeat";
 import { HeroProgress } from "@/components/hero/HeroProgress";
+import {
+  CanvasSequence,
+  type CanvasSequenceHandle,
+} from "@/components/hero/sequence/CanvasSequence";
 import { DoctorPortrait } from "@/components/ui/DoctorPortrait";
 import { arzt } from "@/content/arzt";
 import { heroBeats } from "@/content/hero";
@@ -34,6 +38,8 @@ export function HeroCinematic() {
   const stageRef = useRef<HTMLDivElement>(null);
   const portraitRef = useRef<HTMLDivElement>(null);
   const cueRef = useRef<HTMLDivElement>(null);
+  const sequenceRef = useRef<CanvasSequenceHandle>(null);
+  const frameIndicatorRef = useRef<HTMLDivElement>(null);
   const layersRef = useRef<HTMLElement[]>([]);
   const fillsRef = useRef<HTMLElement[]>([]);
   const activeRef = useRef(0);
@@ -55,6 +61,9 @@ export function HeroCinematic() {
     const stage = stageRef.current;
     if (!stage) return;
     stage.style.setProperty("--hp", p.toFixed(4));
+
+    // Bildsequenz: Fortschritt 0–1 → Ziel-Frame 1–500 (LERP im Canvas-Loop)
+    sequenceRef.current?.setProgress(p);
 
     layersRef.current.forEach((layer, i) => {
       const local = (p - i * SEG) / SEG;
@@ -84,10 +93,10 @@ export function HeroCinematic() {
       cueRef.current.style.opacity = ramp(p, 0, SEG * 0.6, 1, 0).toFixed(3);
     }
 
-    // Füllstand der Rail-Segmente
+    // Füllstand der Kapitel-Navigation
     fillsRef.current.forEach((fill, i) => {
       const localFill = Math.min(1, Math.max(0, (p - i * SEG) / SEG));
-      fill.style.transform = `scaleY(${localFill.toFixed(3)})`;
+      fill.style.transform = `scaleX(${localFill.toFixed(3)})`;
     });
 
     // Diskreter Beat-Wechsel -> React-State (Indikator, inert, aria)
@@ -112,22 +121,32 @@ export function HeroCinematic() {
   );
 
   return (
-    <div ref={trackRef} className="relative h-[700vh]">
+    <div ref={trackRef} className="relative h-[600vh]">
       <div
         ref={stageRef}
         className="on-dark sticky top-0 h-dvh overflow-hidden bg-deep text-cream"
       >
         {/*
          * Ebenen-Aufbau (unten → oben):
-         * 1. HeroBackground – Klinik-Ambiente, später durch die
-         *    Canvas-Bildsequenz ersetzbar (eigene Komponente)
-         * 2. Beat-Ebenen – Typografie und Beat-Visuals
-         * 3. Arzt-Freisteller – unabhängige Ebene, separat animierbar
-         *    (Parallax/Fade läuft bereits über portraitRef)
-         * 4. Progress-Rail, Scroll-Cue (Interface) – der fixe Header
-         *    liegt ohnehin darüber
+         * 1. HeroBackground – Ambiente als Lade-/Fehler-Fallback
+         * 2. CanvasSequence – scroll-gescrubbte Bildsequenz (500 Frames)
+         * 3. Beat-Ebenen – Typografie und Beat-Visuals
+         * 4. Arzt-Freisteller – unabhängige Ebene, separat animierbar
+         * 5. Interface: Fortschrittsbalken, Kapitel-Nav, FRAME-Indikator
          */}
         <HeroBackground />
+
+        <CanvasSequence
+          ref={sequenceRef}
+          frameIndicatorRef={frameIndicatorRef}
+          className="absolute inset-0 h-full w-full"
+        />
+
+        {/* Lesbarkeits-Scrim über der Sequenz, unter der Typografie */}
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 bg-gradient-to-r from-deep/80 via-deep/30 to-transparent"
+        />
 
         {heroBeats.map((beat, index) => (
           <HeroBeat
@@ -155,10 +174,30 @@ export function HeroCinematic() {
 
         <HeroProgress active={active} onSelect={handleSelect} />
 
+        {/* Dünner Fortschrittsbalken, direkt an --hp gekoppelt */}
+        <div
+          aria-hidden="true"
+          className="absolute inset-x-0 top-0 h-[3px] bg-white/10"
+        >
+          <div
+            className="h-full origin-left bg-accent"
+            style={{ transform: "scaleX(var(--hp, 0))" }}
+          />
+        </div>
+
+        {/* FRAME-Indikator (per DOM-Mutation aus dem Canvas-Loop) */}
+        <div
+          ref={frameIndicatorRef}
+          aria-hidden="true"
+          className="absolute top-[8.5rem] right-8 hidden text-right text-[11px] tracking-[0.22em] text-cream/50 tabular-nums lg:block"
+        >
+          FRAME 0001 / 0500
+        </div>
+
         <div
           ref={cueRef}
           aria-hidden="true"
-          className="absolute bottom-10 left-24 flex items-center gap-4"
+          className="absolute bottom-10 left-1/2 flex -translate-x-1/2 items-center gap-4"
         >
           <span className="flex h-10 w-6 items-start justify-center rounded-full border border-cream/30 pt-1.5">
             <span className="animate-scroll-cue block h-2 w-0.5 rounded-full bg-accent" />

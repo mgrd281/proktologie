@@ -35,7 +35,7 @@ export const heroBeats: HeroBeatContent[] = [
   },
   {
     id: "arzt",
-    label: "Der Arzt",
+    label: "Dr. Kunstreich",
     kicker: "Ihr Facharzt",
     headline: ["Dr. Kai", "Kunstreich"],
     text: "Erfahrung, Sorgfalt und ein offenes Ohr: Bei mir sind Sie mit Ihren Beschwerden gut aufgehoben – von der ersten Frage bis zur Nachsorge.",
