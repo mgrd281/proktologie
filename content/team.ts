@@ -54,6 +54,12 @@ export const teamIntro = {
   text: "Unser eingespieltes Praxisteam begleitet Sie diskret, aufmerksam und mit viel Erfahrung – vom ersten Kontakt bis zur Behandlung und Nachsorge.",
 };
 
+/** Abschluss der Szene: Schlusszeile und Weg zum Termin. */
+export const teamOutro = {
+  line: "Gemeinsam für Ihre Gesundheit.",
+  cta: { label: "Termin vereinbaren", href: "/#kontakt" },
+};
+
 export const team: TeamMember[] = [
   {
     id: "praxisteam-01",

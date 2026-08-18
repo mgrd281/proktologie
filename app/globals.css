@@ -129,6 +129,77 @@ html.lenis body {
   animation: step-in 0.3s var(--ease-out-soft);
 }
 
+/*
+ * Team-Szene: räumliche Bühne mit sechs Porträt-Ebenen.
+ *
+ * Bewusste Entscheidungen für flüssige Frames:
+ * – Unschärfe wird NICHT pro Frame gesetzt, sondern in drei Stufen über
+ *   data-blur (Wechsel nur beim Übergang, kein Re-Raster pro Bild).
+ * – Die Umgebung liegt doppelt (weich/scharf) und wird per Deckkraft
+ *   überblendet – ein Filterwechsel auf einem großen Bild wäre teuer.
+ */
+.team-scene,
+.team-plane {
+  transform-style: preserve-3d;
+}
+.team-plane {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+/*
+ * Tiefenschärfe ohne filter: blur() – ein Filter auf einer bewegten Ebene
+ * erzwingt pro Bild eine neue Rasterung. Stattdessen legt sich ein
+ * Schleier in Deep über entfernte Ebenen: reine Deckkraft, damit im
+ * Kompositor und nicht im Haupt-Thread gerechnet wird.
+ */
+.team-veil {
+  opacity: 0;
+  transition: opacity 0.6s var(--ease-out-soft);
+}
+.team-plane[data-blur="1"] .team-veil {
+  opacity: 0.35;
+}
+.team-plane[data-blur="2"] .team-veil {
+  opacity: 0.62;
+}
+
+.team-env {
+  will-change: transform;
+}
+.team-env-blur,
+.team-env-sharp {
+  background-position: 50% 4%;
+  background-size: cover;
+}
+/* Weichzeichnung und Abdunklung stecken IM Bild – kein Filter im Renderpfad */
+.team-env-blur {
+  background-image: image-set(
+    url("/images/praxis-raum-soft-960.webp") 1x,
+    url("/images/praxis-raum-soft-1600.webp") 2x
+  );
+  transform: scale(1.16);
+}
+.team-env-sharp {
+  background-image: image-set(
+    url("/images/praxis-raum-960.webp") 1x,
+    url("/images/praxis-raum-1600.webp") 2x
+  );
+  transform: scale(1.05);
+}
+/*
+ * Die Umgebung ist Atmosphäre, nicht Inhalt: weich und abgedunkelt, damit
+ * der reale Raum spürbar bleibt, ohne dass die Personen des Gruppenfotos
+ * mit den Porträt-Ebenen konkurrieren.
+ */
+@media (min-width: 1024px) {
+  .team-env-blur {
+    background-image: image-set(url("/images/praxis-raum-soft-1600.webp") 1x);
+  }
+  .team-env-sharp {
+    background-image: image-set(url("/images/praxis-raum-1600.webp") 1x);
+  }
+}
+
 /* Sanfte Endlos-Animation des Scroll-Cues */
 @keyframes scroll-cue {
   0%,
