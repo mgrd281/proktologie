@@ -5,11 +5,10 @@ import { site } from "@/content/site";
 /**
  * Strukturierte Daten für Local SEO.
  *
- * Adresse und Telefon sind echte, geprüfte Praxisdaten und werden immer
- * ausgegeben. Solange site.isPlaceholderData true ist, bleiben E-Mail und
- * Öffnungszeiten (noch Musterdaten) bewusst WEGGELASSEN – Suchmaschinen
- * dürfen keine Musterdaten indexieren. Beim Eintragen der echten Werte in
- * content/site.ts das Flag auf false setzen.
+ * Alle Stammdaten (Adresse, Telefon, E-Mail, Sprechzeiten) sind echte,
+ * von der Bestandsseite übernommene Praxisdaten. Sollte site.ts wieder
+ * Musterdaten enthalten, isPlaceholderData auf true setzen – dann werden
+ * E-Mail und Öffnungszeiten hier ausgespart.
  */
 
 export function buildPhysicianJsonLd() {
@@ -40,15 +39,14 @@ export function buildPhysicianJsonLd() {
   return {
     ...base,
     email: site.email,
-    // Aus site.hours abgeleitet – eine Quelle für UI und Markup
-    openingHoursSpecification: site.hours
-      .filter((entry) => entry.dayOfWeek.length > 0 && entry.opens && entry.closes)
-      .map((entry) => ({
-        "@type": "OpeningHoursSpecification",
-        dayOfWeek: entry.dayOfWeek,
-        opens: entry.opens,
-        closes: entry.closes,
-      })),
+    faxNumber: site.fax,
+    // Aus site.hoursJsonLd – eine Quelle für UI und Markup
+    openingHoursSpecification: site.hoursJsonLd.map((entry) => ({
+      "@type": "OpeningHoursSpecification",
+      dayOfWeek: entry.dayOfWeek,
+      opens: entry.opens,
+      closes: entry.closes,
+    })),
   };
 }
 

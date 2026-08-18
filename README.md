@@ -49,7 +49,7 @@ Engine: `components/hero/sequence/` (config, FrameStore, CanvasSequence).
 
 Ebenen des Heros (unten → oben): Ambiente-Fallback → Canvas-Sequenz →
 Typografie → Arzt-Freisteller (separat animierbar) → Interface
-(Fortschrittsbalken, Kapitel-Navigation, FRAME-Indikator).
+(Fortschrittsbalken, Kapitel-Navigation).
 
 ## Teamfoto
 
@@ -60,21 +60,19 @@ Fehlt die Datei, wird der Block komplett ausgeblendet.
 
 ## Vor Launch: Checkliste
 
-Alle Musterangaben sind im Code mit `[PLATZHALTER]` bzw. `[MUSTER]` markiert:
+Adresse, Telefon, Fax, E-Mail, Sprechzeiten und die Arzt-Vita sind von der
+Bestandsseite proktologie-eimsbuettel.de übernommen (echt). Offen bleibt:
 
-| Wo | Was |
+| Punkt | Details |
 |---|---|
-| `content/site.ts` | Adresse, Telefon (eine Konstante — der `tel:`-Link wird abgeleitet), E-Mail, Sprechzeiten, Domain, Maps-Link |
-| `content/site.ts` | **`isPlaceholderData` auf `false` setzen**, sobald die echten Daten eingetragen sind — erst dann erscheinen Kontaktdaten im JSON-LD und die „Musterangaben"-Hinweise verschwinden |
-| `content/arzt.ts` | Facharztbezeichnung und Vita-Stationen |
-| `app/layout.tsx` + Copy | Die Bezeichnung „Proktologe/Facharzt" mit der tatsächlichen, verliehenen Qualifikation abgleichen (HWG/MBO-Ä — irreführende Titelwerbung vermeiden) |
-| `app/impressum/page.tsx` | Impressumsangaben (§ 5 DDG) — rechtlich prüfen lassen |
-| `app/datenschutz/page.tsx` | Datenschutzerklärung — rechtlich prüfen lassen; bei Aktivierung eines Formular-Endpoints Abschnitte 2 und 4 anpassen |
+| Finale Domain | `content/site.ts` (`url`) + `metadataBase` bestätigen |
+| Doctolib-Profil | `content/site.ts` (`doctolibUrl`) — direkten Praxis-Link eintragen (aktuell generischer Doctolib-Link) |
+| EBSQ-Schreibweise | Bestandsseite schreibt „ESBQ/FEBS", gängig ist „EBSQ" — mit dem Arzt bestätigen (`content/arzt.ts`) |
+| Sprechzeiten | Bestandsseite zeigt auf /about/ noch eine ältere 7–12-Variante — übernommen wurde die aktuelle 8–13/14–18-Variante; bestätigen |
+| Impressum/Datenschutz | Rechtlich prüfen lassen; verbleibende `[MUSTER]`-Lücken füllen (Aufsichtsbehörde, USt, Hosting, Speicherfristen, Stand) |
+| Formular-Endpoint | Bei Aktivierung (`formEndpoint`) Datenschutz Abschnitte 2 und 4 anpassen |
 
 Suche im Projekt nach `PLATZHALTER` und `MUSTER`, um nichts zu übersehen.
-Solange `isPlaceholderData` auf `true` steht, veröffentlicht das JSON-LD
-bewusst keine Adresse/Telefon/E-Mail/Öffnungszeiten (Suchmaschinen sollen
-keine Musterdaten indexieren).
 
 ## Kontaktformular
 
@@ -106,7 +104,7 @@ liegt in `content/*.ts` (eine Quelle für UI **und** strukturierte Daten).
 ## Design-Tokens
 
 Feste Farbpalette in `app/globals.css` (`@theme`): Primary `#527A32`,
-Accent `#B8D94C` (nur auf dunklen Flächen!), Deep `#17251B`, Warm White
+Accent `#86BC23` (echtes Klinikgrün; nur auf dunklen Flächen bzw. als Fläche mit dunkler Schrift), Deep `#17251B`, Warm White
 `#F7F7F3`, Soft Gray `#ECEEE8`, Charcoal `#202520`.
 Typografie: Fraunces (Display-Serif) + Inter (UI/Body), beide via
 `next/font` **self-hosted** — zur Laufzeit erfolgt kein Request an Google

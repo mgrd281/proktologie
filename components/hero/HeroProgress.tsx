@@ -9,36 +9,15 @@ interface HeroProgressProps {
 }
 
 /**
- * Sequenz-Navigation des Heros:
- * – rechts oben „0X — Label" (wechselt mit dem aktiven Kapitel)
- * – links unten die beschriftete Kapitelliste (01 Willkommen …
- *   07 Termin); das aktive Kapitel folgt dem aktuellen Frame, der
- *   Füllstand der Linien wird von der Scroll-Choreografie über
- *   `[data-seg-fill]` direkt animiert (scaleX), Klick springt per
- *   Lenis zum Kapitel.
+ * Sequenz-Navigation des Heros: die beschriftete Kapitelliste unten links
+ * (01 Willkommen … 07 Termin). Das aktive Kapitel folgt dem aktuellen
+ * Frame, der Füllstand der Linien wird von der Scroll-Choreografie über
+ * `[data-seg-fill]` direkt animiert (scaleX), Klick springt per Lenis
+ * zum Kapitel.
  */
 export function HeroProgress({ active, onSelect }: HeroProgressProps) {
-  const beat = heroBeats[active];
-
   return (
     <>
-      <div
-        className="pointer-events-none absolute top-24 right-8 hidden items-center gap-4 lg:flex"
-        aria-hidden="true"
-      >
-        <span
-          key={active}
-          className="beat-label-enter flex items-center gap-4 text-[13px] tracking-wide text-cream/85"
-        >
-          <span className="font-medium text-accent tabular-nums">
-            {String(active + 1).padStart(2, "0")}
-          </span>
-          <span aria-hidden="true" className="h-px w-14 bg-cream/30" />
-          {beat.label}
-        </span>
-        <span aria-hidden="true" className="h-px w-24 bg-cream/15" />
-      </div>
-
       <nav
         aria-label="Hero-Kapitel"
         className="absolute bottom-10 left-8 hidden lg:block"

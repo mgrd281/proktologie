@@ -31,4 +31,8 @@ export const benefits: Benefit[] = [
     title: "Vertrauensvolle Atmosphäre",
     text: "Zeit für Ihre Fragen und eine Ansprache auf Augenhöhe. Sie sollen sich gut aufgehoben fühlen.",
   },
+  {
+    title: "Zertifizierte Qualität",
+    text: "Hygiene, Technik und Abläufe auf hohem Niveau – bestätigt durch ein DEKRA-zertifiziertes Qualitätsmanagement.",
+  },
 ];

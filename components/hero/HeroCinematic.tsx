@@ -39,7 +39,6 @@ export function HeroCinematic() {
   const portraitRef = useRef<HTMLDivElement>(null);
   const cueRef = useRef<HTMLDivElement>(null);
   const sequenceRef = useRef<CanvasSequenceHandle>(null);
-  const frameIndicatorRef = useRef<HTMLDivElement>(null);
   const layersRef = useRef<HTMLElement[]>([]);
   const fillsRef = useRef<HTMLElement[]>([]);
   const activeRef = useRef(0);
@@ -138,7 +137,6 @@ export function HeroCinematic() {
 
         <CanvasSequence
           ref={sequenceRef}
-          frameIndicatorRef={frameIndicatorRef}
           className="absolute inset-0 h-full w-full"
         />
 
@@ -183,15 +181,6 @@ export function HeroCinematic() {
             className="h-full origin-left bg-accent"
             style={{ transform: "scaleX(var(--hp, 0))" }}
           />
-        </div>
-
-        {/* FRAME-Indikator (per DOM-Mutation aus dem Canvas-Loop) */}
-        <div
-          ref={frameIndicatorRef}
-          aria-hidden="true"
-          className="absolute top-[8.5rem] right-8 hidden text-right text-[11px] tracking-[0.22em] text-cream/50 tabular-nums lg:block"
-        >
-          FRAME 0001 / 0500
         </div>
 
         <div

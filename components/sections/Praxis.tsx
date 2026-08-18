@@ -127,8 +127,7 @@ export function Praxis() {
                   {site.district}, {site.city}
                 </p>
                 <p className="mt-2 max-w-xs text-sm leading-relaxed text-cream/75">
-                  Zentral gelegen und gut erreichbar – wir freuen uns auf Ihren
-                  Besuch.
+                  {site.transitNote} – wir freuen uns auf Ihren Besuch.
                 </p>
                 <Button href="/#kontakt" withArrow className="mt-6">
                   {ctaLabel}
