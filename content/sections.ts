@@ -11,7 +11,7 @@ export const intro = {
 };
 
 export const praxisSection = {
-  kicker: "Praxis & Team",
+  kicker: "Praxis & Standort",
   title: "Mitten in Eimsbüttel – gut erreichbar",
   text: "Unsere Praxis liegt zentral in Hamburg-Eimsbüttel, direkt an der U-Bahn-Haltestelle Christuskirche. Ruhige, moderne Räume, ein eigener Praxis-OP und ein eingespieltes Team aus erfahrenen Medizinischen Fachangestellten sorgen dafür, dass Sie sich vom ersten Moment an gut aufgehoben fühlen.",
   teamAlt: "Das Team der Praxis Proktologie Eimsbüttel um Dr. Kai Kunstreich",

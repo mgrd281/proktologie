@@ -51,12 +51,23 @@ Ebenen des Heros (unten → oben): Ambiente-Fallback → Canvas-Sequenz →
 Typografie → Arzt-Freisteller (separat animierbar) → Interface
 (Kapitel-Navigation).
 
-## Teamfoto
+## Praxisteam
 
-Drop-in wie beim Porträt: Datei als `public/images/team.webp` ablegen
-(Querformat, ~1600 px) – erscheint automatisch prominent in
-„Praxis & Team" und dient später als Material für Sequenz-Kapitel 06.
-Fehlt die Datei, wird der Block komplett ausgeblendet.
+Die Sektion „Unser Praxisteam" (`components/sections/Team.tsx`) zeigt das
+Gruppenfoto (`public/images/team.webp`) und sechs Einzelporträts.
+
+**Personenangaben werden bewusst NICHT dargestellt**, solange sie nicht von
+der Praxis bestätigt sind: In `content/team.ts` stehen `name`, `role`,
+`bio` auf `null` und `languages` ist leer – nichts davon wurde erfunden.
+Bis zur Freigabe trägt jede Karte das neutrale Label „Praxisteam".
+
+Echte Angaben ergänzen: in `content/team.ts` beim jeweiligen Eintrag
+`name` / `role` / `bio` / `languages` füllen – die Karten zeigen sie dann
+automatisch, ohne Code-Änderung. Alt-Texte sind neutral und
+geschlechtsneutral formuliert, weil auch das nicht bestätigt ist.
+
+Porträts austauschen: `public/images/team/portrait-N-420.webp` und
+`portrait-N-840.webp` überschreiben (Hochformat 4:5).
 
 ## Vor Launch: Checkliste
 

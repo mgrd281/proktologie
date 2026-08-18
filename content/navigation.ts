@@ -10,6 +10,7 @@ export const navigation: NavItem[] = [
   { label: "Beschwerden", href: "/#beschwerden" },
   { label: "Diagnostik", href: "/#diagnostik" },
   { label: "Über den Arzt", href: "/#ueber-den-arzt" },
+  { label: "Team", href: "/#team" },
   { label: "Praxis", href: "/#praxis" },
   { label: "FAQ", href: "/#faq" },
   { label: "Kontakt", href: "/#kontakt" },

@@ -2,12 +2,11 @@ import { Icon } from "@/components/ui/Icon";
 import { Reveal } from "@/components/ui/Reveal";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { MapEmbed } from "@/components/ui/MapEmbed";
-import { TeamPhoto } from "@/components/ui/TeamPhoto";
 import { praxisSection } from "@/content/sections";
 import { site } from "@/content/site";
 
 /**
- * Praxis & Team.
+ * Praxis & Standort.
  * Die Google-Maps-Karte lädt erst nach ausdrücklichem Klick
  * (Zwei-Klick-Lösung, siehe components/ui/MapEmbed.tsx).
  */
@@ -24,10 +23,6 @@ export function Praxis() {
           <p className="mt-6 max-w-2xl leading-relaxed text-ink/70">
             {praxisSection.text}
           </p>
-        </Reveal>
-
-        <Reveal delay={60}>
-          <TeamPhoto className="mt-14" />
         </Reveal>
 
         <div className="mt-14 grid gap-5 md:grid-cols-2">
