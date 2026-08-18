@@ -157,10 +157,23 @@ html.lenis body {
   transition: opacity 0.6s var(--ease-out-soft);
 }
 .team-plane[data-blur="1"] .team-veil {
-  opacity: 0.35;
+  opacity: 0.2;
 }
 .team-plane[data-blur="2"] .team-veil {
-  opacity: 0.62;
+  opacity: 0.4;
+}
+
+/*
+ * Ebenen-Rahmen: beleuchtete Glastafel im Raum – ein weicher Schatten
+ * trägt sie, ein zurückhaltender Schein in Klinikgrün fasst sie ein.
+ * Statisch, damit im Animationspfad nichts neu gerastert wird.
+ */
+.team-plane-frame {
+  background-color: var(--color-mist);
+  box-shadow:
+    0 26px 50px -26px rgba(23, 37, 27, 0.55),
+    0 0 0 1px rgba(134, 188, 35, 0.35),
+    0 0 26px -4px rgba(134, 188, 35, 0.35);
 }
 
 .team-env {
@@ -187,10 +200,60 @@ html.lenis body {
   transform: scale(1.05);
 }
 /*
- * Die Umgebung ist Atmosphäre, nicht Inhalt: weich und abgedunkelt, damit
- * der reale Raum spürbar bleibt, ohne dass die Personen des Gruppenfotos
- * mit den Porträt-Ebenen konkurrieren.
+ * Umgebung der Team-Szene.
+ *
+ * Der Raum selbst ist gebaut (warmes Licht von oben, heller Boden) und
+ * trägt darüber das ECHTE Praxisfoto als weiche Textur – so bleibt die
+ * Atmosphäre der Praxis spürbar, ohne dass die Personen des Gruppenfotos
+ * mit den Porträt-Ebenen konkurrieren. Im Finale tritt das Foto hervor.
+ *
+ * Sobald eine dedizierte Empfangsaufnahme vorliegt: nur die vier
+ * praxis-raum-Dateien ersetzen und die Deckkraft unten anheben.
  */
+.team-env {
+  will-change: transform;
+  background:
+    /* Angedeutete Tresenkante: fängt die Ebenen auf einer Linie auf */
+    linear-gradient(
+      180deg,
+      transparent 58%,
+      rgba(255, 255, 255, 0.5) 60%,
+      rgba(226, 228, 220, 0.35) 64%,
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 62% 40% at 60% -6%,
+      rgba(255, 253, 245, 0.75) 0%,
+      rgba(247, 247, 243, 0) 72%
+    ),
+    linear-gradient(
+      180deg,
+      var(--color-cream) 0%,
+      var(--color-mist) 62%,
+      #e2e4dc 100%
+    );
+}
+.team-env-blur,
+.team-env-sharp {
+  background-position: 50% 22%;
+  background-size: cover;
+}
+.team-env-blur {
+  background-image: image-set(
+    url("/images/praxis-raum-soft-960.webp") 1x,
+    url("/images/praxis-raum-soft-1600.webp") 2x
+  );
+  /* Textur, nicht Motiv: bewusst niedrige Deckkraft */
+  opacity: 0.1;
+  transform: scale(1.12);
+}
+.team-env-sharp {
+  background-image: image-set(
+    url("/images/praxis-raum-960.webp") 1x,
+    url("/images/praxis-raum-1600.webp") 2x
+  );
+  transform: scale(1.04);
+}
 @media (min-width: 1024px) {
   .team-env-blur {
     background-image: image-set(url("/images/praxis-raum-soft-1600.webp") 1x);

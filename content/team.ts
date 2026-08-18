@@ -52,6 +52,9 @@ export const teamIntro = {
   kicker: "Unser Team",
   title: "Persönlich für Sie da.",
   text: "Unser eingespieltes Praxisteam begleitet Sie diskret, aufmerksam und mit viel Erfahrung – vom ersten Kontakt bis zur Behandlung und Nachsorge.",
+  /** Sekundärer Weg aus der Eröffnung heraus. */
+  cta: { label: "Mehr über uns", href: "/#praxis" },
+  scrollCue: "Scrollen, um das Team kennenzulernen",
 };
 
 /** Abschluss der Szene: Schlusszeile und Weg zum Termin. */

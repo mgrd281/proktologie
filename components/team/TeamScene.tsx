@@ -1,8 +1,8 @@
 "use client";
 
-import { Button } from "@/components/ui/Button";
 import { TeamCard } from "@/components/team/TeamCard";
 import { TeamProgress } from "@/components/team/TeamProgress";
+import { Icon } from "@/components/ui/Icon";
 import { team, teamIntro, teamOutro } from "@/content/team";
 import { useScrollProgress } from "@/lib/hooks/useScrollProgress";
 import {
@@ -10,6 +10,7 @@ import {
   MOBILE,
   MEMBER_COUNT,
   T_MAX,
+  cardFootPoint,
   cardState,
   chapterAt,
   clamp,
@@ -22,33 +23,40 @@ import { useLenis } from "@/providers/LenisProvider";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
- * Die Team-Szene: sechs Porträt-Ebenen auf einem Pfad, durch den eine
- * Kamera fährt. Der Scroll-Fortschritt steuert ausschließlich die Kamera –
- * die gesamte Geometrie liegt in lib/team/scene.ts und ist dort ohne
- * Browser getestet.
+ * Die Team-Szene: sechs Porträt-Ebenen stehen als Reihe im echten
+ * Empfangsraum, eine Kamera fährt beim Scrollen an ihnen entlang. Die
+ * gesamte Geometrie liegt in lib/team/scene.ts und ist dort ohne Browser
+ * getestet – hier bleibt nur die Ausgabe.
  *
- * Renderpfad: EIN requestAnimationFrame-Loop. Der Scroll liefert nur ein
- * Ziel, der Loop nähert sich ihm per LERP (0.1) – dadurch läuft die
- * Bewegung nach dem Radstopp weich aus (zusammen mit Lenis). Geschrieben
- * werden pro Frame nur transform/opacity (compositor-only) und ein einziges
- * SVG-`d`. React rendert ausschließlich beim Kapitelwechsel (max. 8×).
+ * Renderpfad: EIN requestAnimationFrame-Loop. Der Scroll liefert ein Ziel,
+ * der Loop nähert sich ihm per LERP (0.1) – dadurch läuft die Bewegung nach
+ * dem Radstopp weich aus. Geschrieben werden pro Bild nur transform/opacity
+ * und zwei SVG-Attribute; React rendert nur beim Kapitelwechsel (max. 8×).
  */
 
 /** Trägheit der Kamera. Kleiner = schwerer. */
 const LERP = 0.1;
 /** Unterhalb dieser Differenz gilt die Szene als ruhig – keine Schreibvorgänge. */
 const EPSILON = 0.0002;
+/**
+ * Wie stark der echte Raum im Finale hervortritt. Solange die einzige
+ * Raumaufnahme das Gruppenfoto ist, bleibt die Foto-Ebene aus – sonst
+ * stünden dieselben Gesichter groß hinter ihren eigenen Porträts. Mit
+ * einer echten Empfangsaufnahme auf etwa 0.6 setzen (siehe globals.css).
+ */
+const ENV_REVEAL = 0;
 
 export function TeamScene() {
   const trackRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const envRef = useRef<HTMLDivElement>(null);
+  const envSharpRef = useRef<HTMLDivElement>(null);
   const planesRef = useRef<HTMLLIElement[]>([]);
   const pathRef = useRef<SVGPathElement>(null);
+  const pathGlowRef = useRef<SVGPathElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const introRef = useRef<HTMLDivElement>(null);
   const outroRef = useRef<HTMLDivElement>(null);
-  const envSharpRef = useRef<HTMLDivElement>(null);
 
   const target = useRef(0);
   const current = useRef(0);
@@ -131,7 +139,6 @@ export function TeamScene() {
       const groupBlend = smoothstep(MEMBER_COUNT, T_MAX, t);
 
       // Ebenen
-      let d = "";
       const nodes: { x: number; y: number }[] = [];
       for (let i = 0; i < MEMBER_COUNT; i++) {
         const el = planesRef.current[i];
@@ -155,37 +162,38 @@ export function TeamScene() {
           el.dataset.blur = String(s.blurStep);
         }
 
-        const point = project(s, geo);
-        // Nur Knoten in Bildnähe verbinden – sonst zieht die Bahn quer
-        // über den Schirm zu Ebenen, die längst außerhalb liegen.
-        if (point.visible && Math.abs(point.x) < w * 0.75 && s.opacity > 0.1) {
-          nodes.push(point);
+        // Ansatzpunkt der Lichtbahn: Unterkante der Ebene, also am Boden
+        const foot = project(cardFootPoint(s, geo), geo);
+        if (foot.visible && Math.abs(foot.x) < w * 0.8 && s.opacity > 0.2) {
+          nodes.push(foot);
         }
       }
-      // Weiche Kurve durch die Knoten (quadratisch über die Mittelpunkte)
+
+      // Lichtbahn: weiche Kurve über den Boden, von Ebene zu Ebene
+      let d = "";
       if (nodes.length > 1) {
         d = `M${nodes[0].x.toFixed(1)} ${nodes[0].y.toFixed(1)}`;
         for (let n = 1; n < nodes.length; n++) {
           const prev = nodes[n - 1];
           const cur = nodes[n];
-          const mx = (prev.x + cur.x) / 2;
-          const my = (prev.y + cur.y) / 2;
-          d += `Q${prev.x.toFixed(1)} ${prev.y.toFixed(1)} ${mx.toFixed(1)} ${my.toFixed(1)}`;
+          d += `Q${prev.x.toFixed(1)} ${prev.y.toFixed(1)} ${((prev.x + cur.x) / 2).toFixed(1)} ${((prev.y + cur.y) / 2).toFixed(1)}`;
         }
         const last = nodes[nodes.length - 1];
         d += `L${last.x.toFixed(1)} ${last.y.toFixed(1)}`;
       }
       pathRef.current?.setAttribute("d", d);
+      pathGlowRef.current?.setAttribute("d", d);
 
       // Intro weicht zurück, statt zu verschwinden
       if (introRef.current) {
-        const out = smoothstep(0.06, 0.95, t);
+        const out = smoothstep(0.08, 0.95, t);
         introRef.current.style.opacity = (1 - out).toFixed(3);
-        introRef.current.style.transform = `translate3d(0, ${(-out * 40).toFixed(1)}px, ${(-out * 320).toFixed(0)}px)`;
+        introRef.current.style.transform = `translate3d(${(-out * 60).toFixed(1)}px, 0, 0)`;
         introRef.current.style.visibility = out > 0.996 ? "hidden" : "visible";
+        introRef.current.style.pointerEvents = out > 0.4 ? "none" : "auto";
       }
 
-      // Finale: Schlusszeile + CTA
+      // Finale: Schlusszeile + Weg zum Termin
       if (outroRef.current) {
         const inn = smoothstep(MEMBER_COUNT + 0.35, T_MAX - 0.05, t);
         outroRef.current.style.opacity = inn.toFixed(3);
@@ -194,15 +202,12 @@ export function TeamScene() {
         outroRef.current.style.pointerEvents = inn > 0.6 ? "auto" : "none";
       }
 
-      // Umgebung: langsamer Parallax; im Finale wird der echte Raum klar
-      // (Überblendung zweier Ebenen statt Filterwechsel – compositor-only).
+      // Umgebung: sehr langsamer Parallax; im Finale tritt der Raum hervor
       if (envRef.current) {
         envRef.current.style.transform = `translate3d(0, ${(-p * 44).toFixed(1)}px, 0)`;
       }
       if (envSharpRef.current) {
-        // Der reale Raum wird im Finale erkennbar, bleibt aber Hintergrund –
-        // die Porträts dürfen nicht mit dem Gruppenfoto konkurrieren.
-        envSharpRef.current.style.opacity = (groupBlend * 0.5).toFixed(3);
+        envSharpRef.current.style.opacity = (groupBlend * ENV_REVEAL).toFixed(3);
       }
 
       // Kapitelwechsel -> React (Fortschrittsanzeige)
@@ -232,9 +237,9 @@ export function TeamScene() {
     <div ref={trackRef} className="relative h-[640vh]">
       <div
         ref={stageRef}
-        className="on-dark sticky top-0 h-dvh overflow-hidden bg-deep text-cream"
+        className="sticky top-0 h-dvh overflow-hidden bg-cream text-ink"
       >
-        {/* Ebene 1 – echter Praxisraum, weit hinten, sehr langsamer Parallax */}
+        {/* Ebene 1 – der echte Empfangsraum, sehr langsamer Parallax */}
         <div ref={envRef} className="team-env absolute inset-0">
           <div className="team-env-blur absolute inset-0" aria-hidden="true" />
           <div
@@ -242,9 +247,14 @@ export function TeamScene() {
             className="team-env-sharp absolute inset-0 opacity-0"
             aria-hidden="true"
           />
+          {/* Boden: fängt die Ebenen unten ab und trägt die Lichtbahn */}
           <div
             aria-hidden="true"
-            className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(23,37,27,0.52)_0%,rgba(23,37,27,0.78)_62%,rgba(23,37,27,0.9)_100%)]"
+            className="absolute inset-x-0 bottom-0 h-[46%] bg-[linear-gradient(to_top,rgba(23,37,27,0.22)_0%,rgba(23,37,27,0.07)_45%,transparent_100%)]"
+          />
+          <div
+            aria-hidden="true"
+            className="absolute inset-x-0 bottom-0 h-1/3 bg-[radial-gradient(ellipse_60%_100%_at_58%_120%,rgba(134,188,35,0.22)_0%,transparent_70%)]"
           />
         </div>
 
@@ -253,7 +263,7 @@ export function TeamScene() {
           className="team-scene absolute inset-0"
           style={{ perspective: "var(--stage-perspective, 1400px)" }}
         >
-          {/* Verbindungsbahn: eine Linie, ein Attribut pro Frame */}
+          {/* Lichtbahn am Boden: breiter Schein + feine Linie darüber */}
           <svg
             ref={svgRef}
             aria-hidden="true"
@@ -262,11 +272,21 @@ export function TeamScene() {
             preserveAspectRatio="none"
           >
             <path
+              ref={pathGlowRef}
+              fill="none"
+              stroke="var(--color-accent)"
+              strokeOpacity="0.18"
+              strokeWidth="6"
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
+            />
+            <path
               ref={pathRef}
               fill="none"
               stroke="var(--color-accent)"
-              strokeOpacity="0.22"
-              strokeWidth="1"
+              strokeOpacity="0.7"
+              strokeWidth="1.25"
+              strokeLinecap="round"
               vectorEffect="non-scaling-stroke"
             />
           </svg>
@@ -291,20 +311,37 @@ export function TeamScene() {
           </ul>
         </div>
 
-        {/* Ebene 3 – Intro: bleibt im DOM, weicht beim Scrollen zurück */}
+        {/* Ebene 3 – Textspalte links, auf eigenem dunklem Verlauf */}
         <div
           ref={introRef}
-          className="pointer-events-none absolute inset-0 flex items-center"
+          className="on-dark absolute inset-y-0 left-0 flex w-full items-center bg-gradient-to-r from-deep via-deep/85 to-transparent md:w-[62%] lg:w-[52%]"
         >
-          <div className="mx-auto w-full max-w-7xl px-5 md:px-10">
-            <p className="text-xs font-semibold tracking-[0.22em] text-accent uppercase">
+          <div className="w-full max-w-xl px-5 py-16 md:pl-10 lg:pl-16">
+            <p className="flex items-center gap-4 text-xs font-semibold tracking-[0.24em] text-accent uppercase">
               {teamIntro.kicker}
+              <span aria-hidden="true" className="h-px w-16 bg-accent/45" />
             </p>
-            <h2 className="font-display mt-4 max-w-2xl text-4xl leading-[1.08] font-medium text-cream md:text-6xl">
-              {teamIntro.title}
+            <h2 className="font-display mt-5 text-4xl leading-[1.05] font-medium text-cream md:text-6xl">
+              {teamIntro.title.replace(/\.$/, "")}
+              <span className="text-accent">.</span>
             </h2>
-            <p className="mt-6 max-w-md text-sm leading-relaxed text-cream/70 md:text-base">
+            <p className="mt-6 max-w-md text-sm leading-relaxed text-cream/75 md:text-base">
               {teamIntro.text}
+            </p>
+
+            <a
+              href={teamIntro.cta.href}
+              className="mt-9 inline-flex min-h-12 items-center gap-3 rounded-full border border-cream/35 px-7 text-xs font-semibold tracking-[0.16em] text-cream uppercase transition-colors duration-300 hover:border-accent hover:text-accent"
+            >
+              {teamIntro.cta.label}
+              <Icon name="arrow-right" size={16} />
+            </a>
+
+            <p className="mt-14 hidden items-center gap-4 text-[11px] leading-relaxed tracking-[0.16em] text-cream/50 uppercase md:flex">
+              <span className="flex h-9 w-5.5 shrink-0 items-start justify-center rounded-full border border-cream/30 pt-1.5">
+                <span className="animate-scroll-cue block h-1.5 w-1 rounded-full bg-accent" />
+              </span>
+              {teamIntro.scrollCue}
             </p>
           </div>
         </div>
@@ -314,12 +351,16 @@ export function TeamScene() {
           ref={outroRef}
           className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-5 px-5 pb-24 opacity-0 md:pb-28"
         >
-          <p className="font-display text-center text-2xl font-medium text-cream md:text-3xl">
+          <p className="font-display rounded-full bg-cream/85 px-7 py-2.5 text-center text-2xl font-medium text-ink shadow-[0_18px_40px_-24px_rgba(23,37,27,0.5)] md:text-3xl">
             {teamOutro.line}
           </p>
-          <Button href={teamOutro.cta.href} withArrow>
+          <a
+            href={teamOutro.cta.href}
+            className="inline-flex min-h-12 items-center gap-3 rounded-full bg-accent px-7 text-sm font-semibold text-deep transition-colors duration-300 hover:bg-[#76a81f]"
+          >
             {teamOutro.cta.label}
-          </Button>
+            <Icon name="arrow-right" size={16} />
+          </a>
         </div>
 
         <TeamProgress chapter={chapter} onSelect={goToStop} />
