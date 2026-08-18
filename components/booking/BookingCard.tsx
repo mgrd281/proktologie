@@ -276,6 +276,26 @@ export function BookingCard() {
           </div>
         )}
       </div>
+
+      {/*
+       * Sofort verbindlicher Weg – ab Schritt 1 leise erreichbar, damit
+       * niemand erst den ganzen Flow durchlaufen muss. In Schritt 5 zeigt
+       * StepConfirm dieselbe Alternative prominenter; dort nicht doppeln.
+       */}
+      {site.doctolibConfigured && send.kind !== "done" && step !== 4 && (
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-ink/8 px-6 py-2.5 md:px-8">
+          <p className="text-xs text-ink/55">{bookingCopy.doctolibHint}</p>
+          <a
+            href={site.doctolibUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-11 items-center gap-1.5 text-xs font-medium text-primary underline-offset-4 hover:underline"
+          >
+            {bookingCopy.confirm.doctolibCta}
+            <Icon name="arrow-right" size={13} />
+          </a>
+        </div>
+      )}
     </div>
   );
 }

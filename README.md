@@ -77,9 +77,9 @@ Bestandsseite proktologie-eimsbuettel.de übernommen (echt). Offen bleibt:
 | Punkt | Details |
 |---|---|
 | Finale Domain | `content/site.ts` (`url`) + `metadataBase` bestätigen |
-| Doctolib-Profil | `NEXT_PUBLIC_DOCTOLIB_BOOKING_URL` mit dem direkten Praxis-Link setzen — bis dahin sind alle Doctolib-CTAs ausgeblendet |
+| ~~Doctolib-Profil~~ | ✔ erledigt: echtes Praxisprofil in `content/site.ts` hinterlegt (`NEXT_PUBLIC_DOCTOLIB_BOOKING_URL` überschreibt) |
 | EBSQ-Schreibweise | Bestandsseite schreibt „ESBQ/FEBS", gängig ist „EBSQ" — mit dem Arzt bestätigen (`content/arzt.ts`) |
-| Sprechzeiten | Bestandsseite zeigt auf /about/ noch eine ältere 7–12-Variante — übernommen wurde die aktuelle 8–13/14–18-Variante; bestätigen |
+| ~~Sprechzeiten~~ | ✔ erledigt: 07:00–12:00 (Di/Do zusätzlich 14:00–18:00) laut Doctolib-Profil, von der Praxis bestätigt |
 | Impressum/Datenschutz | Rechtlich prüfen lassen; verbleibende `[MUSTER]`-Lücken füllen (Aufsichtsbehörde, USt, Hosting, Speicherfristen, Stand) |
 | Formular-Endpoint | Bei Aktivierung (`formEndpoint`) Datenschutz Abschnitte 2 und 4 anpassen |
 | Doctolib-Sync | Für echte Verfügbarkeiten: offizieller Partner-/PVS-Zugang nötig — siehe „Terminbuchung“ unten |
@@ -110,18 +110,21 @@ Es existiert **keine öffentliche Doctolib-API**; Scraping, private Endpoints
 oder ein „synchron“ behaupteter Zweitkalender sind ausgeschlossen. Für echte
 Integration werden benötigt:
 
-1. **Offizielle Buchungsseiten-URL** des Praxisprofils → als
-   `NEXT_PUBLIC_DOCTOLIB_BOOKING_URL` setzen. Solange sie fehlt, blendet
-   die Website alle Doctolib-CTAs aus (ein Link auf die generische
-   Doctolib-Startseite würde eine Buchbarkeit versprechen, die es dort
-   nicht gibt). Sobald gesetzt: Handoff-Link, sofort nutzbar.
+1. ~~Offizielle Buchungsseiten-URL des Praxisprofils~~ — **erledigt.**
+   Hinterlegt ist das verifizierte Profil (Dr. med. Kai Kunstreich,
+   Proktologie Eimsbüttel); Online-Buchung ist dort aktiv, die CTAs führen
+   direkt dorthin. `NEXT_PUBLIC_DOCTOLIB_BOOKING_URL` überschreibt den Wert,
+   `doctolibConfigured: false` blendet alle Doctolib-CTAs aus.
 2. **Offizieller Partner-/PVS-Integrationszugang** über das Doctolib-Pro-Konto
    der Praxis (Doctolib-Partnerprogramm) → erst damit darf ein
    `DoctolibBookingProvider` mit `mode: "confirmed"` implementiert werden.
    Die UI schaltet dann automatisch auf „Termin verbindlich buchen“ um.
 
 Doctolib-Synchronisation ist **nicht aktiv** und wird nirgends als aktiv
-dargestellt.
+dargestellt: Der Link ist ein Handoff auf das Praxisprofil. Verfügbarkeiten der
+Website (Wunschtermin aus den Sprechzeiten) und Doctolibs echter Kalender sind
+getrennte Systeme — deshalb steht der Doctolib-Weg für verbindliche Buchungen
+schon ab Schritt 1 der Buchungskarte sichtbar daneben.
 
 ## Architektur
 

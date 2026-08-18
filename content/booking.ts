@@ -34,6 +34,8 @@ export const bookingCopy = {
   requestModeNote:
     "Sie wählen einen Wunschtermin innerhalb unserer Sprechzeiten – die Praxis bestätigt Ihren Termin persönlich.",
   back: "Zurück",
+  /** Dezenter Hinweis in der Kartenfußzeile – ab Schritt 1 sichtbar. */
+  doctolibHint: "Lieber sofort verbindlich buchen?",
   weekdaysShort: ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
   months: [
     "Januar", "Februar", "März", "April", "Mai", "Juni",

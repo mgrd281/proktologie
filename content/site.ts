@@ -21,6 +21,14 @@ export interface OpeningHoursSpec {
   closes: string;
 }
 
+/**
+ * Doctolib-Profil der Praxis. Buildzeit-Konstante (statischer Export):
+ * per NEXT_PUBLIC_DOCTOLIB_BOOKING_URL überschreibbar.
+ */
+const DOCTOLIB_PROFILE_URL =
+  process.env.NEXT_PUBLIC_DOCTOLIB_BOOKING_URL ||
+  "https://www.doctolib.de/allgemeiner-chirurg/hamburg/kai-kunstreich-hamburg";
+
 export const site = {
   name: "Proktologie Eimsbüttel",
   doctor: "Dr. med. Kai Kunstreich",
@@ -55,21 +63,17 @@ export const site = {
   email: "info@proktologie-eimsbuettel.de",
 
   /**
-   * Online-Terminvergabe über Doctolib (laut Bestandsseite).
-   * [PLATZHALTER] Direkten Doctolib-Profil-Link der Praxis über
-   * NEXT_PUBLIC_DOCTOLIB_BOOKING_URL setzen (siehe .env.example) –
-   * bis dahin führt der Link auf die Doctolib-Startseite.
+   * Offizielle Doctolib-Buchungsseite der Praxis (verifiziertes Profil:
+   * Dr. med. Kai Kunstreich, Proktologie Eimsbüttel, Schäferkampsallee).
+   * Online-Buchung ist dort aktiv – die CTAs dürfen daher verbindlich
+   * formuliert sein. NEXT_PUBLIC_DOCTOLIB_BOOKING_URL überschreibt den
+   * Wert; doctolibConfigured=false blendet sämtliche Doctolib-CTAs aus.
+   *
+   * ACHTUNG: Das ist ein Handoff-Link, KEINE Synchronisation. Verfügbar-
+   * keiten der Website und Doctolibs sind getrennte Systeme (siehe README).
    */
-  /**
-   * Offizielle Doctolib-Buchungsseite des Praxisprofils.
-   * Solange die echte Profil-URL nicht konfiguriert ist, werden die
-   * Doctolib-CTAs NICHT angezeigt – ein Link auf die generische
-   * Doctolib-Startseite würde eine Buchbarkeit versprechen, die es
-   * dort nicht gibt (doctolibConfigured steuert die Sichtbarkeit).
-   */
-  doctolibUrl:
-    process.env.NEXT_PUBLIC_DOCTOLIB_BOOKING_URL || "https://www.doctolib.de",
-  doctolibConfigured: Boolean(process.env.NEXT_PUBLIC_DOCTOLIB_BOOKING_URL),
+  doctolibUrl: DOCTOLIB_PROFILE_URL,
+  doctolibConfigured: DOCTOLIB_PROFILE_URL.length > 0,
 
   /**
    * Terminquelle der Booking-UI (Buildzeit-Konfiguration):
@@ -82,20 +86,21 @@ export const site = {
     process.env.NEXT_PUBLIC_BOOKING_PROVIDER === "mock" ? "mock" : "request",
 
   /**
-   * Echte Sprechzeiten (Bestandsseite; die Unterseite /about/ zeigt noch
-   * eine ältere 7–12-Variante – siehe README-Checkliste).
+   * Echte Sprechzeiten – Stand laut Doctolib-Praxisprofil, von der Praxis
+   * bestätigt. Einzige Quelle für Anzeige, JSON-LD UND die wählbaren
+   * Wunschzeiten der Terminbuchung (lib/booking/requestProvider.ts).
    */
   hours: [
-    { days: "Montag, Mittwoch, Freitag", time: "08:00 – 13:00 Uhr" },
-    { days: "Dienstag, Donnerstag", time: "08:00 – 13:00 und 14:00 – 18:00 Uhr" },
+    { days: "Montag, Mittwoch, Freitag", time: "07:00 – 12:00 Uhr" },
+    { days: "Dienstag, Donnerstag", time: "07:00 – 12:00 und 14:00 – 18:00 Uhr" },
     { days: "Samstag / Sonntag", time: "geschlossen" },
   ] as OpeningHoursDisplay[],
 
   hoursJsonLd: [
     {
       dayOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
-      opens: "08:00",
-      closes: "13:00",
+      opens: "07:00",
+      closes: "12:00",
     },
     {
       dayOfWeek: ["Tuesday", "Thursday"],

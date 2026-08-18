@@ -39,6 +39,27 @@ export function buildPhysicianJsonLd() {
   return {
     ...base,
     email: site.email,
+    // Verknüpft die Praxis-Entität mit ihrem offiziellen Doctolib-Profil.
+    // ReserveAction = offizieller Buchungsweg (dort ist Online-Buchung aktiv);
+    // es wird KEINE Synchronisation mit der Website behauptet.
+    ...(site.doctolibConfigured
+      ? {
+          sameAs: [site.doctolibUrl],
+          potentialAction: {
+            "@type": "ReserveAction",
+            name: "Termin online buchen",
+            target: {
+              "@type": "EntryPoint",
+              urlTemplate: site.doctolibUrl,
+              actionPlatform: [
+                "http://schema.org/DesktopWebPlatform",
+                "http://schema.org/MobileWebPlatform",
+              ],
+            },
+            result: { "@type": "Reservation", name: "Terminreservierung" },
+          },
+        }
+      : {}),
     faxNumber: site.fax,
     // Aus site.hoursJsonLd – eine Quelle für UI und Markup
     openingHoursSpecification: site.hoursJsonLd.map((entry) => ({
