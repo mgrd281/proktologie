@@ -49,7 +49,7 @@ Engine: `components/hero/sequence/` (config, FrameStore, CanvasSequence).
 
 Ebenen des Heros (unten → oben): Ambiente-Fallback → Canvas-Sequenz →
 Typografie → Arzt-Freisteller (separat animierbar) → Interface
-(Fortschrittsbalken, Kapitel-Navigation).
+(Kapitel-Navigation).
 
 ## Teamfoto
 
