@@ -1,0 +1,13 @@
+# Abhängigkeiten
+/node_modules
+
+# Next.js Build-Ausgaben
+/.next/
+/out/
+
+# Sonstiges
+.DS_Store
+*.pem
+npm-debug.log*
+*.tsbuildinfo
+next-env.d.ts
