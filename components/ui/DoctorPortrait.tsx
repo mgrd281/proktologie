@@ -87,7 +87,7 @@ export function DoctorPortrait({
           <path
             d="M-40 420 C 80 340, 180 420, 240 330 S 420 260, 460 300"
             fill="none"
-            stroke="#B8D94C"
+            stroke="#86BC23"
             strokeOpacity="0.16"
             strokeWidth="1.5"
           />

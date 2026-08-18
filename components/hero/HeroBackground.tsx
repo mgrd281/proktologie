@@ -42,7 +42,7 @@ export function HeroBackground() {
         <g fill="none" strokeWidth="1.5">
           <path
             d="M-40 700 C 300 580, 700 760, 1000 620 S 1500 520, 1520 560"
-            stroke="#B8D94C"
+            stroke="#86BC23"
             strokeOpacity="0.10"
           />
           <path
