@@ -32,26 +32,33 @@ export function TeamPhoto({ className }: { className?: string }) {
   if (status === "error") return null;
 
   return (
+    // Kein display:none während des Ladens: ein unsichtbares lazy-Bild
+    // würde nie laden. Stattdessen Fläche reservieren (width/height am img
+    // hält das Seitenverhältnis) und weich einblenden – kein Layout-Shift.
     <figure
-      className={cn(
-        "relative overflow-hidden rounded-2xl",
-        status !== "loaded" && "hidden",
-        className,
-      )}
+      className={cn("relative overflow-hidden rounded-2xl", className)}
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- statischer Export ohne Bildoptimierungs-Server */}
       <img
         ref={imgRef}
         src={TEAM_PHOTO_SRC}
         alt={praxisSection.teamAlt}
-        width={1600}
-        height={800}
+        width={1536}
+        height={1024}
         loading="lazy"
         onLoad={() => setStatus("loaded")}
         onError={() => setStatus("error")}
-        className="w-full object-cover"
+        className={cn(
+          "w-full bg-mist object-cover transition-opacity duration-700",
+          status === "loaded" ? "opacity-100" : "opacity-0",
+        )}
       />
-      <figcaption className="absolute inset-x-0 bottom-0 flex items-end bg-gradient-to-t from-deep/75 to-transparent px-6 pt-16 pb-5">
+      <figcaption
+        className={cn(
+          "absolute inset-x-0 bottom-0 flex items-end bg-gradient-to-t from-deep/75 to-transparent px-6 pt-16 pb-5 transition-opacity duration-700",
+          status === "loaded" ? "opacity-100" : "opacity-0",
+        )}
+      >
         <span className="text-sm font-medium tracking-wide text-cream">
           {praxisSection.teamCaption}
         </span>

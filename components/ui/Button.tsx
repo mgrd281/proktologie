@@ -8,8 +8,8 @@ const base =
   "group inline-flex min-h-11 items-center justify-center gap-3 rounded-full px-7 py-3 text-sm font-medium tracking-wide transition-colors duration-300";
 
 const variants: Record<Variant, string> = {
-  /* Weiß auf Primary: ~5,0:1 – AA für Button-Text. */
-  primary: "bg-primary text-white hover:bg-[#446628]",
+  /* Klinikgrün-Fläche mit Deep-Text: 7,0:1 – AA/AAA für Button-Text. */
+  primary: "bg-accent font-semibold text-deep hover:bg-[#76a81f]",
   outline:
     "border border-ink/25 text-ink hover:border-primary hover:text-primary",
   "outline-dark":

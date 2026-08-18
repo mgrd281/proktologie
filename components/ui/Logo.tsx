@@ -38,10 +38,8 @@ export function LogoLockup({
 }) {
   return (
     <span className={cn("flex items-center gap-3", className)}>
-      <LogoMark
-        size={38}
-        className={onDark ? "text-accent" : "text-primary"}
-      />
+      {/* Logografik immer im echten Klinikgrün (WCAG-Logo-Ausnahme) */}
+      <LogoMark size={38} className="text-accent" />
       <span className="flex flex-col leading-tight">
         <span
           className={cn(

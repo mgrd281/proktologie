@@ -108,7 +108,7 @@ export function Praxis() {
                   <path d="M300 0 C 320 130, 280 260, 310 400" />
                   <path d="M480 0 C 500 150, 460 280, 490 400" />
                 </g>
-                <g stroke="#B8D94C" strokeOpacity="0.4" strokeWidth="1">
+                <g stroke="#86BC23" strokeOpacity="0.4" strokeWidth="1">
                   <path d="M0 145 C 170 120, 360 170, 600 130" fill="none" />
                   <path d="M200 0 C 220 140, 180 270, 210 400" fill="none" />
                 </g>

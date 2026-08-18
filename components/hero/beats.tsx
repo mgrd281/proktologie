@@ -39,7 +39,7 @@ export function BeatVisual({ beat }: { beat: HeroBeatContent }) {
             aria-hidden="true"
             focusable="false"
           >
-            <g fill="none" stroke="#B8D94C" strokeOpacity="0.18">
+            <g fill="none" stroke="#86BC23" strokeOpacity="0.18">
               <circle cx="160" cy="160" r="150" />
               <circle cx="160" cy="160" r="105" strokeDasharray="3 7" />
               <circle cx="160" cy="160" r="60" strokeOpacity="0.3" />
@@ -114,7 +114,7 @@ export function BeatVisual({ beat }: { beat: HeroBeatContent }) {
               <path d="M200 0 C 215 95, 185 195, 210 280" />
               <path d="M300 0 C 315 105, 285 190, 310 280" />
             </g>
-            <circle cx="205" cy="145" r="34" fill="#B8D94C" fillOpacity="0.12" />
+            <circle cx="205" cy="145" r="34" fill="#86BC23" fillOpacity="0.12" />
           </svg>
           <span className="absolute top-[46%] left-[55%] flex -translate-x-1/2 -translate-y-1/2 flex-col items-center">
             <span className="flex size-12 items-center justify-center rounded-full bg-accent text-deep shadow-xl">
@@ -145,7 +145,7 @@ function CurveBackdrop() {
       <g fill="none" strokeWidth="1.5">
         <path
           d="M-20 300 C 100 220, 240 320, 340 230 S 520 160, 540 190"
-          stroke="#B8D94C"
+          stroke="#86BC23"
           strokeOpacity="0.12"
         />
         <path

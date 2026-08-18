@@ -1,15 +1,16 @@
 @import "tailwindcss";
 
 /*
- * Design-Tokens (fixe Kundenpalette).
- * Regel: --color-accent (#B8D94C) hat auf hellen Flächen zu wenig Kontrast
- * (~1,6:1) und darf ausschließlich auf --color-deep eingesetzt werden.
+ * Design-Tokens. --color-accent ist das echte Klinikgrün (#86BC23).
+ * Kontrastregeln: Akzent auf Deep 7,0:1 ✓ · Deep-Text auf Akzent-Fläche
+ * 7,0:1 ✓ · auf hellen Flächen nur 2,3:1 → Akzent NIE als Text/Icon auf
+ * hell (Ausnahme: Logografik), Buttons tragen dunkle Schrift.
  */
 @theme {
   --color-primary: #527a32;
   /* Dunklere Textvariante des Markengrüns: besteht AA auch auf mist (#ECEEE8) */
   --color-primary-deep: #446628;
-  --color-accent: #b8d94c;
+  --color-accent: #86bc23;
   --color-deep: #17251b;
   --color-cream: #f7f7f3;
   --color-mist: #eceee8;
