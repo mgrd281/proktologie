@@ -131,7 +131,7 @@ export function HeroCinematic() {
          * 2. CanvasSequence – scroll-gescrubbte Bildsequenz (500 Frames)
          * 3. Beat-Ebenen – Typografie und Beat-Visuals
          * 4. Arzt-Freisteller – unabhängige Ebene, separat animierbar
-         * 5. Interface: Fortschrittsbalken, Kapitel-Nav, FRAME-Indikator
+         * 5. Interface: Kapitel-Navigation, Scroll-Cue
          */}
         <HeroBackground />
 
@@ -171,17 +171,6 @@ export function HeroCinematic() {
         </div>
 
         <HeroProgress active={active} onSelect={handleSelect} />
-
-        {/* Dünner Fortschrittsbalken, direkt an --hp gekoppelt */}
-        <div
-          aria-hidden="true"
-          className="absolute inset-x-0 top-0 h-[3px] bg-white/10"
-        >
-          <div
-            className="h-full origin-left bg-accent"
-            style={{ transform: "scaleX(var(--hp, 0))" }}
-          />
-        </div>
 
         <div
           ref={cueRef}
