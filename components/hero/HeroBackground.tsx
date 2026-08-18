@@ -6,7 +6,7 @@
  * Heros anzufassen. Der Scroll-Fortschritt liegt auf der Stage bereits als
  * CSS-Variable `--hp` (0–1) und wird pro Frame aktualisiert – ein künftiges
  * <canvas> ersetzt einfach den Inhalt dieser Komponente und liest den
- * Fortschritt über einen eigenen Callback in HeroCinematic.
+ * Fortschritt über einen eigenen Callback in der MasterSequence.
  *
  * Bis dahin: ruhige, markige Ambiente-Komposition in Deep Green.
  */

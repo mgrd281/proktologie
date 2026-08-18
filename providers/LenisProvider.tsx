@@ -40,7 +40,20 @@ export default function LenisProvider({ children }: { children: ReactNode }) {
       if (lenisRef.current || reduced.matches) return;
       // Lenis respektiert prefers-reduced-motion nicht selbst –
       // bei Reduced Motion wird es gar nicht erst instanziiert.
-      const lenis = new Lenis({ autoRaf: true, anchors: false });
+      const lenis = new Lenis({
+        autoRaf: true,
+        anchors: false,
+        /*
+         * Gewichtetes, nachlaufendes Scrollen: Das Rad setzt ein Ziel,
+         * Lenis fährt es über 1,2 s mit exponentiellem Ausklang an. Die
+         * Kamerafahrt (components/cinema) legt darüber noch eine eigene
+         * Interpolation – zusammen ergibt das die schwere, ruhige Bewegung.
+         */
+        duration: 1.2,
+        easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+        smoothWheel: true,
+        wheelMultiplier: 1,
+      });
       lenisRef.current = lenis;
     };
     const destroy = () => {

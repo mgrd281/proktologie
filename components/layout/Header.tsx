@@ -31,21 +31,45 @@ export function Header() {
       setSolid(true);
       return;
     }
+
+    /*
+     * Die Kamerafahrt ist 900vh lang und wird in ihrem letzten Drittel hell
+     * (Empfangsraum). Erst am Ende der Sektion umzuschalten hieße: heller
+     * Text auf hellem Grund. Die Fahrt hinterlegt deshalb am Track den
+     * Fortschritt, ab dem der Header deckend sein soll; ohne Fahrt
+     * (reduzierte Bewegung, Unterseiten) gilt weiter das Sektionsende.
+     */
+    let threshold = 0;
+    const measure = () => {
+      const cinema = hero.querySelector<HTMLElement>("[data-header-solid]");
+      const at = Number(cinema?.dataset.headerSolid);
+      if (cinema && cinema.offsetHeight > 0 && Number.isFinite(at)) {
+        const top = cinema.getBoundingClientRect().top + window.scrollY;
+        threshold = top + at * Math.max(1, cinema.offsetHeight - window.innerHeight);
+      } else {
+        threshold = hero.offsetTop + hero.offsetHeight - 120;
+      }
+    };
+
     let raf = 0;
     const update = () => {
       raf = 0;
-      const threshold = hero.offsetTop + hero.offsetHeight - 120;
       setSolid(window.scrollY > threshold);
     };
     const onScroll = () => {
       if (!raf) raf = requestAnimationFrame(update);
     };
+    const onResize = () => {
+      measure();
+      onScroll();
+    };
+    measure();
     update();
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
+    window.addEventListener("resize", onResize, { passive: true });
     return () => {
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("resize", onResize);
       cancelAnimationFrame(raf);
     };
     // Bei Routenwechsel neu auswerten (Header bleibt über Navigationen gemountet)
