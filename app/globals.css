@@ -295,6 +295,71 @@ html.lenis body {
 [data-phase="bright"] .cinema-rail-line {
   box-shadow: 0 0 6px rgba(247, 246, 241, 0.8);
 }
+/* Die grüne Bahn: Auf hellem Grund wechselt sie auf das dunkle Praxisgrün */
+.cinema-trail,
+.cinema-trail-glow {
+  transition: stroke 600ms ease;
+}
+[data-phase="bright"] .cinema-trail {
+  stroke: var(--color-primary);
+}
+[data-phase="bright"] .cinema-trail-glow {
+  stroke: var(--color-primary);
+}
+
+/*
+ * Der ECHTE Untersuchungsraum (Zustände 05 Diagnostik + 06 Behandlung).
+ * Quelle: public/images/untersuchungsraum-*.webp (vom Praxisinhaber
+ * geliefertes Foto). Weichzeichnung der Rückwand steckt IM Asset –
+ * im Renderpfad stehen nur transform und opacity.
+ */
+.exam-env-soft,
+.exam-env-sharp {
+  background-position: 50% 42%;
+  background-size: cover;
+  will-change: transform;
+}
+.exam-env-soft {
+  background-image: image-set(
+    url("/images/untersuchungsraum-soft-960.webp") 1x,
+    url("/images/untersuchungsraum-soft-1536.webp") 2x
+  );
+}
+.exam-env-sharp {
+  background-image: image-set(
+    url("/images/untersuchungsraum-960.webp") 1x,
+    url("/images/untersuchungsraum-1536.webp") 2x
+  );
+  /* Die scharfe Ebene steht leicht beschnitten über der weichen –
+     ihr höherer Parallaxfaktor erzeugt die Tiefe im Raum. */
+  mask-image: linear-gradient(to top, transparent 0%, black 14%);
+}
+
+/*
+ * Tafeln des Leistungs-Korridors (Zustand 03). Tiefenschärfe läuft über
+ * einen Schleier mit reiner Deckkraft (data-blur), nie über filter.
+ */
+.cinema-panel {
+  background: color-mix(in srgb, var(--color-deep) 76%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-cream) 14%, transparent);
+  box-shadow: 0 24px 60px -38px rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(2px);
+}
+.cinema-panel-veil {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--color-deep);
+  opacity: 0;
+  transition: opacity 500ms ease;
+  pointer-events: none;
+}
+.cinema-panel[data-blur="1"] .cinema-panel-veil {
+  opacity: 0.38;
+}
+.cinema-panel[data-blur="2"] .cinema-panel-veil {
+  opacity: 0.62;
+}
 
 /* Sanfte Endlos-Animation des Scroll-Cues */
 @keyframes scroll-cue {
