@@ -24,6 +24,8 @@ export interface StateTextContent {
    */
   headline: string[];
   text: string;
+  /** Optionaler zweiter Absatz (etwa der zweite Intro-Absatz in Zustand 02). */
+  secondaryText?: string;
   /** Stichpunkte mit kurzer Erläuterung (aus den Beats übernommen). */
   items?: { title: string; note: string }[];
   cta?: { label: string; href: string };
@@ -78,6 +80,12 @@ export const StateText = forwardRef<HTMLDivElement, StateTextProps>(
           <p className="mt-6 max-w-md text-sm leading-relaxed text-cream/75 md:text-base">
             {content.text}
           </p>
+
+          {content.secondaryText && (
+            <p className="mt-4 max-w-md text-sm leading-relaxed text-cream/65">
+              {content.secondaryText}
+            </p>
+          )}
 
           {content.items && content.items.length > 0 && (
             <ul className="mt-7 grid gap-2.5 sm:grid-cols-2">

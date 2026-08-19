@@ -340,10 +340,11 @@ html.lenis body {
  * einen Schleier mit reiner Deckkraft (data-blur), nie über filter.
  */
 .cinema-panel {
-  background: color-mix(in srgb, var(--color-deep) 76%, transparent);
+  /* Kein backdrop-filter: Die Tafeln werden pro Frame transformiert –
+     Deckung kommt allein aus der Fläche (Budget: nur transform/opacity). */
+  background: color-mix(in srgb, var(--color-deep) 84%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-cream) 14%, transparent);
   box-shadow: 0 24px 60px -38px rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(2px);
 }
 .cinema-panel-veil {
   position: absolute;

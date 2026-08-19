@@ -112,6 +112,7 @@ export function MasterSequence() {
   const dirty = useRef(true);
   const activeRef = useRef(0);
   const teamChapterRef = useRef(1);
+  const lastTrailP = useRef(-1);
 
   const [active, setActive] = useState(0);
   const [teamChapter, setTeamChapter] = useState(1);
@@ -127,6 +128,7 @@ export function MasterSequence() {
       if (!stage) return;
       const rect = stage.getBoundingClientRect();
       sizeRef.current = { w: rect.width, h: rect.height };
+      lastTrailP.current = -1;
       dirty.current = true;
     };
     measure();
@@ -156,10 +158,12 @@ export function MasterSequence() {
   }, []);
 
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
 
     let raf = 0;
+    let running = false;
     const render = () => {
+      if (!running) return;
       raf = requestAnimationFrame(render);
 
       const delta = target.current - current.current;
@@ -228,20 +232,32 @@ export function MasterSequence() {
 
       const trail = LAYERS.trajectory(p);
       const { w, h } = sizeRef.current;
-      // Die Bahn wandert mit der Fahrt von links unten nach rechts oben und
-      // legt sich im Team-Zustand flach auf den Boden – ein Faden, der nie reißt.
-      const y0 = h * (0.82 - p * 0.1);
-      const y1 = h * (0.6 - p * 0.06);
-      const y2 = h * (0.74 - p * 0.2);
-      const d =
-        `M${(-w * 0.05).toFixed(0)} ${y0.toFixed(0)} ` +
-        `C${(w * 0.28).toFixed(0)} ${(y0 - h * 0.12).toFixed(0)}, ` +
-        `${(w * 0.52).toFixed(0)} ${y1.toFixed(0)}, ` +
-        `${(w * 1.05).toFixed(0)} ${y2.toFixed(0)}`;
-      trailRef.current?.setAttribute("d", d);
-      trailGlowRef.current?.setAttribute("d", d);
+      /*
+       * Die Bahn wandert mit der Fahrt von links unten nach rechts oben und
+       * legt sich im Team-Zustand flach auf den Boden – ein Faden, der nie
+       * reißt. Das `d`-Attribut ist der einzige Schreibvorgang außerhalb
+       * von transform/opacity – deshalb quantisiert (Schritt 0.0025 ≈ 3vh):
+       * Während des Ausklangs teilen sich viele Frames denselben Wert, und
+       * die SVG-Ebene wird nicht pro Frame neu gezeichnet.
+       */
+      const trailP = Math.round(p * 400) / 400;
+      if (trailP !== lastTrailP.current) {
+        lastTrailP.current = trailP;
+        const y0 = h * (0.82 - trailP * 0.1);
+        const y1 = h * (0.6 - trailP * 0.06);
+        const y2 = h * (0.74 - trailP * 0.2);
+        const d =
+          `M${(-w * 0.05).toFixed(0)} ${y0.toFixed(0)} ` +
+          `C${(w * 0.28).toFixed(0)} ${(y0 - h * 0.12).toFixed(0)}, ` +
+          `${(w * 0.52).toFixed(0)} ${y1.toFixed(0)}, ` +
+          `${(w * 1.05).toFixed(0)} ${y2.toFixed(0)}`;
+        trailRef.current?.setAttribute("d", d);
+        trailGlowRef.current?.setAttribute("d", d);
+      }
       if (trailRef.current) trailRef.current.style.opacity = trail.toFixed(3);
       if (trailGlowRef.current) trailGlowRef.current.style.opacity = (trail * 0.5).toFixed(3);
+
+      const release = LAYERS.release(p);
 
       // ---- Textbänder: überlappende Blenden statt Austausch ----
       let maxWeight = 0;
@@ -263,7 +279,14 @@ export function MasterSequence() {
          * Die Gammakurve drückt kleine Gewichte weg, ohne die Überblendung
          * zu einem Schnitt zu machen; unter 12 % wird ganz abgeschaltet.
          */
-        const shown = weight < 0.12 ? 0 : Math.pow(weight, 1.6);
+        /*
+         * ... und alle Texte gehen mit dem Auslauf: Sonst stünden die Links
+         * des letzten Zustands unsichtbar, aber fokussier- und klickbar
+         * unter der deckenden Cream-Fläche (der Schleier ist
+         * pointer-events-none). visibility:hidden nimmt sie am Ende auch
+         * aus der Tab-Reihenfolge.
+         */
+        const shown = (weight < 0.12 ? 0 : Math.pow(weight, 1.6)) * (1 - release);
         el.style.opacity = shown.toFixed(3);
         el.style.visibility = shown <= 0.004 ? "hidden" : "visible";
         // Eintritt von unten, Austritt nach oben – die Zustände ziehen durch
@@ -273,8 +296,7 @@ export function MasterSequence() {
 
       // Lesbarkeitsschleier links: bleibt, solange links Text steht
       if (scrimRef.current) {
-        const fade = 1 - LAYERS.release(p);
-        scrimRef.current.style.opacity = ((0.35 + maxWeight * 0.65) * fade).toFixed(3);
+        scrimRef.current.style.opacity = ((0.35 + maxWeight * 0.65) * (1 - release)).toFixed(3);
       }
 
       // ---- Arzt-Freisteller: trägt 01–02, weicht den Tafeln ----
@@ -345,7 +367,6 @@ export function MasterSequence() {
        * Kontakt-Sektion beginnt. Die Termin-Vorschau liegt im DOM über
        * diesem Schleier und bleibt deshalb stehen.
        */
-      const release = LAYERS.release(p);
       if (releaseRef.current) {
         releaseRef.current.style.opacity = release.toFixed(3);
         releaseRef.current.style.visibility = release <= 0.004 ? "hidden" : "visible";
@@ -373,8 +394,28 @@ export function MasterSequence() {
       }
     };
 
-    raf = requestAnimationFrame(render);
-    return () => cancelAnimationFrame(raf);
+    const start = () => {
+      if (running) return;
+      running = true;
+      dirty.current = true;
+      raf = requestAnimationFrame(render);
+    };
+    const stop = () => {
+      running = false;
+      cancelAnimationFrame(raf);
+    };
+    /*
+     * Die Umschaltung Track/ruhige Fassung ist reines CSS und reagiert
+     * SOFORT auf die Systemeinstellung – der Loop zieht hier mit, statt
+     * die Präferenz nur einmal beim Mount zu lesen.
+     */
+    const onChange = () => (reduced.matches ? stop() : start());
+    reduced.addEventListener("change", onChange);
+    onChange();
+    return () => {
+      reduced.removeEventListener("change", onChange);
+      stop();
+    };
   }, []);
 
   const goToState = useCallback(
@@ -389,7 +430,16 @@ export function MasterSequence() {
   );
 
   return (
-    <section id="hero" aria-label="Einführung">
+    <section id="hero" aria-label="Einführung" className="relative">
+      {/*
+        * Ankermarke für /#team. Sie hängt an der SECTION, nicht am Track:
+        * Bei reduzierter Bewegung (und ohne JavaScript) ist der Track
+        * display:none – ein Anker darin hätte keine Box, /#team liefe ins
+        * Leere. An der Section trifft sie in beiden Fassungen den
+        * Team-Teil. Bewusst nicht aria-hidden: Die Anker-Navigation setzt
+        * den Fokus hierher.
+        */}
+      <span id="team" className="absolute top-[64%] left-0 block h-px w-px" />
       <noscript>
         <style>{`.cinema-track{display:none !important}.cinema-still{display:block !important}`}</style>
       </noscript>
@@ -404,9 +454,6 @@ export function MasterSequence() {
         data-header-solid={HEADER_SOLID_AT}
         className="cinema-track relative hidden h-[1200vh] motion-safe:block"
       >
-        {/* Ankermarke für /#team – die Sektion selbst gibt es nicht mehr */}
-        <span id="team" aria-hidden="true" className="absolute top-[64%] left-0 block h-px w-px" />
-
         <div
           ref={stageRef}
           className="on-dark sticky top-0 h-dvh origin-top overflow-hidden bg-deep text-cream"
@@ -507,16 +554,23 @@ export function MasterSequence() {
           <LeistungenLayer ref={leistungenRef} />
           <SymptomeLayer ref={symptomeRef} />
 
-          {/* 9 – Praxis */}
-          <PraxisLayer ref={praxisRef} />
-
-          {/* 10 – Lesbarkeitsschleier + Textbänder (die Konstante links) */}
+          {/*
+            * Leseschleier für schmale Schirme: Er dämpft die hellen Ebenen
+            * UNTER dem Text (Porträts, Tafeln) – und liegt deshalb bewusst
+            * VOR der Praxis-Karte im DOM: Die Karte selbst darf nie unter
+            * dem Schleier stehen.
+            */}
           <div
             ref={veilRef}
             aria-hidden="true"
             className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgba(23,37,27,0.62)_0%,rgba(23,37,27,0.5)_58%,rgba(23,37,27,0.32)_100%)] md:hidden"
             style={{ opacity: 0, visibility: "hidden" }}
           />
+
+          {/* 9 – Praxis */}
+          <PraxisLayer ref={praxisRef} />
+
+          {/* 10 – Textbänder und ihr Lesbarkeitsschleier (die Konstante links) */}
           <div
             ref={scrimRef}
             aria-hidden="true"

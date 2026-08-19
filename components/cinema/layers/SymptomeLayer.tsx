@@ -102,6 +102,10 @@ export const SymptomeLayer = forwardRef<SymptomeLayerHandle>(
             <p className="mt-4 max-w-sm text-sm leading-relaxed text-cream/70">
               {cluster.text}
             </p>
+            <p className="mt-3 flex max-w-sm items-start gap-2.5 text-[13px] leading-relaxed text-cream/85">
+              <span aria-hidden="true" className="mt-1.5 size-1 shrink-0 rounded-full bg-accent" />
+              {cluster.advice}
+            </p>
           </div>
         ))}
       </div>

@@ -18,8 +18,9 @@ export default function HomePage() {
       {/*
         * Der Auslauf der Fahrt landet farbgleich auf der Buchung – Zustand
         * 09 „Termin“ übergibt direkt an die echte Terminvereinbarung.
-        * Danach folgt die ausführliche, ruhige Website (SEO + Nachlesen);
-        * das frühere Intro lebt vollständig in Zustand 02 der Fahrt.
+        * Danach folgt die ausführliche, ruhige Website (SEO + Nachlesen).
+        * Das frühere Intro lebt in Zustand 02 der Fahrt (Kicker, Lead,
+        * beide Absätze); die Grundsatz-Marken stehen in CinemaStatic.
         */}
       <Kontakt />
       <Leistungen />

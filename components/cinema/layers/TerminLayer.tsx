@@ -28,7 +28,7 @@ export const TerminLayer = forwardRef<HTMLDivElement>(function TerminLayer(_, re
       className="cinema-termin pointer-events-none absolute inset-y-0 right-0 flex w-full items-center justify-center px-5 md:justify-end md:px-10 lg:w-[54%] lg:px-16 lg:pr-28"
       style={{ opacity: 0, visibility: "hidden" }}
     >
-      <div className="w-full max-w-sm rounded-2xl bg-cream p-6 shadow-[0_30px_70px_-40px_rgba(23,37,27,0.55)] ring-1 ring-ink/8 backdrop-blur-sm md:p-7">
+      <div className="w-full max-w-sm rounded-2xl bg-cream p-6 shadow-[0_30px_70px_-40px_rgba(23,37,27,0.55)] ring-1 ring-ink/8 md:p-7">
         <div aria-hidden="true">
           <p className="text-xs font-semibold tracking-[0.2em] text-primary-deep uppercase">
             {CINEMA_TERMIN.kicker}

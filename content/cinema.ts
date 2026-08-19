@@ -46,12 +46,14 @@ export const CINEMA_TEXTS: StateTextContent[] = [
     text: beat("arzt").text,
     secondary: beat("arzt").secondary,
   },
-  // 02 – Beschwerden: das Praxis-Intro, wortgleich übernommen
+  // 02 – Beschwerden: das Praxis-Intro, wortgleich und VOLLSTÄNDIG
+  // übernommen (beide Absätze – sonst sähen Motion-Nutzer den zweiten nie)
   {
     kicker: intro.kicker,
     headline: ["Beschwerden im Analbereich sind häufig –", "und in den meisten Fällen gut behandelbar"],
     headlineSize: "md",
     text: intro.paragraphs[0],
+    secondaryText: intro.paragraphs[1],
   },
   // 03 – Leistungen (die acht Tafeln trägt der Korridor rechts)
   {
@@ -132,10 +134,18 @@ export const CINEMA_PANELS = leistungen.map((l, i) => ({
   teaser: l.teaser,
 }));
 
-/** Die vier Symptom-Karten des Typo-Zyklus (Zustand 04). */
+/**
+ * Die vier Symptom-Karten des Typo-Zyklus (Zustand 04).
+ *
+ * Bewusst MIT dem Rat: In der Quelle gehört zu jeder beruhigenden
+ * Einordnung untrennbar die Handlungsempfehlung – beim Blut-Cluster der
+ * Hinweis, dass Blut immer ärztlich abgeklärt werden sollte. Nur die
+ * beruhigende Hälfte zu zeigen wäre eine medizinische Verkürzung.
+ */
 export const CINEMA_SYMPTOME = beschwerden.map((b) => ({
   symptom: b.symptom,
   text: b.text,
+  advice: b.advice,
 }));
 
 /** Die Buchungs-Vorschau (Zustand 09) – zeigt, was unten wirklich wartet. */

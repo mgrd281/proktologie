@@ -34,11 +34,16 @@ export function MasterRail({ active, onSelect }: MasterRailProps) {
                 onClick={() => onSelect(index)}
                 aria-current={isActive ? "true" : undefined}
                 aria-label={`Zu Kapitel ${index + 1}: ${state.label}`}
-                className="group flex h-11 items-center justify-end gap-3 pl-6"
+                className="group relative flex h-11 items-center justify-end gap-3"
               >
+                {/*
+                  * Label absolut links des Buttons: Es darf die Hitbox nicht
+                  * verbreitern – sonst läge ein unsichtbarer Klickbereich
+                  * über der Termin-Vorschau daneben.
+                  */}
                 <span
                   className={cn(
-                    "cinema-rail-label text-[11px] tracking-[0.14em] whitespace-nowrap transition-all duration-500",
+                    "cinema-rail-label pointer-events-none absolute right-full mr-3 text-[11px] tracking-[0.14em] whitespace-nowrap transition-all duration-500",
                     isActive
                       ? "text-cream opacity-100"
                       : "text-cream/60 opacity-0 group-hover:opacity-100",
