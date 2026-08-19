@@ -2,7 +2,6 @@ import { MasterSequence } from "@/components/cinema/MasterSequence";
 import { Beschwerden } from "@/components/sections/Beschwerden";
 import { Diagnostik } from "@/components/sections/Diagnostik";
 import { Faq } from "@/components/sections/Faq";
-import { Intro } from "@/components/sections/Intro";
 import { Kontakt } from "@/components/sections/Kontakt";
 import { Leistungen } from "@/components/sections/Leistungen";
 import { Praxis } from "@/components/sections/Praxis";
@@ -13,11 +12,17 @@ import { buildFaqJsonLd, buildPhysicianJsonLd } from "@/lib/jsonld";
 export default function HomePage() {
   return (
     <>
-      {/* Eine durchgehende Kamerafahrt: 01 Willkommen … 07 Praxis */}
+      {/* Eine durchgehende Kamerafahrt: 01 Willkommen … 09 Termin */}
       <MasterSequence />
 
-      {/* Ab hier die ausführliche, ruhige Website */}
-      <Intro />
+      {/*
+        * Der Auslauf der Fahrt landet farbgleich auf der Buchung – Zustand
+        * 09 „Termin“ übergibt direkt an die echte Terminvereinbarung.
+        * Danach folgt die ausführliche, ruhige Website (SEO + Nachlesen).
+        * Das frühere Intro lebt in Zustand 02 der Fahrt (Kicker, Lead,
+        * beide Absätze); die Grundsatz-Marken stehen in CinemaStatic.
+        */}
+      <Kontakt />
       <Leistungen />
       <Beschwerden />
       <Diagnostik />
@@ -25,7 +30,6 @@ export default function HomePage() {
       <WarumWir />
       <Praxis />
       <Faq />
-      <Kontakt />
 
       <script
         type="application/ld+json"

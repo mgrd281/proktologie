@@ -24,10 +24,18 @@ export interface StateTextContent {
    */
   headline: string[];
   text: string;
+  /** Optionaler zweiter Absatz (etwa der zweite Intro-Absatz in Zustand 02). */
+  secondaryText?: string;
   /** Stichpunkte mit kurzer Erläuterung (aus den Beats übernommen). */
   items?: { title: string; note: string }[];
   cta?: { label: string; href: string };
   secondary?: { label: string; href: string };
+  /**
+   * "md" für Aussage-Headlines in Satzlänge (etwa das Praxis-Intro):
+   * kleinere Stufe, damit der Satz als Satz lesbar bleibt statt als
+   * vierzeiliger Displayblock.
+   */
+  headlineSize?: "md";
 }
 
 interface StateTextProps {
@@ -53,7 +61,14 @@ export const StateText = forwardRef<HTMLDivElement, StateTextProps>(
             <span aria-hidden="true" className="h-px w-16 bg-accent/45" />
           </p>
 
-          <Heading className="font-display mt-5 text-4xl leading-[1.05] font-medium text-cream md:text-6xl">
+          <Heading
+            className={cn(
+              "font-display mt-5 leading-[1.08] font-medium text-cream",
+              content.headlineSize === "md"
+                ? "text-[1.7rem] md:text-4xl lg:text-[2.6rem]"
+                : "text-4xl leading-[1.05] md:text-6xl",
+            )}
+          >
             {content.headline[0]}
             {content.headline[1] ? (
               <span className="block text-accent">{content.headline[1]}</span>
@@ -65,6 +80,12 @@ export const StateText = forwardRef<HTMLDivElement, StateTextProps>(
           <p className="mt-6 max-w-md text-sm leading-relaxed text-cream/75 md:text-base">
             {content.text}
           </p>
+
+          {content.secondaryText && (
+            <p className="mt-4 max-w-md text-sm leading-relaxed text-cream/65">
+              {content.secondaryText}
+            </p>
+          )}
 
           {content.items && content.items.length > 0 && (
             <ul className="mt-7 grid gap-2.5 sm:grid-cols-2">
