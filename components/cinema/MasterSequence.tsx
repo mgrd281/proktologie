@@ -548,15 +548,19 @@ export function MasterSequence() {
             style={{ opacity: 0, visibility: "hidden" }}
           />
 
-          {/* 9 – Praxis-Karte (Szene 08) */}
-          <PraxisLayer ref={praxisRef} />
-
-          {/* 10 – Szenentexte und ihr Lesbarkeitsschleier (die Konstante links) */}
+          {/* 9 – Szenentexte und ihr Lesbarkeitsschleier (die Konstante links) */}
           <div
             ref={scrimRef}
             aria-hidden="true"
             className="pointer-events-none absolute inset-y-0 left-0 w-full bg-gradient-to-r from-deep via-deep/85 to-transparent md:w-[66%] lg:w-[56%]"
           />
+
+          {/*
+            * 10 – Praxis-Karte (Szene 08): ÜBER dem Text-Schleier – unter
+            * lg trägt sie die Szene allein über der vollen Breite und darf
+            * nicht von ihm abgedunkelt werden.
+            */}
+          <PraxisLayer ref={praxisRef} />
           {CINEMA_TEXTS.map((content, index) => (
             <StateText
               key={SCENES[index].id}
@@ -565,7 +569,16 @@ export function MasterSequence() {
               }}
               content={content}
               isFirst={index === 0}
-              className="w-full md:w-[62%] lg:w-[52%]"
+              className={
+                /*
+                 * Unter lg liegt die Praxis-Karte mittig über der vollen
+                 * Breite – dort trägt SIE die Szene (Adresse, Zeiten,
+                 * CTAs); der Intro-Text würde mit ihr kollidieren.
+                 */
+                SCENES[index].id === "praxis"
+                  ? "w-full max-lg:hidden md:w-[62%] lg:w-[52%]"
+                  : "w-full md:w-[62%] lg:w-[52%]"
+              }
             />
           ))}
 
