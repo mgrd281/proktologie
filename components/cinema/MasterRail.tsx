@@ -1,10 +1,11 @@
 "use client";
 
 import { cn } from "@/lib/cn";
-import { STATES } from "@/lib/cinema/timeline";
+import { RAIL_SCENES } from "@/lib/cinema/frames";
 
 /**
- * Die eine Leiste der Fahrt: 01 Willkommen … 07 Praxis.
+ * Die eine Leiste des Filmwerks: 01 Willkommen … 08 Praxis & Standort
+ * (das Termin-Finale ist bewusst KEIN Leistenpunkt – es ist der Auslauf).
  *
  * Sie bleibt über alle Zustände sichtbar und ist damit – neben der grünen
  * Bahn und dem Glow – eines der drei Motive, die den Weg zusammenhalten.
@@ -24,7 +25,7 @@ export function MasterRail({ active, onSelect }: MasterRailProps) {
       className="pointer-events-auto absolute top-1/2 right-4 hidden -translate-y-1/2 lg:right-8 lg:block"
     >
       <ol className="flex flex-col items-end gap-0.5">
-        {STATES.map((state, index) => {
+        {RAIL_SCENES.map((state, index) => {
           const isActive = index === active;
           const isPast = index < active;
           return (
