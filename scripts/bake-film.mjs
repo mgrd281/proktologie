@@ -1,10 +1,15 @@
 /**
- * Backt den Film der Startseite: 500 echte webp-Frames aus den REALEN
- * Praxis-Assets (Untersuchungsraum-Foto, Empfangs-Textur) – eine
- * durchgehende Kamerafahrt mit Fokusziehen, Licht, Filmkorn und
- * Markengrading. Kamerabewegung, keine erfundenen Menschen.
+ * Backt den Film der Startseite aus ECHTEM Bewegtmaterial des
+ * Untersuchungsraums: drei 4K-Clips (10 s, 24 fps) werden zu EINER
+ * durchgehenden Fahrt über 500 Master-Frames montiert und dabei
+ * gegradet – Fokusfahrt, Belichtung, Markenton, Filmkorn, Vignette.
  *
- * Ausführen (sharp wird lokal benötigt, ist bewusst KEINE Repo-Dependency):
+ * Die Clips zeigen den ECHTEN Raum in ECHTER Kamerabewegung (aus dem
+ * Originalfoto animiert). Keine erfundenen Personen, keine erfundene
+ * Ausstattung – die Bildtreue ist hier nicht nur Ästhetik, sondern
+ * Rechtsschutz (§ 3 HWG, § 5 UWG: irreführende Werbung).
+ *
+ * Ausführen (sharp + extrahierte Clip-Frames werden lokal gebraucht):
  *   npm i --no-save sharp
  *   node scripts/bake-film.mjs
  *
@@ -12,31 +17,21 @@
  *   public/sequence/desktop/frame_0001.webp … frame_0500.webp  (1600×900)
  *   public/sequence/mobile/frame_0001.webp  … frame_0250.webp  (960×540)
  *
- * Jeder Frame ist eine reine Funktion seiner Nummer (dieselben
- * smoothstep-Ketten wie die Engine) – dadurch ist der Film stetig und
- * exakt umkehrbar. Nach dem Rendern prüft das Skript die Differenz
- * benachbarter Frames (kein Schnitt) und meldet das Gesamtgewicht.
+ * ── Montage der drei Clips ──────────────────────────────────────────────
+ *   C  „subtle push“   Master 001–205   ruhige Ankunft, tief im Bokeh
+ *   A  „dolly in“      Master 165–460   DIE Fahrt: heran an die Liege
+ *   B  „pan“           Master 420–500   Ausklang, Blick öffnet sich
+ *   An beiden Nähten liegt eine 40 Frames breite Blende, PIXELWEISE in
+ *   die Frames gebacken – im Browser gibt es keinen Schnitt zu sehen.
  *
- * WICHTIG: Alle Ebenen-Deckkräfte werden in JS auf Rohpuffern gemischt.
- * sharps ensureAlpha(t) setzt in der hier verwendeten Version KEINE
- * verlässliche Deckkraft (gemessen ≈ konstant 0.65 unabhängig von t) –
- * composite-basierte Teildeckkraft wäre deshalb unstetig. sharp macht
- * nur Dekodieren/Blur/Crop/Resize/Enkodieren; die Mischung selbst ist
- * exakte Mathematik pro Pixel.
- *
- * Dramaturgie (Frames = Master-Timeline aus lib/cinema/frames.ts):
- *   001–055  aus tiefer Unschärfe ankommen (Bokeh des echten Raums, dunkel)
- *   056–175  Bokeh wandert, Blende öffnet langsam (Arzt/Tafeln sind DOM)
- *   176–235  Fokusfahrt: Klarheit naht
- *   236–290  Fokus DA: der echte Untersuchungsraum, weite Einstellung
- *   291–345  dieselbe Einstellung weitergefahren: Dolly zur grünen Liege
- *   346–430  Rückzug: Pullback, Defokus, Aufhellung Richtung Empfang
- *   431–470  helles Empfangs-Ambiente, ruhiger Drift
- *   471–500  Beruhigung Richtung Cream (der DOM-Release vollendet)
+ * Jeder Frame ist eine reine Funktion seiner Nummer – der Film ist
+ * stetig und exakt umkehrbar. Nach dem Rendern prüft das Skript die
+ * Differenz benachbarter Frames und meldet das Gesamtgewicht.
  */
 
 import { createRequire } from "node:module";
 import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 const require = createRequire(import.meta.url);
@@ -49,18 +44,28 @@ try {
 }
 
 const ROOT = new URL("..", import.meta.url).pathname;
-const SRC_EXAM = join(ROOT, "public/images/untersuchungsraum-1536.webp");
-const SRC_RECEPTION = join(ROOT, "public/images/praxis-raum-soft-1600.webp");
 const OUT_DESKTOP = join(ROOT, "public/sequence/desktop");
 const OUT_MOBILE = join(ROOT, "public/sequence/mobile");
 
+/**
+ * Verzeichnis der extrahierten Clip-Frames (f_0001.jpg …). Liegt bewusst
+ * AUSSERHALB des Repos: 723 4K-Frames sind Rohmaterial, nicht Quellcode.
+ * Erzeugt mit:
+ *   ffmpeg -i clip.mp4 -vf scale=2560:1440 -qscale:v 2 frames/X/f_%04d.jpg
+ * Die 2560 px Breite ist Absicht: Sie geben der EDITORISCHEN Kamera
+ * (ZOOM/PAN unten) Reserve, ohne je hochzuskalieren.
+ */
+const CLIP_ROOT =
+  process.env.CLIP_FRAMES ??
+  "/tmp/claude-0/-home-user-proktologie/517eb647-c0fe-5839-bbfe-61e8ecd84bd6/scratchpad/frames";
+
 const TOTAL = 500;
-const SW = 1536; // Quellbreite des Untersuchungsraum-Fotos
-const SH = 1024;
-const COVER_H = Math.round((SW / 16) * 9); // 864 – 16:9-cover im Quellbild
+/** Breite/Höhe der extrahierten Clip-Frames (Reserve für den Punch-in). */
+const CLIP_W = 2560;
+const CLIP_H = 1440;
 const GRAIN_TILE = 512;
-/** Korn-Amplitude: Rauschwerte 96–160 um 128 → ±32·0.35 ≈ ±11 Stufen. */
-const GRAIN_K = 0.35;
+/** Korn-Amplitude: Rauschwerte 96–160 um 128 → ±32·0.28 ≈ ±9 Stufen. */
+const GRAIN_K = 0.28;
 
 const DEEP_C = [23, 37, 27]; // Marken-Deep #17251B
 const CREAM_C = [247, 246, 241];
@@ -87,70 +92,102 @@ function chain(keys, f) {
   return last.v;
 }
 
-// ---------- Das Filmskript: alle Parameter als Funktion von f ----------
-/*
- * Kamera-Dramaturgie „ES BEWEGT SICH“: Die erste Fassung war in der
- * dunklen Phase fast statisch (Bewegungsenergie 0.4–0.8 auf der
- * 64×36-Probe). Jetzt fährt die Kamera DURCHGEHEND – tief im Bokeh darf
- * der Zoom weit über den Schärfe-Deckel (2.35: die Unschärfe verdeckt
- * jede Hochskalierung), zur Ankunft zieht sie kontinuierlich auf weit,
- * und in Behandlung schiebt sie sichtbar auf die grüne Liege (1.45 –
- * mit Korn und Bewegung lesbar, Quellbreite 1536 px).
+// ---------- Die Montage: welcher Clip trägt welchen Master-Frame ----------
+const CLIP_FRAMES = 241;
+
+/**
+ * Ein Segment bildet Master-Frames auf Clip-Frames ab. `fadeIn`/`fadeOut`
+ * geben die Breite der Blende an; innerhalb der Überlappung mischen zwei
+ * Segmente pixelweise, sodass keine Naht sichtbar bleibt.
  */
-/*
- * Die Fahrt beginnt NAH an der grünen Liege (Bokeh: das Markengrün
- * trägt die dunkle Ankunft), zieht zurück und schwenkt durch den Raum,
- * kommt bei 263 weit und scharf an – und schiebt dann in EINER
- * durchgehenden Bewegung durch Diagnostik + Behandlung zurück auf die
- * Liege (1.0 → 1.45): „es kommt näher, je weiter man scrollt“.
+const SEGMENTS = [
+  { clip: "C", from: 1, to: 205, clipFrom: 1, clipTo: 241, fadeOut: 40 },
+  { clip: "A", from: 165, to: 460, clipFrom: 1, clipTo: 241, fadeIn: 40, fadeOut: 40 },
+  { clip: "B", from: 420, to: 500, clipFrom: 1, clipTo: 100, fadeIn: 40 },
+];
+
+/** Gewicht eines Segments bei Master-Frame f (0 = trägt nicht). */
+function segmentWeight(seg, f) {
+  if (f < seg.from || f > seg.to) return 0;
+  let w = 1;
+  if (seg.fadeIn) w *= smoothstep(seg.from, seg.from + seg.fadeIn, f);
+  if (seg.fadeOut) w *= 1 - smoothstep(seg.to - seg.fadeOut, seg.to, f);
+  return w;
+}
+
+/** Clip-Frame-Nummer (1-basiert, gerundet) eines Segments bei Master f. */
+function clipFrameFor(seg, f) {
+  const t = clamp((f - seg.from) / (seg.to - seg.from));
+  const n = Math.round(seg.clipFrom + t * (seg.clipTo - seg.clipFrom));
+  return Math.max(1, Math.min(CLIP_FRAMES, n));
+}
+
+// ---------- Das Grading: alle Parameter als Funktion von f ----------
+/**
+ * Unschärfe (σ). Deutlich sanfter als in der Foto-Fassung: Das echte
+ * Material bringt eigene Tiefenschärfe mit, ein Softfokus genügt.
  */
-const CAM_X = [
-  { at: 1, v: 0.56 }, { at: 55, v: 0.52 }, { at: 115, v: 0.64 }, { at: 176, v: 0.42 },
-  { at: 235, v: 0.5 }, { at: 263, v: 0.5 }, { at: 345, v: 0.44 }, { at: 430, v: 0.5 }, { at: 500, v: 0.52 },
-];
-const CAM_Y = [
-  { at: 1, v: 0.62 }, { at: 55, v: 0.58 }, { at: 115, v: 0.48 }, { at: 176, v: 0.54 },
-  { at: 235, v: 0.47 }, { at: 263, v: 0.46 }, { at: 345, v: 0.62 }, { at: 430, v: 0.5 }, { at: 500, v: 0.46 },
-];
-const CAM_Z = [
-  { at: 1, v: 2.35 }, { at: 55, v: 2.15 }, { at: 115, v: 1.75 }, { at: 176, v: 1.35 },
-  { at: 235, v: 1.06 }, { at: 263, v: 1.0 }, { at: 345, v: 1.45 },
-  { at: 400, v: 1.18 }, { at: 430, v: 1.06 }, { at: 500, v: 1.0 },
-];
-/** Unschärfe (σ): tiefes Bokeh → scharf → sanfter Defokus im Rückzug. */
 const BLUR = [
-  { at: 1, v: 38 }, { at: 115, v: 30 }, { at: 176, v: 22 }, { at: 235, v: 8 },
-  { at: 252, v: 0 }, { at: 345, v: 0 }, { at: 400, v: 11 }, { at: 470, v: 22 }, { at: 500, v: 28 },
+  { at: 1, v: 26 }, { at: 60, v: 22 }, { at: 115, v: 17 }, { at: 176, v: 11 },
+  { at: 235, v: 3.5 }, { at: 252, v: 0 }, { at: 345, v: 0 },
+  { at: 400, v: 6 }, { at: 470, v: 13 }, { at: 500, v: 17 },
 ];
-/** Belichtung – die dunkle Phase bleibt dunkel, aber LESBAR als Bild. */
+/** Belichtung: dunkle Ankunft → volles Licht ab Diagnostik → heller Ausklang. */
 const BRIGHT = [
-  { at: 1, v: 0.55 }, { at: 115, v: 0.62 }, { at: 176, v: 0.7 }, { at: 235, v: 0.88 },
-  { at: 263, v: 1.0 }, { at: 345, v: 1.0 }, { at: 430, v: 1.08 }, { at: 500, v: 1.1 },
+  { at: 1, v: 0.58 }, { at: 115, v: 0.66 }, { at: 176, v: 0.74 }, { at: 235, v: 0.9 },
+  { at: 263, v: 1.0 }, { at: 345, v: 1.0 }, { at: 430, v: 1.07 }, { at: 500, v: 1.1 },
 ];
 /** Dunkelgrüner Marken-Schleier (Deep #17251B) – stark am Anfang. */
 const DEEP_TINT = [
-  { at: 1, v: 0.52 }, { at: 115, v: 0.44 }, { at: 176, v: 0.32 }, { at: 235, v: 0.12 },
+  { at: 1, v: 0.44 }, { at: 115, v: 0.37 }, { at: 176, v: 0.28 }, { at: 235, v: 0.12 },
   { at: 263, v: 0 }, { at: 345, v: 0 }, { at: 500, v: 0 },
 ];
-/** Empfangs-Textur blendet im Rückzug ein. */
-const RECEPTION = [
-  { at: 1, v: 0 }, { at: 345, v: 0 }, { at: 400, v: 0.45 }, { at: 445, v: 0.7 }, { at: 500, v: 0.75 },
-];
-/** Cream-Beruhigung ganz am Ende. */
+/** Cream-Beruhigung ganz am Ende (der DOM-Release vollendet sie). */
 const CREAM = [
-  { at: 1, v: 0 }, { at: 440, v: 0 }, { at: 470, v: 0.25 }, { at: 500, v: 0.6 },
+  { at: 1, v: 0 }, { at: 440, v: 0 }, { at: 470, v: 0.22 }, { at: 500, v: 0.55 },
+];
+/** Sättigung: zurückhaltend im Dunkeln, natürlich im hellen Raum. */
+const SAT = [
+  { at: 1, v: 0.8 }, { at: 200, v: 0.86 }, { at: 263, v: 1.0 }, { at: 500, v: 1.0 },
 ];
 /**
- * Lichtschweif: ZWEI Durchgänge. Zwischen 105 und 118 springt die
- * Position zurück nach links – unsichtbar, weil SWEEP_A dort exakt 0
- * ist; das Ergebnis pro Pixel bleibt stetig.
+ * EDITORISCHE KAMERA über dem Clip-Bild: Ausschnitt aus dem 2560er Frame,
+ * skaliert auf die Zielgröße. Sie ADDIERT sich zur echten Kamerafahrt im
+ * Material – erst zusammen ergibt das pro Scroll-Einheit die Bewegung,
+ * die ein Film braucht. Da immer VERKLEINERT wird (Ausschnitt ≥ Zielbreite),
+ * kostet der Punch-in keine Schärfe.
+ *
+ *   001–235  Schub aus der Unschärfe heran            1.52 → 1.12
+ *            (kräftig: die Weichzeichnung dort dämpft jede Bewegung,
+ *             also braucht die dunkle Phase den grössten Kamera-Hub)
+ *   236–345  DIE Fahrt: heran an die grüne Liege      1.12 → 1.36
+ *   346–460  Rückzug, die Bühne öffnet sich wieder    1.36 → 1.05
+ *   461–500  Beruhigung                               1.05 → 1.00
+ * Der Deckel 1.52 ist gerechnet: 2560/1.52 = 1684 px Ausschnitt, immer
+ * noch breiter als die 1600 px Zielbreite – es wird nie hochskaliert.
  */
+const ZOOM = [
+  { at: 1, v: 1.52 }, { at: 60, v: 1.42 }, { at: 115, v: 1.32 }, { at: 176, v: 1.22 },
+  { at: 235, v: 1.12 }, { at: 263, v: 1.16 }, { at: 291, v: 1.22 }, { at: 345, v: 1.36 },
+  { at: 400, v: 1.2 }, { at: 460, v: 1.05 }, { at: 500, v: 1.0 },
+];
+/** Blickpunkt (Anteil der Quellbreite/-höhe) – leichte Seitwärtsdrift. */
+const PAN_X = [
+  { at: 1, v: 0.38 }, { at: 60, v: 0.45 }, { at: 115, v: 0.57 }, { at: 176, v: 0.44 },
+  { at: 235, v: 0.48 }, { at: 345, v: 0.54 }, { at: 460, v: 0.5 }, { at: 500, v: 0.5 },
+];
+const PAN_Y = [
+  { at: 1, v: 0.41 }, { at: 115, v: 0.48 }, { at: 235, v: 0.5 },
+  { at: 345, v: 0.56 }, { at: 500, v: 0.5 },
+];
+
+/** Lichtschweif: Position (Anteil der Breite) und Stärke – zwei Durchgänge. */
 const SWEEP_X = [
   { at: 1, v: -0.35 }, { at: 105, v: 1.4 }, { at: 118, v: -0.45 }, { at: 240, v: 1.3 }, { at: 500, v: 1.5 },
 ];
 const SWEEP_A = [
-  { at: 1, v: 0.34 }, { at: 88, v: 0.3 }, { at: 104, v: 0 }, { at: 124, v: 0 },
-  { at: 140, v: 0.3 }, { at: 215, v: 0.22 }, { at: 250, v: 0 }, { at: 500, v: 0 },
+  { at: 1, v: 0.26 }, { at: 88, v: 0.22 }, { at: 104, v: 0 }, { at: 124, v: 0 },
+  { at: 140, v: 0.22 }, { at: 215, v: 0.16 }, { at: 250, v: 0 }, { at: 500, v: 0 },
 ];
 
 // ---------- Hilfsebenen (einmal erzeugt, als Rohpuffer) ----------
@@ -170,13 +207,13 @@ async function makeLightSweep(w, h) {
 
 /**
  * Vignette als vorberechneter Multiplikator je Pixel und Kanal:
- * m = (1−a) + a·C/255 mit C = #0b120d und a = 0 (Mitte) … 0.42 (Rand).
+ * m = (1−a) + a·C/255 mit C = #0b120d und a = 0 (Mitte) … 0.36 (Rand).
  */
 async function makeVignetteMult(w, h) {
   const svg = `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">
     <defs><radialGradient id="v" cx="0.5" cy="0.46" r="0.75">
       <stop offset="0.62" stop-color="#000000" stop-opacity="0"/>
-      <stop offset="1" stop-color="#0b120d" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#0b120d" stop-opacity="0.36"/>
     </radialGradient></defs>
     <rect width="${w}" height="${h}" fill="url(#v)"/></svg>`;
   const rgba = await sharp(Buffer.from(svg)).ensureAlpha().raw().toBuffer();
@@ -197,7 +234,6 @@ function makeGrainTiles(size, count = 8) {
   for (let t = 0; t < count; t++) {
     const raw = new Uint8Array(size * size);
     for (let i = 0; i < raw.length; i++) {
-      // grobkörniges Gauß-artiges Rauschen um Mittelgrau
       const n = (Math.random() + Math.random() + Math.random()) / 3;
       raw[i] = Math.round(96 + n * 64);
     }
@@ -206,15 +242,13 @@ function makeGrainTiles(size, count = 8) {
   return tiles;
 }
 
-// ---------- Pixel-Mischung: die gesamte Ebenenmathe in EINEM Durchlauf ----------
+// ---------- Pixel-Mischung: Montage + Grading in EINEM Durchlauf ----------
 function blendFrame(o) {
   const {
-    outW, outH, rawLo, rawHi, t, rec, deep, cream, sweepA, sweepLeft,
-    bright, sat, receptionRaw, sweep, vigMult, grainTile, gx, gy,
+    outW, outH, layers, deep, cream, sweepA, sweepLeft,
+    bright, sat, sweep, vigMult, grainTile, gx, gy,
   } = o;
   const out = Buffer.allocUnsafe(outW * outH * 3);
-  const hasHi = t > 0.001 && rawHi;
-  const hasRec = rec > 0.001;
   const hasDeep = deep > 0.001;
   const hasCream = cream > 0.001;
   const hasSweep = sweepA > 0.001;
@@ -222,20 +256,13 @@ function blendFrame(o) {
   for (let y = 0; y < outH; y++) {
     const grow = ((y + gy) % GRAIN_TILE) * GRAIN_TILE;
     for (let x = 0; x < outW; x++, p += 3) {
-      let r = rawLo[p];
-      let g = rawLo[p + 1];
-      let b = rawLo[p + 2];
-      // Fokus-Leiter: zwei Blur-Stufen linear gemischt
-      if (hasHi) {
-        r += (rawHi[p] - r) * t;
-        g += (rawHi[p + 1] - g) * t;
-        b += (rawHi[p + 2] - b) * t;
-      }
-      // Empfangs-Textur
-      if (hasRec) {
-        r += (receptionRaw[p] - r) * rec;
-        g += (receptionRaw[p + 1] - g) * rec;
-        b += (receptionRaw[p + 2] - b) * rec;
+      // Montage: gewichtete Summe der aktiven Clip-Segmente
+      let r = 0, g = 0, b = 0;
+      for (let i = 0; i < layers.length; i++) {
+        const { data, w } = layers[i];
+        r += data[p] * w;
+        g += data[p + 1] * w;
+        b += data[p + 2] * w;
       }
       // Dunkelgrüner Schleier
       if (hasDeep) {
@@ -284,94 +311,105 @@ function blendFrame(o) {
 async function bake({ outDir, outW, outH, frames, masterFor }) {
   await mkdir(outDir, { recursive: true });
 
-  /*
-   * Blur-Leiter: sharp.blur ist teuer – die Stufen werden EINMAL auf dem
-   * Quellbild gerendert (verlustfrei als PNG zwischengelagert), pro Frame
-   * werden zwei Stufen linear gemischt (visuell stetige Fokusfahrt).
-   */
-  const SIGMAS = [0.3, 3, 7, 13, 21, 31, 43];
-  const ladder = [];
-  for (const s of SIGMAS) {
-    ladder.push(await sharp(SRC_EXAM).blur(s).png().toBuffer());
-  }
-  const receptionRaw = await sharp(SRC_RECEPTION)
-    .resize(outW, outH, { fit: "cover" })
-    .blur(18)
-    .modulate({ brightness: 1.1, saturation: 0.9 })
-    .removeAlpha()
-    .raw()
-    .toBuffer();
   const sweep = await makeLightSweep(Math.round(outW * 0.9), outH);
   const vigMult = await makeVignetteMult(outW, outH);
   const grain = makeGrainTiles(GRAIN_TILE);
 
-  const ladderPair = (sigma) => {
-    for (let i = 1; i < SIGMAS.length; i++) {
-      if (sigma <= SIGMAS[i]) {
-        return [i - 1, i, clamp((sigma - SIGMAS[i - 1]) / (SIGMAS[i] - SIGMAS[i - 1]))];
-      }
-    }
-    return [SIGMAS.length - 1, SIGMAS.length - 1, 0];
+  /*
+   * Clip-Frames werden in Zielgröße als RGB-Rohpuffer gecacht. Der Cache
+   * ist auf ein Fenster begrenzt (4K-Quellen, 1600×900×3 ≈ 4.3 MB je
+   * Frame): mehr als ~90 gleichzeitig wären unnötiger Speicherdruck.
+   */
+  const cache = new Map();
+  const cacheOrder = [];
+  const CACHE_MAX = 60;
+  /**
+   * Ein Clip-Frame durch die editorische Kamera: Ausschnitt (extract) aus
+   * dem 2560er Frame, dann auf die Zielgröße verkleinert. Der Ausschnitt
+   * geht in den Cache-Key – bei Rückwärtsfahrten trifft er wieder.
+   */
+  const clipRaw = async (clip, n, cam) => {
+    const key = `${clip}/${n}/${cam.sx},${cam.sy},${cam.sw}`;
+    const hit = cache.get(key);
+    if (hit) return hit;
+    const file = join(CLIP_ROOT, clip, `f_${String(n).padStart(4, "0")}.jpg`);
+    const data = await sharp(file)
+      .extract({ left: cam.sx, top: cam.sy, width: cam.sw, height: cam.sh })
+      .resize(outW, outH, { fit: "fill" })
+      .removeAlpha()
+      .raw()
+      .toBuffer();
+    cache.set(key, data);
+    cacheOrder.push(key);
+    while (cacheOrder.length > CACHE_MAX) cache.delete(cacheOrder.shift());
+    return data;
   };
 
-  /** Kamera-Crop einer Leiterstufe als RGB-Rohpuffer in Zielgröße. */
-  const cropRaw = (png, extract) =>
-    sharp(png).extract(extract).resize(outW, outH).removeAlpha().raw().toBuffer();
+  /** Quellrechteck der editorischen Kamera – immer innerhalb des Bildes. */
+  const camRect = (f) => {
+    const zoom = Math.max(1, chain(ZOOM, f));
+    // 16:9-cover im 2560×1440-Frame (bereits 16:9) → volle Breite bei zoom 1
+    const sw = Math.round(CLIP_W / zoom);
+    const sh = Math.round(CLIP_H / zoom);
+    const sx = Math.round(clamp(chain(PAN_X, f) * CLIP_W - sw / 2, 0, CLIP_W - sw));
+    const sy = Math.round(clamp(chain(PAN_Y, f) * CLIP_H - sh / 2, 0, CLIP_H - sh));
+    return { sx, sy, sw, sh };
+  };
 
   const renderFrame = async (n) => {
     const f = masterFor(n);
-    const x = chain(CAM_X, f);
-    const y = chain(CAM_Y, f);
-    const z = chain(CAM_Z, f);
     const sigma = chain(BLUR, f);
     const bright = chain(BRIGHT, f);
     const deep = chain(DEEP_TINT, f);
-    const rec = chain(RECEPTION, f);
     const cream = chain(CREAM, f);
+    const sat = chain(SAT, f);
     const sweepX = chain(SWEEP_X, f);
     const sweepA = chain(SWEEP_A, f);
-    const sat = mix(0.82, 1.0, smoothstep(200, 263, f));
 
-    // Kamera: cover-Crop im Quellbild (16:9), Pan/Zoom geklemmt
-    const sw = Math.round(SW / z);
-    const sh = Math.round(COVER_H / z);
-    const sx = Math.round(clamp(x * SW - sw / 2, 0, SW - sw));
-    const sy = Math.round(clamp(y * SH - sh / 2, 0, SH - sh));
-    const extract = { left: sx, top: sy, width: sw, height: sh };
-
-    const [lo, hi, t] = ladderPair(sigma);
-    const needHi = hi !== lo && t > 0.001;
-    const [rawLo, rawHi] = await Promise.all([
-      cropRaw(ladder[lo], extract),
-      needHi ? cropRaw(ladder[hi], extract) : Promise.resolve(null),
-    ]);
+    // Montage: aktive Segmente sammeln und auf Summe 1 normieren
+    const active = [];
+    let total = 0;
+    for (const seg of SEGMENTS) {
+      const w = segmentWeight(seg, f);
+      if (w > 0.001) {
+        active.push({ seg, w });
+        total += w;
+      }
+    }
+    if (active.length === 0) throw new Error(`Kein Segment traegt Master-Frame ${f}`);
+    const cam = camRect(f);
+    const layers = await Promise.all(
+      active.map(async ({ seg, w }) => ({
+        data: await clipRaw(seg.clip, clipFrameFor(seg, f), cam),
+        w: w / total,
+      })),
+    );
 
     const px = blendFrame({
-      outW, outH, rawLo, rawHi, t: needHi ? t : 0, rec, deep, cream, sweepA,
+      outW, outH, layers, deep, cream, sweepA,
       sweepLeft: Math.round(sweepX * outW - outW * 0.45),
-      bright, sat, receptionRaw, sweep, vigMult,
+      bright, sat, sweep, vigMult,
       grainTile: grain[n % grain.length],
       gx: (n * 17) % GRAIN_TILE,
       gy: (n * 31) % GRAIN_TILE,
     });
 
-    const out = await sharp(px, { raw: { width: outW, height: outH, channels: 3 } })
-      .webp({ quality: 58 })
-      .toBuffer();
+    // Softfokus zuletzt: echtes Material bringt eigene Tiefenschärfe mit
+    let pipe = sharp(px, { raw: { width: outW, height: outH, channels: 3 } });
+    if (sigma > 0.3) pipe = pipe.blur(sigma);
+    const out = await pipe.webp({ quality: 62 }).toBuffer();
     await writeFile(join(outDir, `frame_${String(n).padStart(4, "0")}.webp`), out);
   };
 
-  // begrenzte Parallelität (libvips ist intern schon mehrfädig)
-  const queue = Array.from({ length: frames }, (_, i) => i + 1);
-  const workers = Array.from({ length: 4 }, async () => {
-    while (queue.length > 0) {
-      const n = queue.shift();
-      if (n === undefined) return;
-      await renderFrame(n);
-      if (n % 50 === 0) console.log(`  ${outDir.split("/").pop()}: ${n}/${frames}`);
-    }
-  });
-  await Promise.all(workers);
+  /*
+   * Sequenziell rendern: Der Frame-Cache lebt vom zeitlichen Zusammenhang
+   * (benachbarte Master-Frames teilen Clip-Frames). Parallelität würde ihn
+   * zerreissen und dieselben 4K-Bilder mehrfach dekodieren.
+   */
+  for (let n = 1; n <= frames; n++) {
+    await renderFrame(n);
+    if (n % 50 === 0) console.log(`  ${outDir.split("/").pop()}: ${n}/${frames}`);
+  }
 }
 
 // ---------- Stetigkeitsprüfung + Gewicht ----------
@@ -383,22 +421,33 @@ async function verify(dir, frames) {
       .raw()
       .toBuffer();
   let worst = 0;
+  let worstAt = 0;
   let prev = await probe(1);
   for (let n = 2; n <= frames; n++) {
     const cur = await probe(n);
     let sum = 0;
     for (let i = 0; i < cur.length; i++) sum += (cur[i] - prev[i]) ** 2;
     const rms = Math.sqrt(sum / cur.length);
-    if (rms > worst) worst = rms;
+    if (rms > worst) { worst = rms; worstAt = n; }
     if (rms > 26) throw new Error(`Sprung zwischen Frame ${n - 1} und ${n} (RMS ${rms.toFixed(1)})`);
     prev = cur;
   }
   let bytes = 0;
   for (const file of await readdir(dir)) bytes += (await stat(join(dir, file))).size;
-  console.log(`  ${dir.split("/").pop()}: stetig (max RMS ${worst.toFixed(1)}), ${(bytes / 1e6).toFixed(1)} MB`);
+  console.log(
+    `  ${dir.split("/").pop()}: stetig (max RMS ${worst.toFixed(1)} bei ${worstAt}), ${(bytes / 1e6).toFixed(1)} MB`,
+  );
 }
 
-console.log("Backe Desktop-Film (500 × 1600×900) …");
+for (const clip of ["A", "B", "C"]) {
+  if (!existsSync(join(CLIP_ROOT, clip, "f_0001.jpg"))) {
+    console.error(`Clip-Frames fehlen: ${join(CLIP_ROOT, clip)}`);
+    console.error("Siehe Kommentar oben (ffmpeg-Aufruf) oder CLIP_FRAMES setzen.");
+    process.exit(1);
+  }
+}
+
+console.log("Backe Desktop-Film (500 × 1600×900) aus echtem Bewegtmaterial …");
 await bake({ outDir: OUT_DESKTOP, outW: 1600, outH: 900, frames: 500, masterFor: (n) => n });
 await verify(OUT_DESKTOP, 500);
 
