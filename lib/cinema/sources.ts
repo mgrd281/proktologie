@@ -4,34 +4,42 @@
  * Jede Umgebung ist eine typisierte Quelle in einem von zwei Modi:
  *
  *   A) FRAME SEQUENCE MODE – nummerierte Frames, per Canvas gescrubbt
- *      (für Bereiche mit echtem Bewegtmaterial)
  *   B) STATIC CINEMATIC MODE – EIN echtes Foto mit Kamerafahrt
  *      (Pan/Zoom/Parallaxe – niemals gefälschte Personenbewegung)
  *
  * Der Compositor (components/cinema/SceneCanvas.tsx) kennt nur diese
- * Schnittstelle. Sobald echte Motion-Clips vorliegen, wird eine
- * still-Quelle durch eine frames-Quelle ERSETZT – reine Datenänderung,
- * kein Architektur-Umbau.
+ * Schnittstelle.
  *
- * ── Ehrliche Belegung HEUTE ─────────────────────────────────────────────
- *  Master-Frames   Quelle                                   Modus
- *  001–240         Lichtsequenz (hero-frames, Platzhalter)  frames
- *  228–355         ECHTES Untersuchungsraum-Foto            still (Kamera
- *                  (trägt Diagnostik UND Behandlung)         weit → Liege)
- *  340–500         Empfangs-Ambiente                        DOM (.team-env)
+ * ── Belegung HEUTE ──────────────────────────────────────────────────────
+ * Der GESAMTE Film (Frames 1–500) ist offline aus den REALEN Praxis-
+ * Assets gebacken (scripts/bake-film.mjs): eine durchgehende Kamerafahrt
+ * durch das echte Untersuchungsraum-Foto – aus tiefer Unschärfe ankommen,
+ * scharf im Raum, Dolly zur grünen Liege, Rückzug ins helle Empfangs-
+ * Ambiente. Kamerabewegung und Licht, keine erfundenen Menschen.
+ * Desktop lädt 500 Frames (1600×900), Telefone 250 Frames (960×540).
  *
- * ── Frame-Bereiche, die auf echtes Bewegtmaterial warten ────────────────
- *  001–115  Empfang/Arzt (Begrüßung, Handbewegung)  → /sequence/desktop/
- *  116–235  Praxisräume (Kamerafahrt)                 frame_0001.webp …
- *  236–345  Untersuchungs-/Behandlungsraum (Bewegung im Raum)
- *  406–500  Wartezimmer/Empfang ohne Personen
- *  Clips bitte INKLUSIVE der Blenden-Ausläufer rendern (die Bereiche
- *  überlappen die Szenengrenzen), Benennung frame_%04d.webp, Desktop
- *  1280–1600 px; Mobil-Varianten optional (Gerät nutzt sonst Stills).
+ * ── Echte menschliche Bewegung später ───────────────────────────────────
+ * Sobald echte Video-Clips aus der Praxis vorliegen (Empfang, Gang,
+ * Behandlungsgriff – mit Einverständnis der Gezeigten), werden ihre
+ * extrahierten Frames DIREKT in public/sequence/desktop/ die
+ * betreffenden Frame-Bereiche ersetzen (Dateitausch, kein Code):
+ *   001–115  Empfang/Arzt (Begrüßung)      236–345  Untersuchungsraum
+ *   116–235  Praxisräume (Kamerafahrt)     406–500  Empfang ohne Personen
+ * Clips bitte INKLUSIVE der Blenden-Ausläufer rendern, Benennung
+ * frame_%04d.webp, 1600×900; Mobil-Varianten 960×540 (jeder 2. Frame).
+ * KI-generierte Personen kommen nicht infrage (Projektregel).
  */
 
 import type { CamKeyframe } from "./camera.ts";
-import { AMBIENT_SPAN, FRAME_LAYERS } from "./frames.ts";
+import { TOTAL_FRAMES } from "./frames.ts";
+
+/** Store-Feintuning je Quelle (Rest kommt aus DEFAULT_STORE_CONFIG). */
+export interface FilmStoreTuning {
+  /** Voll aufgelöstes Gleitfenster ±radius um den Playhead. */
+  windowRadius: number;
+  /** Breite der dauerhaften Grob-Leiter. */
+  ladderWidth: number;
+}
 
 export interface FramesSource {
   mode: "frames";
@@ -43,6 +51,9 @@ export interface FramesSource {
   span: [number, number];
   /** Sichtbarkeit über Master-Frames. */
   alpha: (f: number) => number;
+  /** Welche Geräteklasse diese Sequenz lädt (<768 px = mobile). */
+  media: "desktop" | "mobile";
+  store: FilmStoreTuning;
 }
 
 export interface StillSource {
@@ -66,39 +77,33 @@ export interface StillSource {
 
 export type SceneSource = FramesSource | StillSource;
 
-/** Lichtsequenz: trägt die Szenen 01–04 als abstrakte Umgebung. */
-export const AMBIENT_SOURCE: FramesSource = {
+/**
+ * Der gebackene Film – trägt die GESAMTE Fahrt (alpha konstant 1; die
+ * Kreuzblenden liegen IM Material, der DOM-Release vollendet das Ende).
+ * windowRadius 24: 1600×900-Bitmaps ≈ 5.8 MB → Fenster ≈ 320 MB Peak.
+ */
+export const FILM_DESKTOP: FramesSource = {
   mode: "frames",
-  id: "ambient",
-  path: (i) => `/hero-frames/frame-${String(i).padStart(4, "0")}.webp`,
+  id: "film",
+  path: (i) => `/sequence/desktop/frame_${String(i).padStart(4, "0")}.webp`,
   count: 500,
-  span: AMBIENT_SPAN,
-  alpha: FRAME_LAYERS.ambient,
+  span: [1, TOTAL_FRAMES],
+  alpha: () => 1,
+  media: "desktop",
+  store: { windowRadius: 24, ladderWidth: 640 },
 };
 
-/**
- * Der ECHTE Untersuchungsraum – EINE Quelle für Diagnostik UND Behandlung.
- * Die Keyframe-Kette macht die Grenze 05→06 zu einer durchgehenden
- * Kamerabewegung (weit → Diagnostik-Seite → nah an der grünen Liege):
- * keine Blende, kein Schnitt – dieselbe Einstellung, weitergefahren.
- */
-export const EXAM_SOURCE: StillSource = {
-  mode: "still",
-  id: "exam",
-  src: "/images/untersuchungsraum-1536.webp",
-  srcMobile: "/images/untersuchungsraum-960.webp",
-  soft: "/images/untersuchungsraum-soft-1536.webp",
-  softMobile: "/images/untersuchungsraum-soft-960.webp",
-  srcW: 1536,
-  srcH: 1024,
-  camera: [
-    { at: 228, cam: { x: 0.5, y: 0.42, zoom: 1.0 } },
-    { at: 290.5, cam: { x: 0.58, y: 0.46, zoom: 1.09 } },
-    { at: 355, cam: { x: 0.42, y: 0.6, zoom: 1.2 } },
-  ],
-  alpha: FRAME_LAYERS.exam,
-  pointerShift: 8,
+/** Mobil: jeder 2. Master-Frame bei 960×540 (≈ 1.6 MB Bitmap, Fenster ≈ 50 MB). */
+export const FILM_MOBILE: FramesSource = {
+  mode: "frames",
+  id: "film-mobile",
+  path: (i) => `/sequence/mobile/frame_${String(i).padStart(4, "0")}.webp`,
+  count: 250,
+  span: [1, TOTAL_FRAMES],
+  alpha: () => 1,
+  media: "mobile",
+  store: { windowRadius: 12, ladderWidth: 480 },
 };
 
 /** Alle Canvas-Quellen in Zeichenreihenfolge (unten → oben). */
-export const SOURCES: SceneSource[] = [AMBIENT_SOURCE, EXAM_SOURCE];
+export const SOURCES: SceneSource[] = [FILM_DESKTOP, FILM_MOBILE];

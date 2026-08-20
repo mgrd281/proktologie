@@ -131,14 +131,15 @@ export function activeScene(f: number): number {
 
 /**
  * Kontinuitäts- und Umgebungsbänder – in FRAME-Einheiten. Getrennt von den
- * Szenenblenden, denn Umgebungen tragen mehrere Szenen: Die Lichtsequenz
- * trägt 01–04, der ECHTE Untersuchungsraum trägt 05+06 (eine Quelle, eine
- * verkettete Kamerafahrt), das Empfangs-Ambiente trägt 07 bis zum Release.
+ * Szenenblenden, denn Umgebungen tragen mehrere Szenen. Den Bildinhalt
+ * selbst trägt seit dem gebackenen Film EINE Frame-Quelle über die ganze
+ * Fahrt (lib/cinema/sources.ts); ambient/exam takten weiter die
+ * DOM-Verläufe und das data-phase-/Header-Timing über denselben Phasen.
  */
 export const FRAME_LAYERS = {
-  /** Lichtsequenz (hero-frames) + Verläufe: trägt 01–04. */
+  /** Dunkle Ankunftsphase (DOM-Verläufe): trägt 01–04. */
   ambient: (f: number) => band(f, -10, 1, 230, 250),
-  /** Der echte Untersuchungsraum (Canvas-Still, Kamera weit → Liege nah). */
+  /** Helle Untersuchungsraum-Phase des Films (Kamera weit → Liege nah). */
   exam: (f: number) => band(f, 228, 242, 340, 355),
   /** Empfangs-Ambiente: trägt 07–Finale, geht nur mit dem Release. */
   room: (f: number) => band(f, 340, 351, 1200, 1300),
@@ -187,7 +188,7 @@ export function headerSolidProgress(): number {
  */
 export const ANCHOR_FRAMES = [25, 85, 138, 198, 263, 318, 388, 450];
 
-/** Frame-Spanne der Lichtsequenz: 500 lokale Frames über Master 1–240. */
+/** Spanne der dunklen Ankunftsphase (DOM-Verläufe über Master 1–240). */
 export const AMBIENT_SPAN: [number, number] = [1, 240];
 
 /** Indizes für die Senken. */
