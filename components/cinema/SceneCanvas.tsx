@@ -54,9 +54,22 @@ function localFrame(source: FramesSource, f: number): number {
   return Math.max(1, Math.min(source.count, Math.round(1 + t * (source.count - 1))));
 }
 
-export const SceneCanvas = forwardRef<SceneCanvasHandle, { className?: string }>(
-  function SceneCanvas({ className }, ref) {
+export const SceneCanvas = forwardRef<
+  SceneCanvasHandle,
+  {
+    className?: string;
+    /**
+     * Wird gerufen, sobald neues Material zeichenbar ist. Nötig, weil der
+     * eine rAF-Loop in MasterSequence aussteigt, sobald die Fahrt ruht:
+     * Ohne dieses Signal bliebe das Canvas beim Erstaufruf leer, bis der
+     * Besucher scrollt – die Startseite zeigte dann nur den Verlauf.
+     */
+    onContentReady?: () => void;
+  }
+>(function SceneCanvas({ className, onContentReady }, ref) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const readyRef = useRef(onContentReady);
+    readyRef.current = onContentReady;
     const stillsRef = useRef<StillState[]>([]);
     const framesRef = useRef<FramesState[]>([]);
     const activeRef = useRef(true);
@@ -101,6 +114,7 @@ export const SceneCanvas = forwardRef<SceneCanvasHandle, { className?: string }>
           if (disposed) return;
           state.sharp = await createImageBitmap(blob);
           dirtyRef.current = true;
+          readyRef.current?.();
         } catch {
           /* Quelle bleibt leer – die DOM-Umgebungen tragen weiter */
         }
@@ -110,6 +124,7 @@ export const SceneCanvas = forwardRef<SceneCanvasHandle, { className?: string }>
             if (disposed) return;
             state.soft = await createImageBitmap(blob);
             dirtyRef.current = true;
+            readyRef.current?.();
           } catch {
             /* weiche Ebene optional */
           }
@@ -149,6 +164,7 @@ export const SceneCanvas = forwardRef<SceneCanvasHandle, { className?: string }>
           });
           store.onFrameReady = () => {
             dirtyRef.current = true;
+            readyRef.current?.();
           };
           store.start();
           store.setPlayhead(localFrame(source, lastFrameRef.current), 1);
