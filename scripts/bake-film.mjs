@@ -17,8 +17,12 @@
  *   public/sequence/desktop/frame_0001.webp … frame_0500.webp  (1600×900)
  *   public/sequence/mobile/frame_0001.webp  … frame_0250.webp  (960×540)
  *
- * ── Montage der drei Clips ──────────────────────────────────────────────
- *   C  „subtle push“   Master 001–205   ruhige Ankunft, tief im Bokeh
+ * ── Montage ─────────────────────────────────────────────────────────────
+ *   R  REZEPTION       Master 001–070   Szene 01: Ankunft am Tresen
+ *                      (Standbild + Engine-Kamera, kein Clip – das
+ *                       gelieferte Video war 852×480 und damit für das
+ *                       1600-px-Ziel zu weich)
+ *   C  „subtle push“   Master 045–205   Untersuchungsraum ab Szene 02
  *   A  „dolly in“      Master 165–460   DIE Fahrt: heran an die Liege
  *   B  „pan“           Master 420–500   Ausklang, Blick öffnet sich
  *   An beiden Nähten liegt eine 40 Frames breite Blende, PIXELWEISE in
@@ -44,8 +48,16 @@ try {
 }
 
 const ROOT = new URL("..", import.meta.url).pathname;
-const OUT_DESKTOP = join(ROOT, "public/sequence/desktop");
-const OUT_MOBILE = join(ROOT, "public/sequence/mobile");
+/**
+ * Ausgabeziel und Szene-01-Schalter sind überschreibbar, damit sich der
+ * Zustand OHNE Szene 01 reproduzieren und Frame für Frame gegen den
+ * neuen Stand vergleichen lässt (Beweis der Szenen-Isolation):
+ *   S01=0 SEQ_OUT=/tmp/ref node scripts/bake-film.mjs
+ */
+const SEQ_OUT = process.env.SEQ_OUT ?? join(ROOT, "public/sequence");
+const OUT_DESKTOP = join(SEQ_OUT, "desktop");
+const OUT_MOBILE = join(SEQ_OUT, "mobile");
+const S01_ENABLED = process.env.S01 !== "0";
 
 /**
  * Verzeichnis der extrahierten Clip-Frames (f_0001.jpg …). Liegt bewusst
@@ -92,6 +104,42 @@ function chain(keys, f) {
   return last.v;
 }
 
+// ---------- Szene 01: die echte Rezeption ----------
+/**
+ * Standbild-Quelle mit Engine-Kamera. Die Datei ist 2400 px breit
+ * (scripts/make-rezeption.mjs): Das Original misst nur 1672 px, ein
+ * Dolly-in ohne Hochskalierung wäre auf Zoom 1.045 begrenzt gewesen –
+ * unsichtbar. Bei Zoom 1.28 entspricht der Ausschnitt ≈ 1.22-facher
+ * echter Vergrösserung, dem Deckel aus lib/cinema/camera.ts.
+ */
+const REZEPTION_SRC = join(ROOT, "public/images/rezeption-2400.webp");
+
+/**
+ * Sehr langsamer Dolly-in Richtung Glastüren – Szene 01 endet am Flur.
+ * Start bewusst NICHT bei Zoom 1.0: Bei voller Bildbreite liesse sich der
+ * Blickpunkt nicht mehr verschieben, und die Tresenkurve läge hinter dem
+ * Lesbarkeitsschleier der Typografie (linke 56 %). Ab 1.10 sitzt das
+ * Motiv von Anfang an in der freien rechten Bildhälfte.
+ */
+const REZ_ZOOM = [
+  { at: 1, v: 1.1 }, { at: 30, v: 1.18 }, { at: 55, v: 1.26 }, { at: 70, v: 1.3 },
+];
+/** Blickpunkt driftet nach rechts: weg vom Tresen, hin zum Durchgang. */
+const REZ_X = [
+  { at: 1, v: 0.55 }, { at: 30, v: 0.6 }, { at: 55, v: 0.64 }, { at: 70, v: 0.67 },
+];
+const REZ_Y = [
+  { at: 1, v: 0.52 }, { at: 40, v: 0.5 }, { at: 70, v: 0.47 },
+];
+/**
+ * Das grüne Lichtband ist das führende Motion-Element: eine weiche
+ * Helligkeitswelle wandert über die Bahn Richtung Flur, während die
+ * Kamera fährt. Position als Anteil der Bildbreite.
+ */
+const REZ_PULSE = [
+  { at: 1, v: -0.25 }, { at: 70, v: 1.25 },
+];
+
 // ---------- Die Montage: welcher Clip trägt welchen Master-Frame ----------
 const CLIP_FRAMES = 241;
 
@@ -99,9 +147,18 @@ const CLIP_FRAMES = 241;
  * Ein Segment bildet Master-Frames auf Clip-Frames ab. `fadeIn`/`fadeOut`
  * geben die Breite der Blende an; innerhalb der Überlappung mischen zwei
  * Segmente pixelweise, sodass keine Naht sichtbar bleibt.
+ *
+ * `inAt` entkoppelt den Blendenbeginn von `from`: Segment C blendet erst
+ * ab Frame 45 ein, behält aber seine ursprüngliche Frame-Zuordnung
+ * (from 1 … to 205). Ohne diese Trennung würde ein späterer Start die
+ * gesamte Clip-Zuordnung dahinter verschieben – und damit Szenen ändern,
+ * die unangetastet bleiben sollen.
  */
 const SEGMENTS = [
-  { clip: "C", from: 1, to: 205, clipFrom: 1, clipTo: 241, fadeOut: 40 },
+  ...(S01_ENABLED ? [{ still: "rezeption", from: 1, to: 70, fadeOut: 26 }] : []),
+  ...(S01_ENABLED
+    ? [{ clip: "C", from: 1, to: 205, clipFrom: 1, clipTo: 241, inAt: 45, fadeIn: 26, fadeOut: 40 }]
+    : [{ clip: "C", from: 1, to: 205, clipFrom: 1, clipTo: 241, fadeOut: 40 }]),
   { clip: "A", from: 165, to: 460, clipFrom: 1, clipTo: 241, fadeIn: 40, fadeOut: 40 },
   { clip: "B", from: 420, to: 500, clipFrom: 1, clipTo: 100, fadeIn: 40 },
 ];
@@ -110,7 +167,10 @@ const SEGMENTS = [
 function segmentWeight(seg, f) {
   if (f < seg.from || f > seg.to) return 0;
   let w = 1;
-  if (seg.fadeIn) w *= smoothstep(seg.from, seg.from + seg.fadeIn, f);
+  if (seg.fadeIn) {
+    const a = seg.inAt ?? seg.from;
+    w *= smoothstep(a, a + seg.fadeIn, f);
+  }
   if (seg.fadeOut) w *= 1 - smoothstep(seg.to - seg.fadeOut, seg.to, f);
   return w;
 }
@@ -190,6 +250,24 @@ const SWEEP_A = [
   { at: 140, v: 0.22 }, { at: 215, v: 0.16 }, { at: 250, v: 0 }, { at: 500, v: 0 },
 ];
 
+/**
+ * Szene-01-Override. Die Ketten oben bleiben UNANGETASTET; für Szene 01
+ * wird darüber eine zweite Fassung gemischt, deren Gewicht bis Frame 76
+ * auf exakt null ausläuft. Ab Frame 76 sind damit alle Grading-Werte
+ * bitgenau die alten – Szene 02 und alles danach bleiben unverändert,
+ * was nach dem Bake per Dateivergleich bewiesen wird.
+ */
+const S01_MIX = (f) => (S01_ENABLED ? 1 - smoothstep(46, 76, f) : 0);
+
+/** Rezeption ist der verbindliche Look: klar ab dem ersten Frame. */
+const S01_BLUR = [{ at: 1, v: 6 }, { at: 12, v: 0 }, { at: 76, v: 0 }];
+/** Heller Empfangsraum statt dunkler Ankunft. */
+const S01_BRIGHT = [{ at: 1, v: 0.94 }, { at: 55, v: 0.9 }, { at: 76, v: 0.88 }];
+/** Kaum Markenschleier – die Rezeption trägt ihr Grün selbst. */
+const S01_DEEP = [{ at: 1, v: 0.05 }, { at: 76, v: 0.1 }];
+/** Natürliche Sättigung: das grüne Lichtband soll leuchten. */
+const S01_SAT = [{ at: 1, v: 0.98 }, { at: 76, v: 0.94 }];
+
 // ---------- Hilfsebenen (einmal erzeugt, als Rohpuffer) ----------
 
 /** Weicher diagonaler Lichtstreif (RGBA-Rohpuffer, Alpha trägt die Form). */
@@ -228,13 +306,31 @@ async function makeVignetteMult(w, h) {
   return mult;
 }
 
+/**
+ * Deterministischer Zufall (mulberry32). Bewusst KEIN Math.random():
+ * Der Skriptkopf verspricht, dass jeder Frame eine reine Funktion seiner
+ * Nummer ist. Mit echtem Zufall wäre jeder Bake-Lauf byteverschieden –
+ * dann liesse sich nicht mehr beweisen, dass eine Änderung nur eine
+ * einzige Szene berührt hat.
+ */
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 /** Kachelbares Filmkorn – 8 Varianten (1 Kanal), pro Frame gewechselt + versetzt. */
 function makeGrainTiles(size, count = 8) {
+  const rand = rng(0x5eed1701);
   const tiles = [];
   for (let t = 0; t < count; t++) {
     const raw = new Uint8Array(size * size);
     for (let i = 0; i < raw.length; i++) {
-      const n = (Math.random() + Math.random() + Math.random()) / 3;
+      const n = (rand() + rand() + rand()) / 3;
       raw[i] = Math.round(96 + n * 64);
     }
     tiles.push(raw);
@@ -345,6 +441,74 @@ async function bake({ outDir, outW, outH, frames, masterFor }) {
     return data;
   };
 
+  /*
+   * Szene 01: Die Rezeption wird EINMAL in voller Breite als Rohpuffer
+   * geladen; die Kamerafahrt schneidet daraus pro Frame aus. Dazu die
+   * Maske der grün leuchtenden Pixel (Tresenband + Bodenbahn), über die
+   * pro Frame eine Helligkeitswelle Richtung Flur wandert.
+   */
+  let rez = null;
+  const loadRezeption = async () => {
+    if (rez) return rez;
+    const meta = await sharp(REZEPTION_SRC).metadata();
+    const { data, info } = await sharp(REZEPTION_SRC)
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    // Grünmaske: Grün deutlich über Rot UND Blau, dazu hell genug
+    const mask = new Float32Array(info.width * info.height);
+    for (let i = 0, p = 0; p < data.length; p += 3, i++) {
+      const r = data[p], g = data[p + 1], b = data[p + 2];
+      const dom = g - Math.max(r, b);
+      if (dom > 18 && g > 90) mask[i] = Math.min(1, (dom - 18) / 60);
+    }
+    rez = { data, w: info.width, h: info.height, mask, srcW: meta.width };
+    return rez;
+  };
+
+  /**
+   * Ein Rezeptions-Frame: Kameraausschnitt + wandernde Lichtwelle auf der
+   * grünen Bahn. Die Welle wird VOR dem Verkleinern angewandt, damit sie
+   * dieselbe Weichheit hat wie das Bild selbst.
+   */
+  const rezeptionRaw = async (f) => {
+    const R = await loadRezeption();
+    const zoom = Math.max(1, chain(REZ_ZOOM, f));
+    const sw = Math.round(R.w / zoom);
+    const sh = Math.round((sw * 9) / 16);
+    const sx = Math.round(clamp(chain(REZ_X, f) * R.w - sw / 2, 0, R.w - sw));
+    const sy = Math.round(clamp(chain(REZ_Y, f) * R.h - sh / 2, 0, R.h - sh));
+
+    const pulse = chain(REZ_PULSE, f);
+    const cut = Buffer.allocUnsafe(sw * sh * 3);
+    for (let y = 0; y < sh; y++) {
+      const srcRow = (sy + y) * R.w;
+      let q = y * sw * 3;
+      for (let x = 0; x < sw; x++, q += 3) {
+        const si = srcRow + sx + x;
+        const p = si * 3;
+        let r = R.data[p], g = R.data[p + 1], b = R.data[p + 2];
+        const m = R.mask[si];
+        if (m > 0.01) {
+          // weiche Welle: Position im QUELLBILD, nicht im Ausschnitt –
+          // dadurch läuft das Licht unabhängig von der Kamerafahrt
+          const u = (sx + x) / R.w;
+          const d = Math.abs(u - pulse);
+          const wv = d < 0.22 ? Math.pow(1 - d / 0.22, 2) : 0;
+          const boost = 1 + m * wv * 0.55;
+          r *= boost; g *= boost; b *= boost;
+        }
+        cut[q] = r > 255 ? 255 : r;
+        cut[q + 1] = g > 255 ? 255 : g;
+        cut[q + 2] = b > 255 ? 255 : b;
+      }
+    }
+    return sharp(cut, { raw: { width: sw, height: sh, channels: 3 } })
+      .resize(outW, outH, { fit: "fill" })
+      .raw()
+      .toBuffer();
+  };
+
   /** Quellrechteck der editorischen Kamera – immer innerhalb des Bildes. */
   const camRect = (f) => {
     const zoom = Math.max(1, chain(ZOOM, f));
@@ -358,13 +522,16 @@ async function bake({ outDir, outW, outH, frames, masterFor }) {
 
   const renderFrame = async (n) => {
     const f = masterFor(n);
-    const sigma = chain(BLUR, f);
-    const bright = chain(BRIGHT, f);
-    const deep = chain(DEEP_TINT, f);
+    // Szene-01-Override: Gewicht ist ab Frame 76 exakt 0 (siehe S01_MIX)
+    const s01 = S01_MIX(f);
+    const sigma = mix(chain(BLUR, f), chain(S01_BLUR, f), s01);
+    const bright = mix(chain(BRIGHT, f), chain(S01_BRIGHT, f), s01);
+    const deep = mix(chain(DEEP_TINT, f), chain(S01_DEEP, f), s01);
     const cream = chain(CREAM, f);
-    const sat = chain(SAT, f);
+    const sat = mix(chain(SAT, f), chain(S01_SAT, f), s01);
     const sweepX = chain(SWEEP_X, f);
-    const sweepA = chain(SWEEP_A, f);
+    // Der Lichtschweif schweigt in Szene 01 – dort führt das echte Lichtband
+    const sweepA = chain(SWEEP_A, f) * (1 - s01);
 
     // Montage: aktive Segmente sammeln und auf Summe 1 normieren
     const active = [];
@@ -380,7 +547,9 @@ async function bake({ outDir, outW, outH, frames, masterFor }) {
     const cam = camRect(f);
     const layers = await Promise.all(
       active.map(async ({ seg, w }) => ({
-        data: await clipRaw(seg.clip, clipFrameFor(seg, f), cam),
+        data: seg.still
+          ? await rezeptionRaw(f)
+          : await clipRaw(seg.clip, clipFrameFor(seg, f), cam),
         w: w / total,
       })),
     );
@@ -437,6 +606,12 @@ async function verify(dir, frames) {
   console.log(
     `  ${dir.split("/").pop()}: stetig (max RMS ${worst.toFixed(1)} bei ${worstAt}), ${(bytes / 1e6).toFixed(1)} MB`,
   );
+}
+
+if (!existsSync(REZEPTION_SRC)) {
+  console.error(`Rezeptions-Asset fehlt: ${REZEPTION_SRC}`);
+  console.error("Erzeugen mit:  node scripts/make-rezeption.mjs <IMG-2144.png>");
+  process.exit(1);
 }
 
 for (const clip of ["A", "B", "C"]) {

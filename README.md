@@ -85,6 +85,19 @@ npm i --no-save sharp          # bewusst keine Repo-Dependency
 node scripts/bake-film.mjs     # rendert + prüft Stetigkeit + Gewicht
 ```
 
+**Szene 01 „Willkommen" trägt die echte Rezeption.** Ihre Quelle ist ein
+Standbild (`public/images/rezeption-2400.webp`), durch das die Engine eine
+Kamerafahrt legt: langsamer Dolly-in Richtung Glastüren, während eine
+Lichtwelle über das grüne Bodenband Richtung Flur wandert. Erzeugt wird das
+Asset mit `node scripts/make-rezeption.mjs <foto.png>` – dabei wird fremdes
+Branding an der Wand durch das echte Praxislogo ersetzt (Bildtreue ist hier
+Rechtsschutz, § 3 HWG / § 5 UWG) und das Bild auf 2400 px gebracht, damit
+der Dolly ohne Hochskalierung Reserve hat. Der erste Frame steht zusätzlich
+als `<picture>` im ausgelieferten HTML: Das Canvas kann erst nach der
+Hydration zeichnen, das Bild ist auf 4G rund vier Sekunden früher da. Bei
+reduzierter Bewegung gewinnt dort ein 1×1-Pixel – es wird kein Filmmaterial
+geladen.
+
 Das Skript rendert `public/sequence/desktop/frame_0001…0500.webp`
 (1600×900, ~11 MB gesamt) und `public/sequence/mobile/frame_0001…0250.webp`
 (960×540, jeder 2. Master-Frame, ~3 MB) als EINE durchgehende

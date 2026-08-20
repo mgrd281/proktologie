@@ -41,7 +41,7 @@ import {
   sceneAlpha,
   sceneLocal,
 } from "@/lib/cinema/frames";
-import { clamp } from "@/lib/cinema/timeline";
+import { clamp, smoothstep } from "@/lib/cinema/timeline";
 import { useScrollProgress } from "@/lib/hooks/useScrollProgress";
 import { useLenis } from "@/providers/LenisProvider";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -288,9 +288,18 @@ export function MasterSequence() {
         el.style.transform = `translate3d(0, ${((0.5 - local) * 54).toFixed(1)}px, 0)`;
       }
 
-      // Lesbarkeitsschleier links: bleibt, solange links Text steht
+      /*
+       * Lesbarkeitsschleier links: bleibt, solange links Text steht.
+       * In Szene 01 etwas zurückgenommen – dort trägt die helle Rezeption
+       * das Bild, und der volle Schleier würde die Tresenkurve schlucken.
+       * Der Nachlass läuft bis Frame 76 auf null aus, alle späteren Szenen
+       * behalten exakt ihren bisherigen Wert.
+       */
+      const scrimEase = 1 - 0.22 * (1 - smoothstep(46, 76, f));
       if (scrimRef.current) {
-        scrimRef.current.style.opacity = ((0.35 + maxAlpha * 0.65) * (1 - release)).toFixed(3);
+        scrimRef.current.style.opacity = (
+          (0.35 + maxAlpha * 0.65) * scrimEase * (1 - release)
+        ).toFixed(3);
       }
 
       // ---- Arzt-Freisteller: trägt 01–02, weicht den Tafeln ----
@@ -461,8 +470,45 @@ export function MasterSequence() {
             <HeroBackground />
           </div>
 
+          {/*
+            * 1b – Der erste Filmframe als echtes Bild. Das Canvas kann erst
+            * zeichnen, wenn React hydriert ist und der FrameStore läuft –
+            * auf 4G gemessene ~6 s, in denen die Bühne sonst nur den
+            * Verlauf zeigte. Dieses Bild steht im ausgelieferten HTML und
+            * braucht kein JavaScript; sobald das Canvas malt, deckt es das
+            * Bild vollständig ab.
+            */}
+          <picture>
+            {/*
+              * Bei reduzierter Bewegung wird KEIN Filmmaterial geladen –
+              * ein 1×1-Pixel gewinnt die Quellenwahl, bevor der Browser
+              * etwas herunterlädt. Die ruhige Fassung trägt dort ohnehin
+              * eigene Bilder.
+              */}
+            <source
+              media="(prefers-reduced-motion: reduce)"
+              srcSet="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+            />
+            <source media="(max-width: 767px)" srcSet="/sequence/mobile/frame_0001.webp" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/sequence/desktop/frame_0001.webp"
+              alt=""
+              aria-hidden="true"
+              fetchPriority="high"
+              decoding="async"
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          </picture>
+
           {/* 2 – DER Compositor: Lichtsequenz + echter Untersuchungsraum */}
-          <SceneCanvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
+          <SceneCanvas
+            ref={canvasRef}
+            className="absolute inset-0 h-full w-full"
+            onContentReady={() => {
+              dirty.current = true;
+            }}
+          />
 
           {/* 3 – Empfangs-Ambiente: trägt 07 bis zum Release */}
           <div
