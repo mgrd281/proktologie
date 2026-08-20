@@ -20,11 +20,12 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
  * Dadurch ist jeder gezeichnete Frame eine zustandslose Funktion des
  * Master-Frames, und Rückwärts-Scrollen malt den Film exakt rückwärts.
  *
- * – DPR-bewusst (Deckel 1.5: die Quellen sind 1280–1536 px breit; mehr
+ * – DPR-bewusst (Deckel 1.5: die Quellen sind 960–1600 px breit; mehr
  *   Backing-Store hieße nur mehr Hochskalierung und Füllrate).
- * – Frame-Sequenzen werden nur auf großen Zeigern ohne reduzierte
- *   Bewegung geladen (Gate wie bisher); Stills zeichnet auch das Telefon
- *   (960er-Varianten) – Static-Cinematic-Modus.
+ * – Der gebackene Film liegt in zwei Fassungen vor: Geräte < 768 px
+ *   laden die 250er-Mobilsequenz, alle anderen die 500er-Desktopsequenz
+ *   (Auswahl über source.media). Reduzierte Bewegung lädt KEINE Sequenz –
+ *   die ruhige Fassung tragen Poster + DOM-Umgebungen.
  * – Ferne Sequenz-Quellen pausieren (Fenster leeren, Leiter behalten);
  *   `setActive(false)` stoppt alles, wenn die Fahrt außer Sicht ist.
  */
@@ -71,7 +72,6 @@ export const SceneCanvas = forwardRef<SceneCanvasHandle, { className?: string }>
       const context = canvas.getContext("2d");
       if (!context) return;
 
-      const desktop = window.matchMedia("(min-width: 1024px)");
       const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
       const mobileAssets = window.matchMedia("(max-width: 767px)");
 
@@ -121,19 +121,29 @@ export const SceneCanvas = forwardRef<SceneCanvasHandle, { className?: string }>
       ).map((source) => ({ source, sharp: null, soft: null }));
       stillsRef.current.forEach((s) => void loadStill(s));
 
-      // ---- Frame-Sequenzen nur auf großen Zeigern ohne reduzierte Bewegung ----
+      // ---- Film-Sequenz nach Geräteklasse; reduzierte Bewegung: keine ----
       const teardownFrames = () => {
         framesRef.current.forEach((f) => f.store.destroy());
         framesRef.current = [];
       };
       const setupFrames = () => {
-        if (framesRef.current.length > 0) return;
-        if (!desktop.matches || reduced.matches) return;
+        const wanted = reduced.matches
+          ? null
+          : mobileAssets.matches
+            ? "mobile"
+            : "desktop";
+        const current =
+          framesRef.current.length > 0 ? framesRef.current[0].source.media : null;
+        if (wanted === current) return;
+        teardownFrames();
+        if (wanted === null) return;
         framesRef.current = SOURCES.filter(
-          (s): s is FramesSource => s.mode === "frames",
+          (s): s is FramesSource => s.mode === "frames" && s.media === wanted,
         ).map((source) => {
           const store = new FrameStore({
             ...DEFAULT_STORE_CONFIG,
+            ...source.store,
+            windowCapacity: source.store.windowRadius * 2 + 16,
             count: source.count,
             path: source.path,
           });
@@ -145,19 +155,15 @@ export const SceneCanvas = forwardRef<SceneCanvasHandle, { className?: string }>
           return { source, store };
         });
       };
-      const onGateChange = () => {
-        if (desktop.matches && !reduced.matches) setupFrames();
-        else teardownFrames();
-      };
-      onGateChange();
-      desktop.addEventListener("change", onGateChange);
-      reduced.addEventListener("change", onGateChange);
+      setupFrames();
+      mobileAssets.addEventListener("change", setupFrames);
+      reduced.addEventListener("change", setupFrames);
 
       return () => {
         disposed = true;
         observer.disconnect();
-        desktop.removeEventListener("change", onGateChange);
-        reduced.removeEventListener("change", onGateChange);
+        mobileAssets.removeEventListener("change", setupFrames);
+        reduced.removeEventListener("change", setupFrames);
         teardownFrames();
         stillsRef.current.forEach((s) => {
           s.sharp?.close();

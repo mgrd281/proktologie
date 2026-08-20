@@ -1,10 +1,12 @@
 /**
- * Poster- und Mobile-Video-Konstanten der Hero-Bildsequenz.
+ * Poster- und Mobile-Video-Konstanten der ruhigen Fassung (Reduced
+ * Motion / statischer Hero).
  *
- * Die Sequenz selbst (500 Frames, Pfadschema, Spannen) ist seit der
- * Frame-Timeline-Engine in lib/cinema/sources.ts registriert; geladen
- * wird sie vom parametrisierten FrameStore über den Compositor
- * (components/cinema/SceneCanvas.tsx).
+ * Der Film selbst (gebackene Frames unter public/sequence/, Pfadschema,
+ * Spannen) ist in lib/cinema/sources.ts registriert; geladen wird er vom
+ * parametrisierten FrameStore über den Compositor
+ * (components/cinema/SceneCanvas.tsx). Gebacken wird er offline mit
+ * scripts/bake-film.mjs.
  */
 
 export const FRAME_DIR = "/hero-frames";

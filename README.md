@@ -75,27 +75,44 @@ components/cinema/
 components/hero/sequence/frameStore.ts   parametrisierter Frame-Lader
 ```
 
-### Szenen-Quellen: zwei Modi, kein Umbau bei echtem Material
+### Der gebackene Film (public/sequence/)
+
+Der Bildinhalt der GESAMTEN Fahrt sind **echte, offline gebackene
+Frames** – wie in der TPL-Referenz, nur aus den realen Praxis-Assets:
+
+```bash
+npm i --no-save sharp          # bewusst keine Repo-Dependency
+node scripts/bake-film.mjs     # rendert + prüft Stetigkeit + Gewicht
+```
+
+Das Skript rendert `public/sequence/desktop/frame_0001…0500.webp`
+(1600×900, ~11 MB gesamt) und `public/sequence/mobile/frame_0001…0250.webp`
+(960×540, jeder 2. Master-Frame, ~3 MB) als EINE durchgehende
+Kamerafahrt durch das echte Untersuchungsraum-Foto: aus tiefer
+Unschärfe ankommen (dunkelgrün gegradet, Lichtschweif), Fokusfahrt,
+scharf im Raum, Dolly zur grünen Liege, Rückzug ins helle
+Empfangs-Ambiente, Cream. Dazu Filmkorn, Vignette, Markengrading –
+alle Parameter sind smoothstep-Ketten über f, jeder Frame eine reine
+Funktion seiner Nummer (Stetigkeit wird nach dem Rendern per
+Nachbar-RMS geprüft). Alle Ebenen-Deckkräfte mischt das Skript in JS
+auf Rohpuffern – sharps `ensureAlpha(t)` setzt keine verlässliche
+Deckkraft.
+
+**Keine erfundenen Menschen:** Kamerabewegung, Fokus und Licht sind
+gebacken; menschliche Bewegung kommt später aus echten Video-Clips der
+Praxis (mit Einverständnis der Gezeigten). Deren extrahierte Frames
+ersetzen dann DIREKT die betreffenden Dateien in `public/sequence/`
+(Bereiche in `lib/cinema/sources.ts` dokumentiert) – Dateitausch, kein
+Code. Das Quellen-Register kennt weiter beide Modi:
 
 ```ts
 type SceneSource =
-  | { mode: "frames"; path(i); count; span }        // echte Bildsequenz
-  | { mode: "still"; src; camera: CamKeyframe[] };  // Foto + Kamerafahrt
+  | { mode: "frames"; path(i); count; span; media }  // echte Bildsequenz
+  | { mode: "still"; src; camera: CamKeyframe[] };   // Foto + Kamerafahrt
 ```
 
-Heute ehrlich belegt: Szenen 01–04 trägt die abstrakte Lichtsequenz
-(`public/hero-frames/`, 500 Platzhalter-Frames – finale Renders ersetzen
-sie 1:1); Szenen 05–06 trägt das **echte Untersuchungsraum-Foto** als
-EINE still-Quelle mit verketteter Kamera (weit → Diagnostik-Seite → nah
-an der Liege) – die Grenze 05→06 ist dadurch eine durchgehende
-Kamerabewegung, kein Schnitt; Szenen 07–Finale trägt das
-Empfangs-Ambiente (DOM). Kamerafahrten in Stills bewegen NUR das Bild –
-niemals gefälschte Gesichts- oder Handbewegung. Sobald kurze Motion-
-Clips vorliegen (Frames extrahieren → skalieren → WebP →
-`/sequence/desktop/frame_0001.webp …`), ersetzt eine frames-Quelle den
-Still per Datenänderung in `sources.ts`. Wartende Bereiche sind dort
-dokumentiert (001–115 Empfang/Arzt, 116–235 Praxisräume, 236–345
-Untersuchungsraum in Bewegung, 406–500 Wartezimmer).
+Kamerafahrten (im Bake wie in künftigen Stills) bewegen NUR das Bild –
+niemals gefälschte Gesichts- oder Handbewegung.
 
 ### Übergänge
 
@@ -113,13 +130,14 @@ BookingCard (`#kontakt` ist die erste Sektion nach Frame 500).
 
 Der Compositor zeichnet pro Frame die aktiven Quellen mit
 globalAlpha-Kreuzblende in EIN DPR-bewusstes Canvas (Deckel 1.5 –
-die Quellen sind 1280–1536 px breit; Still-Zoom ≤ 1.22, sonst Matsch;
+die Quellen sind 960–1600 px breit; Still-Zoom ≤ 1.22, sonst Matsch;
 ein ≥ 2880-px-Re-Export des Raumfotos hebt den Deckel). Keine 500
-<img>-Knoten, kein Text in Frames. Frame-Sequenzen laden nur auf großen
-Zeigern ohne reduzierte Bewegung: Blobs komplett (Leiter-Frames zuerst),
-dekodiert als dauerhafte Grob-Leiter (jeder 8., 640 px) plus
-Voll-Fenster ±28 um den Playhead (LRU, ~240 MB Deckel). Stills zeichnet
-auch das Telefon (960er-Varianten) – Static-Cinematic-Modus. Ferne
+<img>-Knoten, kein Text in Frames. Die Film-Sequenz wählt sich per
+Geräteklasse: < 768 px lädt die 250er-Mobilfassung (Fenster ±12),
+alle anderen die 500er-Desktopfassung (Fenster ±24, Bitmaps ≈ 5.8 MB
+→ ~320 MB Peak, TPL-Klasse); reduzierte Bewegung lädt KEINE Sequenz.
+Blobs komplett (Leiter-Frames zuerst), dekodiert als dauerhafte
+Grob-Leiter (jeder 8.) plus Voll-Fenster um den Playhead (LRU). Ferne
 Quellen pausieren; IntersectionObserver + visibilitychange stoppen
 Loop und Preload, wenn die Fahrt außer Sicht ist. Typografie, Team-
 Karten, Korridor-Tafeln, Bahn und Chrome bleiben DOM (Hybrid – alle vom
@@ -145,10 +163,11 @@ reduzierte Bewegung.
 
 `public/images/untersuchungsraum-*.webp` – das vom Praxisinhaber
 gelieferte Foto (grüne Liege, grünes Lichtband, Praxislogo am Monitor).
-Der Compositor zeichnet es als weiche Rückwand (gedämpfte Kamera) plus
-scharfe Ebene (volle Kamera + Zeiger-Parallaxe) – Weichzeichnung steckt
-IM Asset. Austausch: die vier Dateien überschreiben (Details in
-`public/images/README.txt`).
+Es ist das Herz des gebackenen Films: `scripts/bake-film.mjs` fährt mit
+der Kamera hindurch (weit → Diagnostik-Seite → nah an der Liege).
+Austausch: Foto-Dateien überschreiben (Details in
+`public/images/README.txt`), dann den Bake neu laufen lassen – ein
+≥ 2880-px-Re-Export erlaubt engere Einstellungen.
 
 ## Die sechs Porträts (Zustand 07)
 
