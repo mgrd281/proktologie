@@ -27,146 +27,128 @@ freigestellt mit transparentem Hintergrund) — kein Code-Change nötig.
 Sollte die Datei fehlen oder nicht laden, zeigt die Website automatisch
 ein gestaltetes Marken-Panel (`components/ui/DoctorPortrait.tsx`).
 
-## Die Kamerafahrt der Startseite
+## Das Filmwerk der Startseite (Master-Frame-Timeline)
 
-Die Startseite beginnt nicht mit einem Hero und einzelnen Sektionen,
-sondern mit **einer durchgehenden Fahrt** über neun Zustände – erst nach
-dem Auslauf beginnt die normale Seite:
-
-```
-01 Willkommen · 02 Beschwerden · 03 Leistungen · 04 Symptome
-05 Diagnostik · 06 Behandlung · 07 Team · 08 Praxis · 09 Termin
-→ Auslauf direkt in die Buchung (#kontakt)
-```
-
-Ein Track (1200vh), eine sticky Bühne, **ein** Fortschritt, **ein**
-`requestAnimationFrame`-Loop. Kein Layer hört selbst auf Scroll.
+Die Startseite ist EIN scrubbares Filmwerk aus **500 logischen Frames** –
+sichtbar am durchlaufenden Zähler `FRAME 0173 / 0500` (TPL-Referenz,
+dauerhaftes Gestaltungselement). Acht Hauptszenen + Termin-Finale:
 
 ```
-Scroll → Lenis (duration 1.2, exponentieller Ausklang)
-       → useScrollProgress(track)            Ziel (roh, rAF-gedrosselt)
-       → current += (target - current)·0.14  Trägheit/Nachlauf
-       → alle Ebenen als Senken (transform/opacity, sonst nichts)
+01 Willkommen        Frames 001–055
+02 Dr. Kunstreich    Frames 056–115
+03 Leistungen        Frames 116–175   (Korridor – bleibt im Film)
+04 Beschwerden       Frames 176–235   (+ Symptom-Zyklus als innere Tiefe)
+05 Diagnostik        Frames 236–290   (echtes Untersuchungsraum-Foto, weit)
+06 Behandlung        Frames 291–345   (dieselbe Quelle, Kamera an der Liege)
+07 Warum diese Praxis / Team  346–430 (Untersequenz 01–06)
+08 Praxis & Standort Frames 431–470
+   FINAL Termin      Frames 471–500 → Release direkt in die Buchung
 ```
 
-Der rohe `window.scrollY` wird nirgends direkt auf eine Transformation
-abgebildet: Lenis liefert die Trägheit des Scrollens, der LERP die der
-Kamera. Deshalb läuft die Bewegung nach dem Radstopp sichtbar nach.
+### Master-Fortschritt
 
 ```
-lib/cinema/timeline.ts        Dramaturgie als reine Mathematik (kein DOM)
-lib/cinema/leistungen.ts      Geometrie des Leistungs-Korridors
-lib/cinema/*.test.mjs         Tests ohne Browser
-content/cinema.ts             Textplan der neun Zustände (expliziter Plan)
+progress     = clamp((scrollY − trackTop) / (trackHeight − viewport), 0, 1)
+targetFrame  = 1 + round(progress · 499)
+currentFrame += (targetFrame − currentFrame) · 0.12     ← EIN LERP, EIN rAF
+```
+
+Lenis (duration 1.2, exponentieller Ausklang) liefert das weiche
+Scrollen; der eine Loop folgt ihm mit gewichteter Verzögerung. Roher
+scrollY wird NIE direkt auf eine Transformation abgebildet. Alle Ebenen
+sind **zustandslose Funktionen von currentFrame** – Rückwärts-Scrollen
+kehrt Kamera, Blenden, Team-Fahrt, Bahn und Typografie exakt um
+(getestet: Vorwärts- und Rückwärts-Sweep elementgleich; Pixel-Beweis im
+Browser).
+
+```
+lib/cinema/frames.ts     Master-Timeline: Szenen, Blenden, Bänder, Anker
+lib/cinema/sources.ts    Szenen-Quellen-Register (frames | still)
+lib/cinema/camera.ts     cover + Pan/Zoom-Quellrechteck (reine Mathematik)
+lib/cinema/timeline.ts   die Blenden-Primitiven (clamp/smoothstep/band/cycle)
 components/cinema/
-  MasterSequence.tsx          Track, Bühne, der eine Loop, alle Schreibvorgänge
-  MasterRail.tsx              die eine Leiste 01–09 (Buttons, Tastaturzugang)
-  CinemaStatic.tsx            reduzierte Bewegung / ohne JS
-  layers/StateText.tsx        Typografie eines Zustands
-  layers/LeistungenLayer.tsx  acht Tafeln im Z-Korridor (Zustand 03)
-  layers/SymptomeLayer.tsx    vier Beschwerde-Cluster als Typo-Zyklus (04)
-  layers/TeamStage.tsx        die sechs Porträt-Ebenen (Zustand 07)
-  layers/PraxisLayer.tsx      Adresse, Sprechzeiten, Wege (Zustand 08)
-  layers/TerminLayer.tsx      Buchungs-Vorschau (Zustand 09)
+  MasterSequence.tsx     Track (1000vh), Bühne, DER eine Loop
+  SceneCanvas.tsx        Compositor: zeichnet die aktiven Quellen (≤ 2)
+  FrameCounter.tsx       FRAME 0173 / 0500 · SZENE (dauerhaft sichtbar)
+  MasterRail.tsx         die Leiste 01–08 (Termin-Finale ist keiner)
+  layers/…               Texte, Korridor, Zyklus, Team, Praxis, Termin
+components/hero/sequence/frameStore.ts   parametrisierter Frame-Lader
 ```
 
-### Warum es keine harten Kanten gibt
+### Szenen-Quellen: zwei Modi, kein Umbau bei echtem Material
 
-Kern der Zeitachse ist `band(p, inStart, inEnd, outStart, outEnd)`. Jede
-Ebene bekommt ein Band, das **früher beginnt und später endet** als ihr
-Zustand – daraus entsteht die Überblendung statt des Schnitts:
+```ts
+type SceneSource =
+  | { mode: "frames"; path(i); count; span }        // echte Bildsequenz
+  | { mode: "still"; src; camera: CamKeyframe[] };  // Foto + Kamerafahrt
+```
 
-| Ebene | Band | liest sich als |
-|---|---|---|
-| Lichtsequenz (Canvas) | 0.00 → 0.58 | trägt 01–04, verblasst in den Raum |
-| Arzt-Freisteller | 0.00 → 0.24 | trägt 01–02, weicht den Tafeln |
-| Leistungs-Korridor | 0.165 → 0.36 | kommt in 02, klingt in 04 aus |
-| Symptom-Zyklus | 0.285 → 0.46 | kommt in 03, klingt in 05 aus |
-| **Untersuchungsraum (echtes Foto)** | 0.43 → 0.80 | trägt Diagnostik UND Behandlung |
-| Empfangs-Ambiente | 0.60 → Ende | übernimmt für Team, Praxis, Termin |
-| Team-Porträts | 0.56 → 0.90 | erscheinen, bevor 07 beginnt |
-| Praxis-Karte | 0.72 → 0.93 | beginnt, während Team läuft |
-| Termin-Vorschau | 0.86 → nie | reitet auf dem Auslauf in die Buchung |
-| Bahn, Glow, Leiste | 0.00 → 1.00 | die drei durchgehenden Motive |
-| Auslauf | 0.955 → 1.00 | Bühne löst sich in Cream auf |
+Heute ehrlich belegt: Szenen 01–04 trägt die abstrakte Lichtsequenz
+(`public/hero-frames/`, 500 Platzhalter-Frames – finale Renders ersetzen
+sie 1:1); Szenen 05–06 trägt das **echte Untersuchungsraum-Foto** als
+EINE still-Quelle mit verketteter Kamera (weit → Diagnostik-Seite → nah
+an der Liege) – die Grenze 05→06 ist dadurch eine durchgehende
+Kamerabewegung, kein Schnitt; Szenen 07–Finale trägt das
+Empfangs-Ambiente (DOM). Kamerafahrten in Stills bewegen NUR das Bild –
+niemals gefälschte Gesichts- oder Handbewegung. Sobald kurze Motion-
+Clips vorliegen (Frames extrahieren → skalieren → WebP →
+`/sequence/desktop/frame_0001.webp …`), ersetzt eine frames-Quelle den
+Still per Datenänderung in `sources.ts`. Wartende Bereiche sind dort
+dokumentiert (001–115 Empfang/Arzt, 116–235 Praxisräume, 236–345
+Untersuchungsraum in Bewegung, 406–500 Wartezimmer).
 
-Besonderheiten:
+### Übergänge
 
-- **Textbänder sind von den Zuständen entkoppelt** (`TEXT_BANDS`):
-  Zustand 01 trägt zwei Texte (Willkommen, dann Dr. Kunstreich), beide auf
-  Leistenpunkt 01. Das erste Band ist bei p = 0 voll da, das letzte bleibt
-  bis zum Schluss.
-- **Sprungmarken (`ANCHORS`) statt Zustandsmitte:** Bei Leistungen und
-  Symptomen läge die Mitte exakt in einer Blende (Stationswechsel bzw.
-  Fensterwechsel) – die Marken landen dort, wo der Zustand voll trägt.
-- Der Auslauf skaliert die Bühne **nicht**, sondern blendet in genau den
-  Farbton der Kontakt-Sektion; die **Termin-Vorschau liegt im DOM über dem
-  Auslauf-Schleier** und übergibt als Match-Cut an die echte BookingCard
-  (die genau EINMAL existiert, in `#kontakt` – die Vorschau enthält keine
-  Formularelemente und keine ids).
-- Der Header schaltet bei `HEADER_SOLID_AT` (0.46) auf deckend – kurz
-  **bevor** der Untersuchungsraum die Bühne hell macht (`brightness()`).
-- Zustand 07 behält seinen Unterzähler 01/06 … 06/06 neben der Leiste.
-- Das frühere Intro („Ihre Praxis für Proktologie in Hamburg“) lebt
-  vollständig in Zustand 02; die Sektion darunter entfiel. Für reduzierte
-  Bewegung steht derselbe Inhalt in `CinemaStatic`.
+An JEDER Szenengrenze überblenden beide Nachbarn über ein Fenster von
+20 % der kürzeren Szenendauer (getestet: 15–25 %, Alpha-Summe nie < 0.98,
+höchstens zwei Szenen aktiv, immer trägt eine Umgebung). Nie Weiß, nie
+ein harter Austausch. Die grüne Bahn ist EIN Pfad, dessen Lage eine
+Funktion des Master-Frames ist – sie verbindet Empfang, Arzt, Korridor,
+Raum, Team und Buchung. Das Finale skaliert die Bühne nicht, sondern
+löst sie in den Farbton der Kontakt-Sektion; die Buchungs-Vorschau
+liegt ÜBER dem Release und übergibt als Match-Cut an die echte
+BookingCard (`#kontakt` ist die erste Sektion nach Frame 500).
 
-### Der Leistungs-Korridor (Zustand 03)
+### Rendering & Performance
 
-Die acht Leistungen stehen NICHT als Kartenraster in der Fahrt, sondern
-als Tafeln in der Tiefe: **vier Stationen zu je zwei Tafeln** auf einem
-diagonal fliehenden Korridor rechts der Textspalte (`stationStepX` –
-sonst projizierten gleichplatzierte Tafeln aufeinanderfolgender Stationen
-auf denselben Bildpunkt). Die Kamera endet AUF der letzten Station
-(`corridorTime`); die Tafeln verlassen die Bühne über die Ebenen-Blende in
-den Symptom-Zustand. Deckkraft hängt am Fokus, Tiefenschleier ist ein
-diskretes `data-blur` (nie `filter`). Mobil: vertikale Drift, höchstens
-drei Tafeln, nur Nummer + Titel. Das vollständige Raster steht als
-zugängliche Sektion weiter unten – die Tafeln sind `aria-hidden`.
+Der Compositor zeichnet pro Frame die aktiven Quellen mit
+globalAlpha-Kreuzblende in EIN DPR-bewusstes Canvas (Deckel 1.5 –
+die Quellen sind 1280–1536 px breit; Still-Zoom ≤ 1.22, sonst Matsch;
+ein ≥ 2880-px-Re-Export des Raumfotos hebt den Deckel). Keine 500
+<img>-Knoten, kein Text in Frames. Frame-Sequenzen laden nur auf großen
+Zeigern ohne reduzierte Bewegung: Blobs komplett (Leiter-Frames zuerst),
+dekodiert als dauerhafte Grob-Leiter (jeder 8., 640 px) plus
+Voll-Fenster ±28 um den Playhead (LRU, ~240 MB Deckel). Stills zeichnet
+auch das Telefon (960er-Varianten) – Static-Cinematic-Modus. Ferne
+Quellen pausieren; IntersectionObserver + visibilitychange stoppen
+Loop und Preload, wenn die Fahrt außer Sicht ist. Typografie, Team-
+Karten, Korridor-Tafeln, Bahn und Chrome bleiben DOM (Hybrid – alle vom
+SELBEN currentFrame getrieben); im Renderpfad stehen nur transform,
+opacity, dataset und das quantisierte Bahn-`d`.
 
 ### Tests
 
 ```bash
-node --experimental-strip-types --test lib/cinema/timeline.test.mjs
+node --experimental-strip-types --test lib/cinema/frames.test.mjs
+node --experimental-strip-types --test lib/cinema/camera.test.mjs
 node --experimental-strip-types --test lib/cinema/leistungen.test.mjs
 node --experimental-strip-types --test lib/team/scene.test.mjs
 ```
 
-Die Zeitachsen-Tests kodieren die Abnahmefragen: Decken die neun Zustände
-0–1 lückenlos ab? Trägt zu **jedem** Fortschritt eine Umgebung das Bild?
-Sind an jeder Grenze **beide** Nachbarn sichtbar? Erben die Szenen
-einander (Arzt in 02, Tafeln in 04, Raum vor 05, Team in 06, Praxis in
-07, Termin vor Praxis-Ende)? Läuft die Vorschau wirklich bis zum Ende
-durch? Weil die Dramaturgie vom DOM getrennt ist, ist all das ohne
-Browser prüfbar.
+Dazu die Browser-Suite (Chromium): Zähler monoton in BEIDE Richtungen,
+Reverse-Nachweis (Layer-Opacities und Canvas-Pixel identisch bei
+Rückkehr zum selben Frame), Szenen-Stichproben an allen Ankern und
+Blenden, Trägheitsmessung, Mobil-Gate (keine Sequenz-Downloads),
+reduzierte Bewegung.
 
-## Bildsequenz der Zustände 01–04 (Canvas-Engine)
-
-Die Umgebung der ersten Zustände ist eine scroll-gescrubbte Bildsequenz.
-Engine: `components/hero/sequence/` (config, FrameStore, CanvasSequence).
-Sie hört selbst nicht auf Scroll – die Kamerafahrt ruft `setProgress(p)`.
-
-- **Frames:** `public/hero-frames/frame-0001.webp … frame-0500.webp`
-  (aktuell generierte Platzhalter). Finale Renders ersetzen die Dateien
-  1:1 bei identischem Namensschema – kein Code-Change nötig.
-- **Speicher:** Blobs komplett vorgeladen; dekodiert werden eine dauerhafte
-  Grob-Leiter (jeder 8. Frame, halbe Auflösung) plus ein volles
-  Gleitfenster ±40 Frames um den Playhead (LRU). Fehlt ein Frame, zeichnet
-  der Loop den nächstgelegenen verfügbaren.
-- **Mobile:** keine 500 Frames – Videoslot. Dateien
-  `public/hero-frames/hero-mobile.webm` / `hero-mobile.mp4` ablegen
-  (Poster: `poster.webp`); bis dahin fällt der Slot automatisch auf die
-  Porträt-Karte zurück.
-
-## Der echte Untersuchungsraum (Zustände 05–06)
+## Der echte Untersuchungsraum (Szenen 05–06)
 
 `public/images/untersuchungsraum-*.webp` – das vom Praxisinhaber
-gelieferte Foto des Untersuchungsraums (grüne Liege, grünes Lichtband,
-Praxislogo am Monitor). Es trägt Diagnostik und Behandlung als zwei
-Parallax-Ebenen (weiche Rückwand 0.5×, scharfe Ebene 1.3×, Zoom
-1.06 → 1.00) – Weichzeichnung steckt IM Asset, im Renderpfad stehen nur
-`transform` und `opacity`. Austausch: die vier Dateien überschreiben
-(Details in `public/images/README.txt`).
+gelieferte Foto (grüne Liege, grünes Lichtband, Praxislogo am Monitor).
+Der Compositor zeichnet es als weiche Rückwand (gedämpfte Kamera) plus
+scharfe Ebene (volle Kamera + Zeiger-Parallaxe) – Weichzeichnung steckt
+IM Asset. Austausch: die vier Dateien überschreiben (Details in
+`public/images/README.txt`).
 
 ## Die sechs Porträts (Zustand 07)
 
@@ -274,7 +256,7 @@ schon ab Schritt 1 der Buchungskarte sichtbar daneben.
 ```
 app/            Routen, Layout, globale Styles, Sitemap/Robots/Icon
 components/
-  cinema/       Die Kamerafahrt: Track, Bühne, Leiste, neun Zustände
+  cinema/       Das Filmwerk: Track, Compositor, Zähler, Leiste, Ebenen
   hero/         Bildsequenz-Engine, Beat-Grafiken, statische Fassung
   team/         Porträt-Ebene und ruhige Team-Fassung
   layout/       Header, Mobilmenü, Footer, Skip-Link

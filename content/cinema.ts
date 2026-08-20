@@ -1,17 +1,18 @@
 /**
- * Textplan der Kamerafahrt – EIN expliziter Plan statt Nachschlagen per id.
+ * Textplan des Filmwerks – EIN expliziter Plan, ein Text je Szene.
  *
- * Warum explizit: Die Fahrt und die Detailsektionen benennen dieselben
- * Themen aus verschiedenen Blickwinkeln. `heroBeats` enthält z. B. einen
- * Beat „beschwerden“ mit Symptom-Inhalt – der Zustand 02 „Beschwerden“
- * trägt aber das Praxis-Intro („Ihre Praxis für Proktologie in Hamburg“).
- * Ein Lookup per id griffe hier zwangsläufig daneben.
+ * Warum explizit: Film und Detailsektionen benennen dieselben Themen aus
+ * verschiedenen Blickwinkeln (Szene 04 „Beschwerden“ trägt z. B. das
+ * Praxis-Intro UND den Symptom-Zyklus). Ein Lookup per id griffe daneben.
  *
- * Jeder Eintrag gehört zu genau einem Textband aus lib/cinema/timeline.ts
+ * Jeder Eintrag gehört zu genau einer Szene aus lib/cinema/frames.ts
  * (gleiche Reihenfolge, gleiche ids – wird beim Modul-Laden geprüft).
+ * Kein Text wird in Frames gebacken – alles bleibt DOM (Zugänglichkeit,
+ * SEO, scharfe Typografie).
  */
 
 import type { StateTextContent } from "@/components/cinema/layers/StateText";
+import { benefits, benefitsIntro } from "@/content/benefits";
 import { beschwerden, beschwerdenIntro } from "@/content/beschwerden";
 import { bookingSteps, terminSection } from "@/content/booking";
 import { diagnostikIntro } from "@/content/diagnostik";
@@ -19,7 +20,7 @@ import { heroBeats } from "@/content/hero";
 import { leistungen, leistungenIntro } from "@/content/leistungen";
 import { intro } from "@/content/sections";
 import { teamIntro } from "@/content/team";
-import { TEXT_BANDS } from "@/lib/cinema/timeline";
+import { SCENES } from "@/lib/cinema/frames";
 
 function beat(id: string) {
   const found = heroBeats.find((b) => b.id === id);
@@ -27,33 +28,21 @@ function beat(id: string) {
   return found;
 }
 
-/**
- * Die zehn Texte der Fahrt (Zustand 01 trägt zwei: Willkommen, dann Arzt).
- * Reihenfolge = TEXT_BANDS.
- */
+/** Die neun Texte des Films – Reihenfolge = SCENES (8 Szenen + Finale). */
 export const CINEMA_TEXTS: StateTextContent[] = [
-  // 01a – Willkommen (H1)
+  // 01 – Willkommen (H1)
   {
     kicker: beat("willkommen").kicker,
     headline: beat("willkommen").headline,
     text: beat("willkommen").text,
     cta: beat("willkommen").cta,
   },
-  // 01b – Dr. Kai Kunstreich
+  // 02 – Dr. Kunstreich
   {
     kicker: beat("arzt").kicker,
     headline: beat("arzt").headline,
     text: beat("arzt").text,
     secondary: beat("arzt").secondary,
-  },
-  // 02 – Beschwerden: das Praxis-Intro, wortgleich und VOLLSTÄNDIG
-  // übernommen (beide Absätze – sonst sähen Motion-Nutzer den zweiten nie)
-  {
-    kicker: intro.kicker,
-    headline: ["Beschwerden im Analbereich sind häufig –", "und in den meisten Fällen gut behandelbar"],
-    headlineSize: "md",
-    text: intro.paragraphs[0],
-    secondaryText: intro.paragraphs[1],
   },
   // 03 – Leistungen (die acht Tafeln trägt der Korridor rechts)
   {
@@ -62,13 +51,13 @@ export const CINEMA_TEXTS: StateTextContent[] = [
     text: leistungenIntro.text,
     secondary: { label: "Alle Leistungen im Detail", href: "/#leistungen" },
   },
-  // 04 – Symptome (die vier Cluster zyklieren rechts)
+  // 04 – Beschwerden: Praxis-Intro (wortgleich) + Symptom-Zyklus rechts
   {
-    kicker: beschwerdenIntro.kicker,
-    headline: ["Was Sie bemerken –", "und was dahinterstecken kann"],
+    kicker: intro.kicker,
+    headline: ["Beschwerden im Analbereich sind häufig –", "und in den meisten Fällen gut behandelbar"],
     headlineSize: "md",
     text: beschwerdenIntro.lead,
-    secondary: { label: "Beschwerden im Überblick", href: "/#beschwerden" },
+    secondaryText: intro.paragraphs[1],
   },
   // 05 – Diagnostik (der echte Untersuchungsraum trägt die Szene)
   {
@@ -85,20 +74,25 @@ export const CINEMA_TEXTS: StateTextContent[] = [
     text: beat("behandlung").text,
     items: beat("behandlung").items,
   },
-  // 07 – Team
+  // 07 – Warum diese Praxis / Team (Vertrauensargumente aus content/benefits.ts)
   {
-    kicker: teamIntro.kicker,
+    kicker: benefitsIntro.kicker,
     headline: [teamIntro.title.replace(/\.$/, "")],
     text: teamIntro.text,
+    items: [
+      { title: benefits[0].title, note: benefits[0].text },
+      { title: benefits[3].title, note: benefits[3].text },
+      { title: benefits[5].title, note: benefits[5].text },
+    ],
     secondary: teamIntro.cta,
   },
-  // 08 – Praxis
+  // 08 – Praxis & Standort
   {
     kicker: beat("praxis").kicker,
     headline: beat("praxis").headline,
     text: beat("praxis").text,
   },
-  // 09 – Termin
+  // FINAL – Termin
   {
     kicker: beat("termin").kicker,
     headline: beat("termin").headline,
@@ -111,9 +105,8 @@ export const CINEMA_TEXTS: StateTextContent[] = [
 const EXPECTED_IDS = [
   "willkommen",
   "arzt",
-  "beschwerden",
   "leistungen",
-  "symptome",
+  "beschwerden",
   "diagnostik",
   "behandlung",
   "team",
@@ -121,13 +114,13 @@ const EXPECTED_IDS = [
   "termin",
 ];
 if (
-  CINEMA_TEXTS.length !== TEXT_BANDS.length ||
-  TEXT_BANDS.some((b, i) => b.id !== EXPECTED_IDS[i])
+  CINEMA_TEXTS.length !== SCENES.length ||
+  SCENES.some((s, i) => s.id !== EXPECTED_IDS[i])
 ) {
-  throw new Error("content/cinema.ts und TEXT_BANDS sind auseinandergelaufen");
+  throw new Error("content/cinema.ts und SCENES sind auseinandergelaufen");
 }
 
-/** Die acht Tafeln des Leistungs-Korridors (Zustand 03). */
+/** Die acht Tafeln des Leistungs-Korridors (Szene 03). */
 export const CINEMA_PANELS = leistungen.map((l, i) => ({
   number: String(i + 1).padStart(2, "0"),
   title: l.title,
@@ -135,7 +128,7 @@ export const CINEMA_PANELS = leistungen.map((l, i) => ({
 }));
 
 /**
- * Die vier Symptom-Karten des Typo-Zyklus (Zustand 04).
+ * Die vier Symptom-Karten des Typo-Zyklus (Szene 04).
  *
  * Bewusst MIT dem Rat: In der Quelle gehört zu jeder beruhigenden
  * Einordnung untrennbar die Handlungsempfehlung – beim Blut-Cluster der
@@ -148,7 +141,7 @@ export const CINEMA_SYMPTOME = beschwerden.map((b) => ({
   advice: b.advice,
 }));
 
-/** Die Buchungs-Vorschau (Zustand 09) – zeigt, was unten wirklich wartet. */
+/** Die Buchungs-Vorschau (Finale) – zeigt, was unten wirklich wartet. */
 export const CINEMA_TERMIN = {
   kicker: terminSection.kicker,
   title: terminSection.title,

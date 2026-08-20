@@ -308,34 +308,6 @@ html.lenis body {
 }
 
 /*
- * Der ECHTE Untersuchungsraum (Zustände 05 Diagnostik + 06 Behandlung).
- * Quelle: public/images/untersuchungsraum-*.webp (vom Praxisinhaber
- * geliefertes Foto). Weichzeichnung der Rückwand steckt IM Asset –
- * im Renderpfad stehen nur transform und opacity.
- */
-.exam-env-soft,
-.exam-env-sharp {
-  background-position: 50% 42%;
-  background-size: cover;
-  will-change: transform;
-}
-.exam-env-soft {
-  background-image: image-set(
-    url("/images/untersuchungsraum-soft-960.webp") 1x,
-    url("/images/untersuchungsraum-soft-1536.webp") 2x
-  );
-}
-.exam-env-sharp {
-  background-image: image-set(
-    url("/images/untersuchungsraum-960.webp") 1x,
-    url("/images/untersuchungsraum-1536.webp") 2x
-  );
-  /* Die scharfe Ebene steht leicht beschnitten über der weichen –
-     ihr höherer Parallaxfaktor erzeugt die Tiefe im Raum. */
-  mask-image: linear-gradient(to top, transparent 0%, black 14%);
-}
-
-/*
  * Tafeln des Leistungs-Korridors (Zustand 03). Tiefenschärfe läuft über
  * einen Schleier mit reiner Deckkraft (data-blur), nie über filter.
  */
