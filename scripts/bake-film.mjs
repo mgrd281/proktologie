@@ -88,31 +88,48 @@ function chain(keys, f) {
 }
 
 // ---------- Das Filmskript: alle Parameter als Funktion von f ----------
+/*
+ * Kamera-Dramaturgie „ES BEWEGT SICH“: Die erste Fassung war in der
+ * dunklen Phase fast statisch (Bewegungsenergie 0.4–0.8 auf der
+ * 64×36-Probe). Jetzt fährt die Kamera DURCHGEHEND – tief im Bokeh darf
+ * der Zoom weit über den Schärfe-Deckel (2.35: die Unschärfe verdeckt
+ * jede Hochskalierung), zur Ankunft zieht sie kontinuierlich auf weit,
+ * und in Behandlung schiebt sie sichtbar auf die grüne Liege (1.45 –
+ * mit Korn und Bewegung lesbar, Quellbreite 1536 px).
+ */
+/*
+ * Die Fahrt beginnt NAH an der grünen Liege (Bokeh: das Markengrün
+ * trägt die dunkle Ankunft), zieht zurück und schwenkt durch den Raum,
+ * kommt bei 263 weit und scharf an – und schiebt dann in EINER
+ * durchgehenden Bewegung durch Diagnostik + Behandlung zurück auf die
+ * Liege (1.0 → 1.45): „es kommt näher, je weiter man scrollt“.
+ */
 const CAM_X = [
-  { at: 1, v: 0.5 }, { at: 115, v: 0.62 }, { at: 235, v: 0.46 },
-  { at: 290, v: 0.58 }, { at: 345, v: 0.42 }, { at: 430, v: 0.5 }, { at: 500, v: 0.52 },
+  { at: 1, v: 0.56 }, { at: 55, v: 0.52 }, { at: 115, v: 0.64 }, { at: 176, v: 0.42 },
+  { at: 235, v: 0.5 }, { at: 263, v: 0.5 }, { at: 345, v: 0.44 }, { at: 430, v: 0.5 }, { at: 500, v: 0.52 },
 ];
 const CAM_Y = [
-  { at: 1, v: 0.42 }, { at: 115, v: 0.4 }, { at: 235, v: 0.48 },
-  { at: 290, v: 0.46 }, { at: 345, v: 0.6 }, { at: 430, v: 0.5 }, { at: 500, v: 0.46 },
+  { at: 1, v: 0.62 }, { at: 55, v: 0.58 }, { at: 115, v: 0.48 }, { at: 176, v: 0.54 },
+  { at: 235, v: 0.47 }, { at: 263, v: 0.46 }, { at: 345, v: 0.62 }, { at: 430, v: 0.5 }, { at: 500, v: 0.46 },
 ];
 const CAM_Z = [
-  { at: 1, v: 1.1 }, { at: 115, v: 1.16 }, { at: 235, v: 1.05 }, { at: 263, v: 1.02 },
-  { at: 290, v: 1.09 }, { at: 345, v: 1.2 }, { at: 430, v: 1.04 }, { at: 500, v: 1.0 },
+  { at: 1, v: 2.35 }, { at: 55, v: 2.15 }, { at: 115, v: 1.75 }, { at: 176, v: 1.35 },
+  { at: 235, v: 1.06 }, { at: 263, v: 1.0 }, { at: 345, v: 1.45 },
+  { at: 400, v: 1.18 }, { at: 430, v: 1.06 }, { at: 500, v: 1.0 },
 ];
 /** Unschärfe (σ): tiefes Bokeh → scharf → sanfter Defokus im Rückzug. */
 const BLUR = [
-  { at: 1, v: 42 }, { at: 115, v: 34 }, { at: 176, v: 26 }, { at: 235, v: 9 },
-  { at: 252, v: 0 }, { at: 345, v: 0 }, { at: 400, v: 12 }, { at: 470, v: 24 }, { at: 500, v: 30 },
+  { at: 1, v: 38 }, { at: 115, v: 30 }, { at: 176, v: 22 }, { at: 235, v: 8 },
+  { at: 252, v: 0 }, { at: 345, v: 0 }, { at: 400, v: 11 }, { at: 470, v: 22 }, { at: 500, v: 28 },
 ];
-/** Belichtung. */
+/** Belichtung – die dunkle Phase bleibt dunkel, aber LESBAR als Bild. */
 const BRIGHT = [
-  { at: 1, v: 0.52 }, { at: 115, v: 0.58 }, { at: 176, v: 0.66 }, { at: 235, v: 0.85 },
+  { at: 1, v: 0.55 }, { at: 115, v: 0.62 }, { at: 176, v: 0.7 }, { at: 235, v: 0.88 },
   { at: 263, v: 1.0 }, { at: 345, v: 1.0 }, { at: 430, v: 1.08 }, { at: 500, v: 1.1 },
 ];
 /** Dunkelgrüner Marken-Schleier (Deep #17251B) – stark am Anfang. */
 const DEEP_TINT = [
-  { at: 1, v: 0.55 }, { at: 115, v: 0.48 }, { at: 176, v: 0.38 }, { at: 235, v: 0.16 },
+  { at: 1, v: 0.52 }, { at: 115, v: 0.44 }, { at: 176, v: 0.32 }, { at: 235, v: 0.12 },
   { at: 263, v: 0 }, { at: 345, v: 0 }, { at: 500, v: 0 },
 ];
 /** Empfangs-Textur blendet im Rückzug ein. */
@@ -123,12 +140,17 @@ const RECEPTION = [
 const CREAM = [
   { at: 1, v: 0 }, { at: 440, v: 0 }, { at: 470, v: 0.25 }, { at: 500, v: 0.6 },
 ];
-/** Lichtschweif: Position (Anteil der Breite) und Stärke. */
+/**
+ * Lichtschweif: ZWEI Durchgänge. Zwischen 105 und 118 springt die
+ * Position zurück nach links – unsichtbar, weil SWEEP_A dort exakt 0
+ * ist; das Ergebnis pro Pixel bleibt stetig.
+ */
 const SWEEP_X = [
-  { at: 1, v: -0.4 }, { at: 115, v: 0.25 }, { at: 235, v: 0.75 }, { at: 345, v: 1.1 }, { at: 500, v: 1.5 },
+  { at: 1, v: -0.35 }, { at: 105, v: 1.4 }, { at: 118, v: -0.45 }, { at: 240, v: 1.3 }, { at: 500, v: 1.5 },
 ];
 const SWEEP_A = [
-  { at: 1, v: 0.32 }, { at: 176, v: 0.24 }, { at: 235, v: 0.12 }, { at: 263, v: 0 }, { at: 500, v: 0 },
+  { at: 1, v: 0.34 }, { at: 88, v: 0.3 }, { at: 104, v: 0 }, { at: 124, v: 0 },
+  { at: 140, v: 0.3 }, { at: 215, v: 0.22 }, { at: 250, v: 0 }, { at: 500, v: 0 },
 ];
 
 // ---------- Hilfsebenen (einmal erzeugt, als Rohpuffer) ----------
