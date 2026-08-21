@@ -18,11 +18,13 @@
  *   public/sequence/mobile/frame_0001.webp  … frame_0250.webp  (960×540)
  *
  * ── Montage ─────────────────────────────────────────────────────────────
- *   R  REZEPTION       Master 001–070   Szene 01: Ankunft am Tresen
- *                      (Standbild + Engine-Kamera, kein Clip – das
- *                       gelieferte Video war 852×480 und damit für das
- *                       1600-px-Ziel zu weich)
- *   C  „subtle push“   Master 045–205   Untersuchungsraum ab Szene 02
+ *   E  EMPFANG         Master 001–130   Szenen 01+02 als EINE Fahrt
+ *                      (echtes Praxisfoto + Engine-Kamera). Bewusst
+ *                       nicht zwei Standbilder mit Überblendung: Zwei
+ *                       Aufnahmen DESSELBEN Raums aus verschiedenen
+ *                       Positionen ergeben beim Kreuzblenden ein
+ *                       Doppelbild – prinzipbedingt, nicht abstimmbar.
+ *   C  „subtle push“   Master 108–205   Untersuchungsraum ab Szene 03
  *   A  „dolly in“      Master 165–460   DIE Fahrt: heran an die Liege
  *   B  „pan“           Master 420–500   Ausklang, Blick öffnet sich
  *   An beiden Nähten liegt eine 40 Frames breite Blende, PIXELWEISE in
@@ -49,16 +51,16 @@ try {
 
 const ROOT = new URL("..", import.meta.url).pathname;
 /**
- * Ausgabeziel und Szene-01-Schalter sind überschreibbar, damit sich der
- * Zustand OHNE Szene 01 reproduzieren und Frame für Frame gegen den
- * neuen Stand vergleichen lässt (Beweis der Szenen-Isolation):
- *   S01=0 SEQ_OUT=/tmp/ref node scripts/bake-film.mjs
+ * Ausgabeziel und Szenen-Schalter sind überschreibbar, damit sich der
+ * Zustand OHNE die Empfangsfahrt reproduzieren und Frame für Frame gegen
+ * den neuen Stand vergleichen lässt (Beweis der Szenen-Isolation):
+ *   S12=0 SEQ_OUT=/tmp/ref node scripts/bake-film.mjs
  */
 const SEQ_OUT = process.env.SEQ_OUT ?? join(ROOT, "public/sequence");
 const OUT_DESKTOP = join(SEQ_OUT, "desktop");
 const OUT_MOBILE = join(SEQ_OUT, "mobile");
-const S01_ENABLED = process.env.S01 !== "0";
-const S02_ENABLED = process.env.S02 !== "0";
+/** Schalter für den Isolationsbeweis: S12=0 baut ohne Szenen 01+02. */
+const S12_ENABLED = process.env.S12 !== "0";
 
 /**
  * Verzeichnis der extrahierten Clip-Frames (f_0001.jpg …). Liegt bewusst
@@ -113,41 +115,35 @@ function chain(keys, f) {
  * wissen, welche Szene gerade fährt.
  *
  * `pulse` schickt eine weiche Helligkeitswelle über die grün leuchtenden
- * Pixel der Quelle (Position als Anteil der Bildbreite). In Szene 01 sind
- * das Tresenband und Bodenbahn, in Szene 02 die echten Tresenbänder und
- * die grüne Wegeführung auf der Glastür – das Verbindungselement ist in
- * beiden Fällen reales Material, keine erfundene Grafik.
+ * Pixel der Quelle (Position als Anteil der Bildbreite): über die echten
+ * Lichtbänder des Tresens und die grüne Wegeführung auf der Glastür. Das
+ * Verbindungselement ist damit reales Material, keine erfundene Grafik.
  */
 const STILLS = {
   /*
-   * Szene 01. Quelle 2400 px breit (das Original misst nur 1672 px, ein
-   * Dolly-in ohne Hochskalierung wäre auf Zoom 1.045 begrenzt gewesen).
-   * Start bewusst nicht bei Zoom 1.0: Bei voller Bildbreite liesse sich
-   * der Blickpunkt nicht verschieben, und die Tresenkurve läge hinter dem
-   * Lesbarkeitsschleier der Typografie (linke 56 %).
+   * Szenen 01+02: echtes Praxisfoto (Original 4284×5712), zugeschnitten
+   * auf 3400×2550 (scripts/make-still.mjs). Der Ausschnitt ist bewusst
+   * rechtslastig und eng: Der Empfangstresen bleibt Vordergrundkante
+   * links, Boden und Glastüren tragen die rechte Bildhälfte – dort liegt
+   * kein Lesbarkeitsschleier, und dort steht der Arzt-Freisteller.
+   *
+   * EINE Fahrt über 130 Frames statt zweier Einstellungen: langsam
+   * vorwärts am Tresen vorbei zur Glastür mit der echten grünen
+   * Wegeführung („wartebereich").
+   *
+   * Die 3400 px sind der Grund, warum diese eine lange Fahrt trotzdem
+   * spürbar bleibt: Sie heben den Zoom-Deckel auf 2.12 (3400/1600), statt
+   * der 1.6 einer 2560er Quelle. Der Hub verdoppelt sich damit fast –
+   * und bei Zoom 2.05 ist der Ausschnitt noch 1659 px breit, also immer
+   * noch keine Hochskalierung.
    */
-  rezeption: {
-    src: join(ROOT, "public/images/rezeption-2400.webp"),
-    zoom: [{ at: 1, v: 1.1 }, { at: 30, v: 1.18 }, { at: 55, v: 1.26 }, { at: 70, v: 1.3 }],
-    x: [{ at: 1, v: 0.55 }, { at: 30, v: 0.6 }, { at: 55, v: 0.64 }, { at: 70, v: 0.67 }],
-    y: [{ at: 1, v: 0.52 }, { at: 40, v: 0.5 }, { at: 70, v: 0.47 }],
-    pulse: [{ at: 1, v: -0.25 }, { at: 70, v: 1.25 }],
-  },
-
-  /*
-   * Szene 02: echtes Foto derselben Rezeption vom anderen Ende, Blick auf
-   * die Glastüren. Quelle 2560×1920 (4:3) – bei Zoom 1.60 ist der
-   * Ausschnitt noch 1600 px breit, die ganze Fahrt läuft also ohne eine
-   * einzige Hochskalierung. Bewegung aus dem gelieferten Referenzvideo
-   * abgelesen: langsamer Dolly vorwärts am Tresen vorbei, leichte Drift
-   * nach rechts, Blick hebt sich zur Türbeschriftung „wartebereich".
-   */
-  flur: {
-    src: join(ROOT, "public/images/flur-2560.webp"),
-    zoom: [{ at: 44, v: 1.0 }, { at: 85, v: 1.28 }, { at: 115, v: 1.5 }, { at: 130, v: 1.6 }],
-    x: [{ at: 44, v: 0.5 }, { at: 85, v: 0.56 }, { at: 130, v: 0.63 }],
-    y: [{ at: 44, v: 0.42 }, { at: 85, v: 0.4 }, { at: 130, v: 0.36 }],
-    pulse: [{ at: 44, v: -0.25 }, { at: 130, v: 1.25 }],
+  empfang: {
+    src: join(ROOT, "public/images/flur-3400.webp"),
+    // Vorn stärker: Szene 01 ist die Ankunft, dort muss der Schub sitzen
+    zoom: [{ at: 1, v: 1.14 }, { at: 30, v: 1.32 }, { at: 55, v: 1.5 }, { at: 90, v: 1.79 }, { at: 130, v: 2.05 }],
+    x: [{ at: 1, v: 0.52 }, { at: 30, v: 0.57 }, { at: 55, v: 0.6 }, { at: 90, v: 0.64 }, { at: 130, v: 0.68 }],
+    y: [{ at: 1, v: 0.5 }, { at: 55, v: 0.45 }, { at: 130, v: 0.4 }],
+    pulse: [{ at: 1, v: -0.25 }, { at: 130, v: 1.25 }],
   },
 };
 
@@ -160,14 +156,13 @@ const CLIP_FRAMES = 241;
  * Segmente pixelweise, sodass keine Naht sichtbar bleibt.
  *
  * `inAt` entkoppelt den Blendenbeginn von `from`: Segment C blendet erst
- * ab Frame 45 ein, behält aber seine ursprüngliche Frame-Zuordnung
+ * ab Frame 108 ein, behält aber seine ursprüngliche Frame-Zuordnung
  * (from 1 … to 205). Ohne diese Trennung würde ein späterer Start die
  * gesamte Clip-Zuordnung dahinter verschieben – und damit Szenen ändern,
  * die unangetastet bleiben sollen.
  */
 const SEGMENTS = [
-  ...(S01_ENABLED ? [{ still: "rezeption", from: 1, to: 70, fadeOut: 26 }] : []),
-  ...(S02_ENABLED ? [{ still: "flur", from: 44, to: 130, fadeIn: 26, fadeOut: 22 }] : []),
+  ...(S12_ENABLED ? [{ still: "empfang", from: 1, to: 130, fadeOut: 22 }] : []),
   /*
    * Segment C behält IMMER seine Frame-Zuordnung (from 1 … to 205); nur
    * der Blendenbeginn `inAt` wandert. Ohne diese Trennung würde ein
@@ -176,11 +171,7 @@ const SEGMENTS = [
    */
   {
     clip: "C", from: 1, to: 205, clipFrom: 1, clipTo: 241, fadeOut: 40,
-    ...(S02_ENABLED
-      ? { inAt: 108, fadeIn: 22 }
-      : S01_ENABLED
-        ? { inAt: 45, fadeIn: 26 }
-        : {}),
+    ...(S12_ENABLED ? { inAt: 108, fadeIn: 22 } : {}),
   },
   { clip: "A", from: 165, to: 460, clipFrom: 1, clipTo: 241, fadeIn: 40, fadeOut: 40 },
   { clip: "B", from: 420, to: 500, clipFrom: 1, clipTo: 100, fadeIn: 40 },
@@ -280,30 +271,24 @@ const SWEEP_A = [
  * bitgenau die alten – Szene 02 und alles danach bleiben unverändert,
  * was nach dem Bake per Dateivergleich bewiesen wird.
  */
-const S01_MIX = (f) => (S01_ENABLED ? 1 - smoothstep(46, 76, f) : 0);
-
-/** Rezeption ist der verbindliche Look: klar ab dem ersten Frame. */
-const S01_BLUR = [{ at: 1, v: 6 }, { at: 12, v: 0 }, { at: 76, v: 0 }];
-/** Heller Empfangsraum statt dunkler Ankunft. */
-const S01_BRIGHT = [{ at: 1, v: 0.94 }, { at: 55, v: 0.9 }, { at: 76, v: 0.88 }];
-/** Kaum Markenschleier – die Rezeption trägt ihr Grün selbst. */
-const S01_DEEP = [{ at: 1, v: 0.05 }, { at: 76, v: 0.1 }];
-/** Natürliche Sättigung: das grüne Lichtband soll leuchten. */
-const S01_SAT = [{ at: 1, v: 0.98 }, { at: 76, v: 0.94 }];
-
 /**
- * Szene-02-Override, gleiches Prinzip: Gewicht läuft bis Frame 131 auf
- * exakt null aus, damit Szene 03 und alles danach bitgenau bleiben.
- * Szene 02 zeigte bisher den Arzt vor einem fast schwarzen Bokeh-Feld –
- * er stand im Nichts. Jetzt trägt ihn die echte, helle Praxis.
+ * Grading-Override für die Empfangsfahrt (Szenen 01+02). Die globalen
+ * Ketten oben bleiben UNANGETASTET; hier wird darüber gemischt, und das
+ * Gewicht läuft bis Frame 131 auf exakt null aus. Ab Frame 131 sind
+ * damit alle Grading-Werte bitgenau die alten – Szene 03 und alles
+ * danach bleiben unverändert, was nach dem Bake per Dateivergleich
+ * bewiesen wird.
  */
-const S02_MIX = (f) =>
-  S02_ENABLED ? smoothstep(44, 70, f) * (1 - smoothstep(108, 131, f)) : 0;
+const S12_MIX = (f) => (S12_ENABLED ? 1 - smoothstep(108, 131, f) : 0);
 
-const S02_BLUR = [{ at: 44, v: 0 }, { at: 131, v: 0 }];
-const S02_BRIGHT = [{ at: 44, v: 0.92 }, { at: 115, v: 0.9 }, { at: 131, v: 0.88 }];
-const S02_DEEP = [{ at: 44, v: 0.06 }, { at: 131, v: 0.12 }];
-const S02_SAT = [{ at: 44, v: 0.97 }, { at: 131, v: 0.93 }];
+/** Die Praxis ist der verbindliche Look: klar ab dem ersten Frame. */
+const S12_BLUR = [{ at: 1, v: 6 }, { at: 12, v: 0 }, { at: 131, v: 0 }];
+/** Heller Empfangsraum statt dunkler Ankunft. */
+const S12_BRIGHT = [{ at: 1, v: 0.94 }, { at: 90, v: 0.9 }, { at: 131, v: 0.88 }];
+/** Kaum Markenschleier – die grünen Bänder tragen die Farbe selbst. */
+const S12_DEEP = [{ at: 1, v: 0.05 }, { at: 131, v: 0.12 }];
+/** Natürliche Sättigung: die Lichtbänder sollen leuchten. */
+const S12_SAT = [{ at: 1, v: 0.98 }, { at: 131, v: 0.93 }];
 
 // ---------- Hilfsebenen (einmal erzeugt, als Rohpuffer) ----------
 
@@ -561,20 +546,15 @@ async function bake({ outDir, outW, outH, frames, masterFor }) {
   const renderFrame = async (n) => {
     const f = masterFor(n);
     // Szene-01-Override: Gewicht ist ab Frame 76 exakt 0 (siehe S01_MIX)
-    const s01 = S01_MIX(f);
-    const s02 = S02_MIX(f);
-    let sigma = mix(chain(BLUR, f), chain(S01_BLUR, f), s01);
-    let bright = mix(chain(BRIGHT, f), chain(S01_BRIGHT, f), s01);
-    let deep = mix(chain(DEEP_TINT, f), chain(S01_DEEP, f), s01);
-    let sat = mix(chain(SAT, f), chain(S01_SAT, f), s01);
-    sigma = mix(sigma, chain(S02_BLUR, f), s02);
-    bright = mix(bright, chain(S02_BRIGHT, f), s02);
-    deep = mix(deep, chain(S02_DEEP, f), s02);
-    sat = mix(sat, chain(S02_SAT, f), s02);
+    const s12 = S12_MIX(f);
+    const sigma = mix(chain(BLUR, f), chain(S12_BLUR, f), s12);
+    const bright = mix(chain(BRIGHT, f), chain(S12_BRIGHT, f), s12);
+    const deep = mix(chain(DEEP_TINT, f), chain(S12_DEEP, f), s12);
+    const sat = mix(chain(SAT, f), chain(S12_SAT, f), s12);
     const cream = chain(CREAM, f);
     const sweepX = chain(SWEEP_X, f);
-    // Der Lichtschweif schweigt, solange echte Lichtbänder führen
-    const sweepA = chain(SWEEP_A, f) * (1 - Math.max(s01, s02));
+    // Der Lichtschweif schweigt, solange die echten Lichtbänder führen
+    const sweepA = chain(SWEEP_A, f) * (1 - s12);
 
     // Montage: aktive Segmente sammeln und auf Summe 1 normieren
     const active = [];
@@ -654,7 +634,7 @@ async function verify(dir, frames) {
 for (const [name, still] of Object.entries(STILLS)) {
   if (!existsSync(still.src)) {
     console.error(`Still-Asset „${name}" fehlt: ${still.src}`);
-    console.error("Erzeugen mit scripts/make-rezeption.mjs (siehe Dateikopf dort).");
+    console.error("Erzeugen mit scripts/make-still.mjs (siehe Dateikopf dort).");
     process.exit(1);
   }
 }
