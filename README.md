@@ -85,23 +85,35 @@ npm i --no-save sharp          # bewusst keine Repo-Dependency
 node scripts/bake-film.mjs     # rendert + prüft Stetigkeit + Gewicht
 ```
 
-**Szene 02 „Dr. Kunstreich" trägt die echte Praxis.** Quelle ist
-`public/images/flur-2560.webp` — ein echtes Foto derselben Rezeption vom
-anderen Ende, Blick auf die Glastüren mit der realen grünen Wegeführung
-(„wartebereich"). Die Kamera fährt langsam vorwärts am Tresen vorbei zur
-Tür (Zoom 1.00 → 1.60); weil die Quelle 2560 px breit ist, läuft die
-ganze Fahrt ohne eine einzige Hochskalierung. Das mitgelieferte Video war
-358×480 und diente nur als Bewegungsreferenz. Vorher stand der Arzt vor
-einem fast schwarzen Bokeh-Feld.
+**Szenen 01 und 02 sind EINE ununterbrochene Ankunft.** Beide teilen
+sich eine einzige Quelle: `public/images/flur-3400.webp`, ein
+unbearbeiteter 4:3-Zuschnitt aus dem echten 4284×5712-Praxisfoto (Blick
+über den geschwungenen Tresen auf die Glastüren, mit der realen grünen
+Wegeführung des Hauses). Erzeugt mit
 
-**Szene 01 „Willkommen" trägt die echte Rezeption.** Ihre Quelle ist ein
-Standbild (`public/images/rezeption-2400.webp`), durch das die Engine eine
-Kamerafahrt legt: langsamer Dolly-in Richtung Glastüren, während eine
-Lichtwelle über das grüne Bodenband Richtung Flur wandert. Erzeugt wird das
-Asset mit `node scripts/make-rezeption.mjs <foto.png>` – dabei wird fremdes
-Branding an der Wand durch das echte Praxislogo ersetzt (Bildtreue ist hier
-Rechtsschutz, § 3 HWG / § 5 UWG) und das Bild auf 2400 px gebracht, damit
-der Dolly ohne Hochskalierung Reserve hat. Der erste Frame steht zusätzlich
+```bash
+node scripts/make-still.mjs <foto.jpg> flur-3400 0.58 0.82 0.56 3400
+```
+
+– reiner Zuschnitt, keine Retusche: Was im Bild steht, steht so in der
+Praxis (Bildtreue ist hier Rechtsschutz, § 3 HWG / § 5 UWG).
+
+Durch dieses eine Bild legt die Engine über die Frames 1–130 **eine**
+Kamerafahrt: Dolly vorwärts von Zoom 1.14 auf 2.05, dabei eine Drift nach
+rechts (x 0.52 → 0.68) am Tresen vorbei zu den Glastüren, während eine
+Lichtwelle über die echten grünen Bänder Richtung Behandlungsbereich
+wandert. Der Schub sitzt bewusst vorn, wo die Ankunft stattfindet. Weil
+die Quelle 3400 px breit ist, liegt der Deckel ohne Hochskalierung bei
+2.12 – die ganze Fahrt läuft darunter.
+
+Zwei Standbilder wären hier ein Fehler gewesen: Eine Kreuzblende zwischen
+zwei Aufnahmen desselben Raums von verschiedenen Standpunkten ergibt
+zwangsläufig eine Doppelbelichtung. Ein Standpunkt, eine Fahrt, kein
+Schnitt. Das mitgelieferte Video (358×480) diente nur als
+Bewegungsreferenz – gegen 1600 px wäre es das 4,5-fache Hochskalieren
+gewesen.
+
+Der erste Frame steht zusätzlich
 als `<picture>` im ausgelieferten HTML: Das Canvas kann erst nach der
 Hydration zeichnen, das Bild ist auf 4G rund vier Sekunden früher da. Bei
 reduzierter Bewegung gewinnt dort ein 1×1-Pixel – es wird kein Filmmaterial
