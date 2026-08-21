@@ -17,6 +17,16 @@
  *
  * Ausführen:  node scripts/make-rezeption.mjs <quelle.png>
  * Ausgabe:    public/images/rezeption-2400.webp
+ *
+ * ── Zuschnitt-Modus (Szene 02 und später) ───────────────────────────────
+ *   node scripts/make-rezeption.mjs <quelle.jpg> --crop <name> <cy> <breite>
+ *
+ * Schneidet aus einem Hochformat-Foto ein 4:3-Fenster über die volle
+ * Breite, vertikal bei <cy> zentriert, und legt es als
+ * public/images/<name>.webp ab. 4:3 ist Absicht: Der Still-Renderer im
+ * Bake schneidet daraus pro Frame ein 16:9-Fenster – die überschüssige
+ * Höhe ist der vertikale Spielraum der Kamerafahrt. Hier wird NICHT
+ * retuschiert; der Modus ist für Material ohne fremdes Branding.
  */
 
 import { createRequire } from "node:module";
@@ -27,12 +37,39 @@ const sharp = require("sharp");
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const SRC = process.argv[2];
-const OUT = join(ROOT, "public/images/rezeption-2400.webp");
 
 if (!SRC) {
   console.error("Quelle fehlt:  node scripts/make-rezeption.mjs <bild.png>");
   process.exit(1);
 }
+
+// ---------- Zuschnitt-Modus ----------
+if (process.argv[3] === "--crop") {
+  const name = process.argv[4];
+  const cy = Number(process.argv[5]);
+  const outW = Number(process.argv[6]);
+  if (!name || !Number.isFinite(cy) || !Number.isFinite(outW)) {
+    console.error("Aufruf:  … --crop <name> <cy 0..1> <breite>");
+    process.exit(1);
+  }
+  const meta = await sharp(SRC).metadata();
+  const cw = meta.width;
+  const ch = Math.round((cw * 3) / 4);
+  const top = Math.max(0, Math.min(meta.height - ch, Math.round(cy * meta.height - ch / 2)));
+  const target = join(ROOT, `public/images/${name}.webp`);
+  await sharp(SRC)
+    .extract({ left: 0, top, width: cw, height: ch })
+    .resize(outW, Math.round((outW * 3) / 4), { kernel: "lanczos3" })
+    .webp({ quality: 90 })
+    .toFile(target);
+  const out = await sharp(target).metadata();
+  console.log(
+    `${name}.webp: ${out.width}x${out.height} (aus ${meta.width}x${meta.height}, Ausschnitt ab y=${top})`,
+  );
+  process.exit(0);
+}
+
+const OUT = join(ROOT, "public/images/rezeption-2400.webp");
 
 /** Schriftfeld an der Wand, als Anteil der Bildmaße. */
 const FIELD = { x: 0.075, y: 0.12, w: 0.30, h: 0.30 };

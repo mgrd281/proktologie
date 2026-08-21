@@ -85,6 +85,15 @@ npm i --no-save sharp          # bewusst keine Repo-Dependency
 node scripts/bake-film.mjs     # rendert + prüft Stetigkeit + Gewicht
 ```
 
+**Szene 02 „Dr. Kunstreich" trägt die echte Praxis.** Quelle ist
+`public/images/flur-2560.webp` — ein echtes Foto derselben Rezeption vom
+anderen Ende, Blick auf die Glastüren mit der realen grünen Wegeführung
+(„wartebereich"). Die Kamera fährt langsam vorwärts am Tresen vorbei zur
+Tür (Zoom 1.00 → 1.60); weil die Quelle 2560 px breit ist, läuft die
+ganze Fahrt ohne eine einzige Hochskalierung. Das mitgelieferte Video war
+358×480 und diente nur als Bewegungsreferenz. Vorher stand der Arzt vor
+einem fast schwarzen Bokeh-Feld.
+
 **Szene 01 „Willkommen" trägt die echte Rezeption.** Ihre Quelle ist ein
 Standbild (`public/images/rezeption-2400.webp`), durch das die Engine eine
 Kamerafahrt legt: langsamer Dolly-in Richtung Glastüren, während eine
