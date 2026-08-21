@@ -85,33 +85,38 @@ npm i --no-save sharp          # bewusst keine Repo-Dependency
 node scripts/bake-film.mjs     # rendert + prüft Stetigkeit + Gewicht
 ```
 
-**Szenen 01 und 02 sind EINE ununterbrochene Ankunft.** Beide teilen
-sich eine einzige Quelle: `public/images/flur-3400.webp`, ein
-unbearbeiteter 4:3-Zuschnitt aus dem echten 4284×5712-Praxisfoto (Blick
-über den geschwungenen Tresen auf die Glastüren, mit der realen grünen
-Wegeführung des Hauses). Erzeugt mit
+**Szene 01 „Willkommen"** trägt der weite Empfangsblick mit Logowand,
+Tresenkurve und warmem Boden: `public/images/rezeption-2400.webp`,
+erzeugt mit `node scripts/make-rezeption.mjs <foto.png>` (ersetzt die
+fremde Wandschrift durch das echte Praxislogo und bringt das Bild auf
+2400 px, damit der Dolly-in Reserve hat). Die Kamera fährt von Zoom 1.10
+auf 1.30 nach vorn, während eine Lichtwelle über das grüne Band Richtung
+Flur wandert.
+
+**Szene 02 „Dr. Kunstreich"** trägt `public/images/flur-3400.webp` – ein
+**unbearbeiteter** 4:3-Zuschnitt aus dem echten 4284×5712-Praxisfoto
+(Blick über den geschwungenen Tresen auf die Glastüren mit der realen
+grünen Wegeführung des Hauses), erzeugt mit
 
 ```bash
 node scripts/make-still.mjs <foto.jpg> flur-3400 0.58 0.82 0.56 3400
 ```
 
-– reiner Zuschnitt, keine Retusche: Was im Bild steht, steht so in der
-Praxis (Bildtreue ist hier Rechtsschutz, § 3 HWG / § 5 UWG).
+– reiner Zuschnitt, keine Retusche. Die Fahrt läuft bis Zoom 2.05 mit
+Drift nach rechts; weil die Quelle 3400 px breit ist, liegt der Deckel
+ohne Hochskalierung bei 2.12. Das mitgelieferte Video (358×480) diente
+nur als Bewegungsreferenz – gegen 1600 px wäre es das 4,5-fache
+Hochskalieren gewesen.
 
-Durch dieses eine Bild legt die Engine über die Frames 1–130 **eine**
-Kamerafahrt: Dolly vorwärts von Zoom 1.14 auf 2.05, dabei eine Drift nach
-rechts (x 0.52 → 0.68) am Tresen vorbei zu den Glastüren, während eine
-Lichtwelle über die echten grünen Bänder Richtung Behandlungsbereich
-wandert. Der Schub sitzt bewusst vorn, wo die Ankunft stattfindet. Weil
-die Quelle 3400 px breit ist, liegt der Deckel ohne Hochskalierung bei
-2.12 – die ganze Fahrt läuft darunter.
-
-Zwei Standbilder wären hier ein Fehler gewesen: Eine Kreuzblende zwischen
-zwei Aufnahmen desselben Raums von verschiedenen Standpunkten ergibt
-zwangsläufig eine Doppelbelichtung. Ein Standpunkt, eine Fahrt, kein
-Schnitt. Das mitgelieferte Video (358×480) diente nur als
-Bewegungsreferenz – gegen 1600 px wäre es das 4,5-fache Hochskalieren
-gewesen.
+**Die Übergabe ist eine Schärfeverlagerung, keine Kreuzblende.** Beide
+Bilder zeigen denselben Raum von zwei Standpunkten; blendet man sie
+direkt ineinander, entsteht zwangsläufig eine Doppelbelichtung – genau
+das war als Geisterbild sichtbar. Der Bake legt den Softfokus aber
+zuletzt auf das fertig komponierte Bild. Die Überlappung (Frames 60–80)
+fällt deshalb mit `HANDOVER_BLUR` zusammen: In der Unschärfe verschmelzen
+beide Ebenen zu einem weichen Feld, danach zieht Szene 02 allein wieder
+scharf. Die Blende liegt bewusst **hinter** Szene 01 (die bei Frame 55
+endet), damit der Empfang ungemischt bleibt.
 
 Der erste Frame steht zusätzlich
 als `<picture>` im ausgelieferten HTML: Das Canvas kann erst nach der

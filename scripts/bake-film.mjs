@@ -121,15 +121,40 @@ function chain(keys, f) {
  */
 const STILLS = {
   /*
-   * Szenen 01+02: echtes Praxisfoto (Original 4284×5712), zugeschnitten
-   * auf 3400×2550 (scripts/make-still.mjs). Der Ausschnitt ist bewusst
-   * rechtslastig und eng: Der Empfangstresen bleibt Vordergrundkante
-   * links, Boden und Glastüren tragen die rechte Bildhälfte – dort liegt
-   * kein Lesbarkeitsschleier, und dort steht der Arzt-Freisteller.
+   * Szene 01 „Willkommen": der weite Empfangsblick mit Logowand,
+   * Tresenkurve und warmem Boden. Quelle 2400 px breit (das Original
+   * misst nur 1672 px, ein Dolly-in ohne Hochskalierung wäre auf Zoom
+   * 1.045 begrenzt gewesen). Start bewusst nicht bei Zoom 1.0: Bei
+   * voller Bildbreite liesse sich der Blickpunkt nicht verschieben, und
+   * die Tresenkurve läge hinter dem Lesbarkeitsschleier der Typografie
+   * (linke 56 %).
    *
-   * EINE Fahrt über 130 Frames statt zweier Einstellungen: langsam
-   * vorwärts am Tresen vorbei zur Glastür mit der echten grünen
-   * Wegeführung („wartebereich").
+   * Die Keyframes bis 70 sind unverändert die der ausgelieferten
+   * Fassung – nur der Punkt bei 80 ist neu und hält die Fahrt während
+   * der Übergabeblende in Bewegung. Da `chain()` ausschliesslich
+   * zwischen benachbarten Keyframes interpoliert, ändert er keinen Wert
+   * bei f ≤ 70; Szene 01 bleibt dadurch bitgenau die alte.
+   */
+  rezeption: {
+    src: join(ROOT, "public/images/rezeption-2400.webp"),
+    zoom: [{ at: 1, v: 1.1 }, { at: 30, v: 1.18 }, { at: 55, v: 1.26 }, { at: 70, v: 1.3 }, { at: 80, v: 1.34 }],
+    x: [{ at: 1, v: 0.55 }, { at: 30, v: 0.6 }, { at: 55, v: 0.64 }, { at: 70, v: 0.67 }, { at: 80, v: 0.69 }],
+    y: [{ at: 1, v: 0.52 }, { at: 40, v: 0.5 }, { at: 70, v: 0.47 }, { at: 80, v: 0.46 }],
+    pulse: [{ at: 1, v: -0.25 }, { at: 70, v: 1.25 }],
+  },
+
+  /*
+   * Szene 02 „Dr. Kunstreich": echtes Praxisfoto (Original 4284×5712),
+   * zugeschnitten auf 3400×2550 (scripts/make-still.mjs). Der Ausschnitt
+   * ist bewusst rechtslastig und eng: Der Empfangstresen bleibt
+   * Vordergrundkante links, Boden und Glastüren tragen die rechte
+   * Bildhälfte – dort liegt kein Lesbarkeitsschleier, und dort steht der
+   * Arzt-Freisteller.
+   *
+   * Die Kamera fährt langsam vorwärts am Tresen vorbei zur Glastür mit
+   * der echten grünen Wegeführung („wartebereich"). Ihre Ketten stehen
+   * weiterhin ab Frame 1 – sichtbar wird die Quelle aber erst ab der
+   * Blende bei Frame 60, sodass Szene 01 unberührt bleibt.
    *
    * Die 3400 px sind der Grund, warum diese eine lange Fahrt trotzdem
    * spürbar bleibt: Sie heben den Zoom-Deckel auf 2.12 (3400/1600), statt
@@ -139,7 +164,8 @@ const STILLS = {
    */
   empfang: {
     src: join(ROOT, "public/images/flur-3400.webp"),
-    // Vorn stärker: Szene 01 ist die Ankunft, dort muss der Schub sitzen
+    // Die Kette beginnt bei 1, sichtbar wird sie ab 60: Bei der Übergabe
+    // steht die Kamera bereits bei Zoom 1.52 und schiebt von dort weiter
     zoom: [{ at: 1, v: 1.14 }, { at: 30, v: 1.32 }, { at: 55, v: 1.5 }, { at: 90, v: 1.79 }, { at: 130, v: 2.05 }],
     x: [{ at: 1, v: 0.52 }, { at: 30, v: 0.57 }, { at: 55, v: 0.6 }, { at: 90, v: 0.64 }, { at: 130, v: 0.68 }],
     y: [{ at: 1, v: 0.5 }, { at: 55, v: 0.45 }, { at: 130, v: 0.4 }],
@@ -162,7 +188,23 @@ const CLIP_FRAMES = 241;
  * die unangetastet bleiben sollen.
  */
 const SEGMENTS = [
-  ...(S12_ENABLED ? [{ still: "empfang", from: 1, to: 130, fadeOut: 22 }] : []),
+  /*
+   * Die Übergabe zwischen den beiden Standbildern liegt bewusst HINTER
+   * Szene 01 (die bei Frame 55 endet, lib/cinema/frames.ts): Die
+   * Rezeption trägt allein bis Frame 60, erst danach übernimmt die echte
+   * Aufnahme. Beide zeigen denselben Raum von zwei Standpunkten – eine
+   * Kreuzblende ergibt dort zwangsläufig eine Doppelbelichtung. Deshalb
+   * fällt die Überlappung mit HANDOVER_BLUR zusammen: Der Softfokus
+   * liegt zuletzt auf dem fertig komponierten Bild, in der Unschärfe
+   * verschmelzen beide Ebenen zu einer Schärfeverlagerung statt zu einem
+   * Geisterbild.
+   */
+  ...(S12_ENABLED
+    ? [
+        { still: "rezeption", from: 1, to: 80, fadeOut: 20 },
+        { still: "empfang", from: 1, to: 130, inAt: 60, fadeIn: 20, fadeOut: 22 },
+      ]
+    : []),
   /*
    * Segment C behält IMMER seine Frame-Zuordnung (from 1 … to 205); nur
    * der Blendenbeginn `inAt` wandert. Ohne diese Trennung würde ein
@@ -267,28 +309,56 @@ const SWEEP_A = [
 /**
  * Szene-01-Override. Die Ketten oben bleiben UNANGETASTET; für Szene 01
  * wird darüber eine zweite Fassung gemischt, deren Gewicht bis Frame 76
- * auf exakt null ausläuft. Ab Frame 76 sind damit alle Grading-Werte
- * bitgenau die alten – Szene 02 und alles danach bleiben unverändert,
- * was nach dem Bake per Dateivergleich bewiesen wird.
- */
 /**
- * Grading-Override für die Empfangsfahrt (Szenen 01+02). Die globalen
- * Ketten oben bleiben UNANGETASTET; hier wird darüber gemischt, und das
- * Gewicht läuft bis Frame 131 auf exakt null aus. Ab Frame 131 sind
- * damit alle Grading-Werte bitgenau die alten – Szene 03 und alles
- * danach bleiben unverändert, was nach dem Bake per Dateivergleich
- * bewiesen wird.
+ * Zwei lokale Grading-Overrides, einer je Einstellung. Die globalen
+ * Ketten oben bleiben UNANGETASTET; hier wird darüber gemischt. Beide
+ * Gewichte laufen auf exakt null aus – S01 bis Frame 80, S02 bis Frame
+ * 131 –, sodass ab Frame 131 alle Grading-Werte bitgenau die alten sind.
+ * Szene 03 und alles danach bleiben unverändert, was nach dem Bake per
+ * Dateivergleich bewiesen wird.
+ *
+ * S01 hält bis Frame 60 volles Gewicht: Genau so lange trägt die
+ * Rezeption allein, und genau so lange ist Szene 01 bitgenau die
+ * ausgelieferte Fassung.
  */
-const S12_MIX = (f) => (S12_ENABLED ? 1 - smoothstep(108, 131, f) : 0);
+const S01_MIX = (f) => (S12_ENABLED ? 1 - smoothstep(60, 80, f) : 0);
+const S02_MIX = (f) =>
+  S12_ENABLED ? smoothstep(60, 80, f) * (1 - smoothstep(108, 131, f)) : 0;
 
-/** Die Praxis ist der verbindliche Look: klar ab dem ersten Frame. */
-const S12_BLUR = [{ at: 1, v: 6 }, { at: 12, v: 0 }, { at: 131, v: 0 }];
-/** Heller Empfangsraum statt dunkler Ankunft. */
-const S12_BRIGHT = [{ at: 1, v: 0.94 }, { at: 90, v: 0.9 }, { at: 131, v: 0.88 }];
+/*
+ * Rezeption ist der verbindliche Look: klar ab dem ersten Frame. Die
+ * Endpunkte stehen bei 76 wie in der ausgelieferten Fassung und dürfen
+ * NICHT auf das neue Blendenende gezogen werden: `chain()` interpoliert
+ * über die ganze Spanne zwischen zwei Keyframes – ein verschobener
+ * Endpunkt ändert damit jeden Wert davor und Szene 01 wäre nicht mehr
+ * bitgenau die alte. Jenseits von 76 hält `chain()` den letzten Wert,
+ * was für die vier Restframes der Blende genau richtig ist.
+ */
+const S01_BLUR = [{ at: 1, v: 6 }, { at: 12, v: 0 }, { at: 76, v: 0 }];
+const S01_BRIGHT = [{ at: 1, v: 0.94 }, { at: 55, v: 0.9 }, { at: 76, v: 0.88 }];
+const S01_DEEP = [{ at: 1, v: 0.05 }, { at: 76, v: 0.1 }];
+const S01_SAT = [{ at: 1, v: 0.98 }, { at: 76, v: 0.94 }];
+
+/** Szene 02: dieselben Werte wie in der ausgelieferten Fassung. */
+const S02_BLUR = [{ at: 1, v: 6 }, { at: 12, v: 0 }, { at: 131, v: 0 }];
+const S02_BRIGHT = [{ at: 1, v: 0.94 }, { at: 90, v: 0.9 }, { at: 131, v: 0.88 }];
 /** Kaum Markenschleier – die grünen Bänder tragen die Farbe selbst. */
-const S12_DEEP = [{ at: 1, v: 0.05 }, { at: 131, v: 0.12 }];
+const S02_DEEP = [{ at: 1, v: 0.05 }, { at: 131, v: 0.12 }];
 /** Natürliche Sättigung: die Lichtbänder sollen leuchten. */
-const S12_SAT = [{ at: 1, v: 0.98 }, { at: 131, v: 0.93 }];
+const S02_SAT = [{ at: 1, v: 0.98 }, { at: 131, v: 0.93 }];
+
+/**
+ * Die Übergabeblende. Additiv auf den Softfokus, ausserhalb ihres
+ * Fensters exakt 0 – damit ist bewiesen, dass sie nur die Frames 61–85
+ * berührt. Das Plateau (66–74) liegt vollständig über dem Kreuzungspunkt
+ * der beiden Segmentgewichte (f=70, je 0.5): Dort, wo die
+ * Doppelbelichtung entstünde, ist das Bild am weichsten, und die
+ * Schärfeverlagerung liest sich als Absicht statt als Fehler.
+ */
+const HANDOVER_BLUR = [
+  { at: 1, v: 0 }, { at: 60, v: 0 }, { at: 66, v: 12 },
+  { at: 74, v: 12 }, { at: 86, v: 0 }, { at: 500, v: 0 },
+];
 
 // ---------- Hilfsebenen (einmal erzeugt, als Rohpuffer) ----------
 
@@ -545,16 +615,24 @@ async function bake({ outDir, outW, outH, frames, masterFor }) {
 
   const renderFrame = async (n) => {
     const f = masterFor(n);
-    // Szene-01-Override: Gewicht ist ab Frame 76 exakt 0 (siehe S01_MIX)
-    const s12 = S12_MIX(f);
-    const sigma = mix(chain(BLUR, f), chain(S12_BLUR, f), s12);
-    const bright = mix(chain(BRIGHT, f), chain(S12_BRIGHT, f), s12);
-    const deep = mix(chain(DEEP_TINT, f), chain(S12_DEEP, f), s12);
-    const sat = mix(chain(SAT, f), chain(S12_SAT, f), s12);
+    // Beide Overrides sind ab Frame 131 exakt 0 (siehe S01_MIX/S02_MIX)
+    const s01 = S01_MIX(f);
+    const s02 = S02_MIX(f);
+    let sigma = mix(chain(BLUR, f), chain(S01_BLUR, f), s01);
+    let bright = mix(chain(BRIGHT, f), chain(S01_BRIGHT, f), s01);
+    let deep = mix(chain(DEEP_TINT, f), chain(S01_DEEP, f), s01);
+    let sat = mix(chain(SAT, f), chain(S01_SAT, f), s01);
+    sigma = mix(sigma, chain(S02_BLUR, f), s02);
+    bright = mix(bright, chain(S02_BRIGHT, f), s02);
+    deep = mix(deep, chain(S02_DEEP, f), s02);
+    sat = mix(sat, chain(S02_SAT, f), s02);
+    // Die Blende liegt ÜBER dem Grading, nicht darin: Sie soll die
+    // Übergabe weichzeichnen, ohne einen der beiden Looks zu verschieben
+    if (S12_ENABLED) sigma += chain(HANDOVER_BLUR, f);
     const cream = chain(CREAM, f);
     const sweepX = chain(SWEEP_X, f);
     // Der Lichtschweif schweigt, solange die echten Lichtbänder führen
-    const sweepA = chain(SWEEP_A, f) * (1 - s12);
+    const sweepA = chain(SWEEP_A, f) * (1 - Math.max(s01, s02));
 
     // Montage: aktive Segmente sammeln und auf Summe 1 normieren
     const active = [];
