@@ -309,6 +309,61 @@ Website (Wunschtermin aus den Sprechzeiten) und Doctolibs echter Kalender sind
 getrennte Systeme — deshalb steht der Doctolib-Weg für verbindliche Buchungen
 schon ab Schritt 1 der Buchungskarte sichtbar daneben.
 
+## Praxis-Cockpit (cockpit/)
+
+Das Cockpit ist die Steuerzentrale der Praxis – ein **eigenes Projekt im
+Unterordner `cockpit/`** mit eigener `package.json`, eigenem Vercel-Projekt
+(Root Directory `cockpit`, Region `fra1`) und eigener Datenbank. Die
+statische Website bleibt davon unberührt; die Verbindung entsteht erst in
+Phase 1 über die öffentliche Buchungs-API.
+
+**Stand: Phase 0 „Fundament und Bühne“** – Anmeldung (nur per Einladung,
+Passkey + TOTP Pflicht), Rollen, revisionssicheres Audit-Log, Terminmotor
+intern (Terminarten, Sprechzeiten, Ausnahmen, Konflikt-Constraint in der
+Datenbank), Kalender Tag/Woche/Agenda, Dashboard „Heute“, Einstellungen,
+Demo-Daten mit Löschschalter. Die späteren Phasen (Anfragen, Website-
+Steuerung, Aufnahmebogen, Statistik, öffentliche Buchung) sind als ehrlich
+beschriftete Platzhalter angelegt.
+
+```bash
+cd cockpit
+npm install
+cp .env.example .env.local      # Schlüssel erzeugen: openssl rand -base64 48 / 32
+npm run dev                     # PGlite unter .pglite/dev – kein Postgres nötig
+npm run db:bootstrap-admin      # ersten Administrator anlegen (einmalig)
+npm test                        # Node-Suiten: Tokens, Krypto, Terminmotor, DB-Integrität
+npm run e2e                     # Playwright: Einladung → Passkey → TOTP → Termin (CHROME_PATH setzen)
+```
+
+Grundsätze, die im Code erzwungen werden:
+
+- **Keine erfundenen Menschen.** Konten entstehen nur per Einladung, den
+  Namen trägt die Person selbst ein. Demo-Daten tragen `is_demo`, sind mit
+  einem Klick löschbar, und `booking_live` lässt sich erst einschalten, wenn
+  keine Demo-Zeile mehr existiert.
+- **Personenbezug verschlüsselt.** Namen, Kontaktdaten und Notizen liegen
+  als AES-256-GCM-Umschlag mit Datensatzbindung (AAD) in `*_enc`; gesucht
+  wird über HMAC-Blind-Indizes. Schlüssel `DATA_KEY_V<n>`, Rotation über
+  eine neue Version.
+- **Doppelbuchung ist unmöglich.** Ein `EXCLUDE`-Constraint auf
+  `tstzrange(starts_at, blocks_until)` sperrt überlappende aktive Termine
+  auf Datenbankebene – auch bei parallelen Anfragen.
+- **Audit-Log nur INSERT.** Ein Trigger verweigert UPDATE/DELETE, jede Zeile
+  ist per Hash mit der Vorgängerin verkettet.
+- **Keine Tokens in URLs.** Einladungs- und (ab Phase 1) Termin-Links tragen
+  ihr Token im Fragment (`#…`); es erreicht weder Server-Logs noch Referrer.
+- **Markentokens gespiegelt.** `cockpit/app/tokens.css` kopiert den
+  `@theme`-Block dieser Website; `lib/design/tokens.test.mjs` schlägt bei
+  Abweichung fehl.
+
+Betrieb (Schritte der Praxis, nicht des Codes): Vercel-Projekt mit Root
+Directory `cockpit` und Region `fra1`; Neon-Postgres in `eu-central-1`
+(`DATABASE_URL`); `BETTER_AUTH_SECRET`, `DATA_KEY_V1`, `INDEX_KEY`,
+`COCKPIT_URL` (Passkeys binden sich an dessen Hostname); Migrationen per
+`npm run db:migrate`, erster Admin per `npm run db:bootstrap-admin`. Vor
+dem ersten echten Patientendatensatz: DSB-Freigabe und DSFA, AVVs mit
+Vercel/Neon, Datenschutzerklärung ergänzen (siehe Plan im PR).
+
 ## Architektur
 
 ```
