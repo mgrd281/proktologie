@@ -11,3 +11,13 @@
 npm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
+
+# Praxis-Cockpit (eigenes Projekt in cockpit/, eigene Abhängigkeiten)
+/cockpit/node_modules/
+/cockpit/.next/
+/cockpit/.env
+/cockpit/.env*.local
+/cockpit/.pglite/
+/cockpit/test-results/
+/cockpit/playwright-report/
+/cockpit/e2e/shots/

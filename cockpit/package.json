@@ -1,0 +1,50 @@
+{
+  "name": "praxis-cockpit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Praxis-Cockpit – Steuerzentrale der Proktologie Eimsbüttel (eigenes Vercel-Projekt, Root Directory: cockpit).",
+  "scripts": {
+    "dev": "next dev -p 3100",
+    "build": "next build",
+    "start": "next start -p 3100",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test lib/**/*.test.mjs",
+    "e2e": "playwright test",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node --env-file-if-exists=.env.local --import tsx scripts/migrate.ts",
+    "db:bootstrap-admin": "node --env-file-if-exists=.env.local --import tsx scripts/bootstrap-admin.ts",
+    "db:seed-demo": "node --env-file-if-exists=.env.local --import tsx scripts/seed-demo.ts",
+    "auth:generate": "npx --yes @better-auth/cli@latest generate --config lib/auth/auth.ts --output lib/db/auth-schema.ts"
+  },
+  "dependencies": {
+    "@better-auth/drizzle-adapter": "^1.7.2",
+    "@better-auth/passkey": "^1.7.2",
+    "@electric-sql/pglite": "^0.5.8",
+    "better-auth": "^1.7.2",
+    "drizzle-orm": "^0.45.2",
+    "next": "^15.5.0",
+    "pg": "^8.23.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.62.1",
+    "@tailwindcss/postcss": "^4.1.11",
+    "@types/node": "^22",
+    "@types/pg": "^8.23.1",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "drizzle-kit": "^0.31.10",
+    "eslint": "^9",
+    "eslint-config-next": "^15.5.0",
+    "tailwindcss": "^4.1.11",
+    "tsx": "^4.23.13",
+    "typescript": "^5"
+  }
+}

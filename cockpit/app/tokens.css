@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+/*
+ * Markentokens – QUELLE: /app/globals.css der Website.
+ * Dieser @theme-Block wird 1:1 gespiegelt; lib/design/tokens.test.mjs
+ * schlägt fehl, sobald ein Wert von der Website abweicht.
+ *
+ * Kontrastregel der Marke: --color-accent (#86bc23) ist auf hellen Flächen
+ * nur 2,3:1 → NIE als Text/Icon auf hell, nur als Fläche mit dunkler Schrift.
+ */
+@theme {
+  --color-primary: #527a32;
+  --color-primary-deep: #446628;
+  --color-accent: #86bc23;
+  --color-deep: #17251b;
+  --color-cream: #f7f7f3;
+  --color-mist: #eceee8;
+  --color-ink: #202520;
+
+  --font-display: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/*
+ * Semantische Oberflächen-Tokens – hell zuerst (Arbeitswerkzeug bei
+ * Tageslicht), dunkel als vollwertige zweite Fassung. Umschaltung über
+ * data-theme am <html> (Nutzerwahl) oder prefers-color-scheme (System).
+ */
+:root {
+  --surface: #f7f7f3;          /* cream */
+  --surface-raised: #ffffff;
+  --surface-sunken: #eceee8;   /* mist */
+  --sidebar: rgb(236 238 232 / 0.6);
+  --line: rgb(32 37 32 / 0.08);
+  --line-strong: rgb(32 37 32 / 0.16);
+  --text: #202520;
+  /* Beide Grautöne bestehen AA (≥ 4,5:1) auf cream, weiß und mist – auch bei 11 px */
+  --text-muted: rgb(32 37 32 / 0.68);
+  --text-faint: rgb(32 37 32 / 0.64);
+  --brand: #446628;            /* textsicheres Grün (AA auf mist) */
+  --brand-fill: #86bc23;       /* Klinikgrün – nur als Fläche */
+  --brand-soft: rgb(82 122 50 / 0.1);
+  --ok: #446628;
+  --warn: #b45309;
+  --danger: #b91c1c;
+  --info: #1d4ed8;
+  --shadow-color: 23 37 27;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --surface: #0f1611;
+  --surface-raised: #17221a;
+  --surface-sunken: #0b100d;
+  --sidebar: rgb(11 16 13 / 0.7);
+  --line: rgb(247 247 243 / 0.09);
+  --line-strong: rgb(247 247 243 / 0.18);
+  --text: #f7f7f3;
+  --text-muted: rgb(247 247 243 / 0.66);
+  --text-faint: rgb(247 247 243 / 0.58);
+  --brand: #a5d64a;            /* auf dunkel darf Grün Text sein (≥ 7:1) */
+  --brand-fill: #86bc23;
+  --brand-soft: rgb(134 188 35 / 0.14);
+  --ok: #a5d64a;
+  --warn: #f59e0b;
+  --danger: #f87171;
+  --info: #93c5fd;
+  --shadow-color: 0 0 0;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface: #0f1611;
+    --surface-raised: #17221a;
+    --surface-sunken: #0b100d;
+    --sidebar: rgb(11 16 13 / 0.7);
+    --line: rgb(247 247 243 / 0.09);
+    --line-strong: rgb(247 247 243 / 0.18);
+    --text: #f7f7f3;
+    --text-muted: rgb(247 247 243 / 0.66);
+    --text-faint: rgb(247 247 243 / 0.58);
+    --brand: #a5d64a;
+    --brand-fill: #86bc23;
+    --brand-soft: rgb(134 188 35 / 0.14);
+    --ok: #a5d64a;
+    --warn: #f59e0b;
+    --danger: #f87171;
+    --info: #93c5fd;
+    --shadow-color: 0 0 0;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-sidebar: var(--sidebar);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-faint: var(--text-faint);
+  --color-brand: var(--brand);
+  --color-brand-fill: var(--brand-fill);
+  --color-brand-soft: var(--brand-soft);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+}
