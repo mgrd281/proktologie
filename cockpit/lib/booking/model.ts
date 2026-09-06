@@ -48,8 +48,43 @@ export interface AppointmentView {
   isDemo: boolean;
   remindedAt: string | null;
   confirmedByPatientAt: string | null;
+  /** Wartelisten-Angebot: reserviert bis (ISO), sonst null */
+  holdUntil: string | null;
+  /** iCalendar-Sequenz – zählt Verschiebungen */
+  sequence: number;
+  /** Patient:in besitzt einen Verwaltungslink (Bestätigen/Absagen/Verschieben) */
+  hasManageLink: boolean;
   createdAt: string;
 }
+
+export type WaitlistStatus = "open" | "offered" | "booked" | "expired" | "withdrawn";
+
+export interface WaitlistView {
+  id: string;
+  ref: string | null;
+  typeId: string;
+  typeLabel: string;
+  color: TypeColor;
+  pii: Pii;
+  windowFrom: string | null;
+  windowTo: string | null;
+  note: string | null;
+  status: WaitlistStatus;
+  source: AppointmentSource;
+  offeredAppointmentId: string | null;
+  offeredAt: string | null;
+  offerExpiresAt: string | null;
+  isDemo: boolean;
+  createdAt: string;
+}
+
+export const WAITLIST_STATUS_LABEL: Record<WaitlistStatus, string> = {
+  open: "Wartet",
+  offered: "Angebot offen",
+  booked: "Gebucht",
+  expired: "Abgelaufen",
+  withdrawn: "Zurückgezogen",
+};
 
 export interface ExceptionView {
   id: string;
@@ -75,6 +110,9 @@ export interface SettingsView {
   autoReplyText: string | null;
   intakeRetentionDays: number;
   reminderOffsetsH: number[];
+  siteUrl: string | null;
+  waitlistHoldHours: number;
+  maxFuturePerEmail: number;
 }
 
 export const STATUS_LABEL: Record<AppointmentStatus, string> = {

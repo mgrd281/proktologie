@@ -53,8 +53,9 @@ test("Einladung annehmen, Passkey und TOTP einrichten", async ({ page }) => {
   await page.getByLabel("Code aus der App").fill(totp(totpSecret));
   await page.getByRole("button", { name: /Aktivieren und ins Cockpit/ }).click();
 
-  // Im Cockpit
-  await expect(page.getByRole("heading", { name: /Erika/ })).toBeVisible();
+  // Im Cockpit. Der erste Aufruf kompiliert im Dev-Server die Seite und stößt
+  // zusätzlich den Automatik-Herzschlag an – dafür großzügig Zeit lassen.
+  await expect(page.getByRole("heading", { name: /Erika/ })).toBeVisible({ timeout: 45_000 });
   await expect(page.getByText(/Termine heute/)).toBeVisible();
 
   // Barrierefreiheit der Startseite

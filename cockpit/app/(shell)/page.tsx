@@ -58,18 +58,21 @@ export default async function TodayPage() {
       <p className={`mb-6 flex items-center gap-3 rounded-2xl px-5 py-4 text-[15px] ${allGood ? "bg-brand-soft text-text" : "bg-surface-raised text-text ring-1 ring-line"}`}>
         <span className={`size-2.5 shrink-0 rounded-full ${allGood ? "bg-brand-fill" : "bg-warn"}`} aria-hidden="true" />
         {summary}
-        {!ov.bookingLive && (
-          <span className="ml-auto hidden rounded-md bg-surface-sunken px-2 py-0.5 text-[11px] font-semibold tracking-[0.12em] text-text-muted uppercase md:inline">
-            Website-Buchung: noch nicht live
-          </span>
-        )}
+        <span
+          className={`ml-auto hidden rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-[0.12em] uppercase md:inline ${
+            ov.bookingLive && !ov.bookingPaused ? "bg-brand-soft text-brand" : ov.bookingPaused ? "bg-warn/12 text-warn" : "bg-surface-sunken text-text-muted"
+          }`}
+        >
+          {ov.bookingLive && !ov.bookingPaused ? "Website-Buchung: live" : ov.bookingPaused ? "Website-Buchung: pausiert" : "Website-Buchung: noch nicht live"}
+        </span>
       </p>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <KpiTile label="Termine heute" value={ov.counts.total} spark={ov.weekLoad.map((d) => d.count)} sub="Verlauf dieser Woche" />
         <KpiTile label="Unbestätigt" value={ov.counts.open} tone={ov.counts.open > 0 ? "warn" : "ok"} sub={ov.counts.open > 0 ? "Erinnerung ausstehend" : "Alle bestätigt"} />
         <KpiTile label="Wahrgenommen" value={ov.counts.completed} tone="ok" sub={`${ov.counts.noShow} nicht erschienen`} />
-        <KpiTile label="Offene Anfragen" value={ov.openRequests} tone={ov.openRequests > 0 ? "warn" : "neutral"} sub="Posteingang (Phase 2)" />
+        <KpiTile label="Über die Website" value={ov.webBookingsWeek} tone="neutral" sub="Buchungen in 7 Tagen" />
+        <KpiTile label="Warteliste" value={ov.waitlistOpen} tone={ov.waitlistOpen > 0 ? "warn" : "neutral"} sub={ov.openRequests > 0 ? `${ov.openRequests} offene Anfragen (Phase 2)` : "Angebote laufen automatisch"} />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.6fr_1fr]">
@@ -115,7 +118,7 @@ export default async function TodayPage() {
                 );
               })}
             </ul>
-            <p className="mt-3 text-[12px] text-text-faint">Aus Sprechzeiten, Ausnahmen und Belegung berechnet – dieselbe Logik, die später die Website nutzt.</p>
+            <p className="mt-3 text-[12px] text-text-faint">Aus Sprechzeiten, Ausnahmen und Belegung berechnet – dieselbe Logik, die die Website-Buchung nutzt.</p>
           </Card>
         </div>
       </div>

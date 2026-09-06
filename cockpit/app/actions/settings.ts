@@ -68,6 +68,10 @@ const settingsSchema = z.object({
   bookingLive: z.boolean().optional(),
   bannerText: z.string().trim().max(300).nullable().optional(),
   autoReplyText: z.string().trim().max(1000).nullable().optional(),
+  siteUrl: z.string().trim().url().max(200).nullable().optional(),
+  waitlistHoldHours: z.number().int().min(1).max(72).optional(),
+  maxFuturePerEmail: z.number().int().min(1).max(10).optional(),
+  reminderOffsetsH: z.array(z.number().int().min(1).max(24 * 14)).max(4).optional(),
 });
 
 export async function updateSettingsAction(input: z.input<typeof settingsSchema>): Promise<ActionResult<null>> {

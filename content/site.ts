@@ -79,11 +79,24 @@ export const site = {
    * Terminquelle der Booking-UI (Buildzeit-Konfiguration):
    * - "request" (Default): Wunschtermin auf Basis der echten Sprechzeiten,
    *   die Praxis bestätigt. Keine behauptete Live-Verfügbarkeit.
+   * - "cockpit": echte freie Zeiten und VERBINDLICHE Buchung über die
+   *   öffentliche API des Praxis-Cockpits (NEXT_PUBLIC_COCKPIT_API).
    * - "mock": NUR Entwicklung/Screenshots (simulierte Slots) – niemals
    *   für den produktiven Build verwenden.
    */
   bookingProvider:
-    process.env.NEXT_PUBLIC_BOOKING_PROVIDER === "mock" ? "mock" : "request",
+    process.env.NEXT_PUBLIC_BOOKING_PROVIDER === "mock"
+      ? "mock"
+      : process.env.NEXT_PUBLIC_BOOKING_PROVIDER === "cockpit"
+        ? "cockpit"
+        : "request",
+
+  /**
+   * Basis-URL der öffentlichen Cockpit-API (ohne Schrägstrich am Ende),
+   * z. B. https://proktologie-cockpit.vercel.app. Nur wirksam mit
+   * bookingProvider "cockpit".
+   */
+  cockpitApiUrl: (process.env.NEXT_PUBLIC_COCKPIT_API ?? "").replace(/\/+$/, ""),
 
   /**
    * Echte Sprechzeiten – Stand laut Doctolib-Praxisprofil, von der Praxis

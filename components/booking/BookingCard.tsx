@@ -21,6 +21,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * Sämtliche Verfügbarkeit kommt über das BookingProvider-Interface –
  * hier ist nichts hartkodiert. Alle Daten bleiben clientseitig
  * (kein localStorage, keine URLs mit Personenbezug, kein Logging).
+ *
+ * Im verbindlichen Modus (Provider „cockpit“) endet der Flow mit einer
+ * echten Buchung samt Referenz; die Bestätigung kommt per E-Mail.
  */
 
 const emptyDraft: BookingDraft = {
@@ -33,6 +36,7 @@ const emptyDraft: BookingDraft = {
   email: "",
   phone: "",
   consent: false,
+  website: "",
 };
 
 const slotDateFormat = new Intl.DateTimeFormat("de-DE", {
@@ -45,6 +49,7 @@ type SendState =
   | { kind: "idle" }
   | { kind: "sending" }
   | { kind: "done"; method: "mailto" | "endpoint" }
+  | { kind: "done"; method: "confirmed"; ref: string }
   | { kind: "error"; text: string };
 
 export function BookingCard() {
@@ -57,7 +62,7 @@ export function BookingCard() {
   const successRef = useRef<HTMLParagraphElement>(null);
   const mounted = useRef(false);
   // Latest-wins-Token: schützt vor veralteten Slot-Antworten, falls ein
-  // künftiger Provider asynchron/netzwerkbasiert antwortet.
+  // Provider asynchron/netzwerkbasiert antwortet (Cockpit).
   const slotsRequest = useRef(0);
 
   useEffect(() => {
@@ -84,7 +89,7 @@ export function BookingCard() {
       patchDraft({ date, slotId: null, time: null });
       const token = ++slotsRequest.current;
       provider
-        ?.getAvailableSlots(date)
+        ?.getAvailableSlots(date, draft.typeId)
         .then((result) => {
           if (token !== slotsRequest.current) return; // veraltete Antwort
           setSlots(result);
@@ -94,15 +99,16 @@ export function BookingCard() {
           /* Fehler: im Kalender bleiben, keine falschen Zeiten anzeigen */
         });
     },
-    [provider, patchDraft],
+    [provider, patchDraft, draft.typeId],
   );
 
   const submit = useCallback(async () => {
     if (!provider) return;
     setSend({ kind: "sending" });
     const result = await provider.createBooking(draft);
-    if (result.ok) setSend({ kind: "done", method: result.method });
-    else setSend({ kind: "error", text: result.error });
+    if (!result.ok) setSend({ kind: "error", text: result.error });
+    else if (result.method === "confirmed") setSend({ kind: "done", method: "confirmed", ref: result.ref });
+    else setSend({ kind: "done", method: result.method });
   }, [provider, draft]);
 
   const reset = useCallback(() => {
@@ -121,18 +127,25 @@ export function BookingCard() {
       )
     : "";
 
+  const confirmed = provider?.mode === "confirmed";
+
   return (
     <div className="rounded-2xl bg-white ring-1 ring-ink/8 shadow-[0_20px_50px_-30px_rgba(23,37,27,0.25)]">
       <div className="border-b border-ink/8 px-6 py-5 md:px-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs font-semibold tracking-[0.18em] text-primary-deep uppercase">
-            {bookingCopy.cardTitle}
+            {confirmed ? bookingCopy.cardTitleConfirmed : bookingCopy.cardTitle}
           </p>
           <BookingProgress step={step} />
         </div>
         {provider?.mode === "request" && send.kind !== "done" && (
           <p className="mt-2.5 text-xs leading-relaxed text-ink/55">
             {bookingCopy.requestModeNote}
+          </p>
+        )}
+        {confirmed && send.kind !== "done" && (
+          <p className="mt-2.5 text-xs leading-relaxed text-ink/55">
+            {bookingCopy.confirmedModeNote}
           </p>
         )}
       </div>
@@ -148,24 +161,36 @@ export function BookingCard() {
               <span className="flex size-8 items-center justify-center rounded-full bg-accent text-deep">
                 <Icon name="check" size={16} />
               </span>
-              {send.method === "mailto"
-                ? bookingCopy.confirm.successHeadingMailto
-                : bookingCopy.confirm.successHeading}
+              {send.method === "confirmed"
+                ? bookingCopy.confirm.successHeadingConfirmed
+                : send.method === "mailto"
+                  ? bookingCopy.confirm.successHeadingMailto
+                  : bookingCopy.confirm.successHeading}
             </p>
             <p role="status" className="mt-4 text-sm leading-relaxed text-ink/70">
-              {send.method === "mailto"
-                ? bookingCopy.confirm.successMailto
-                : bookingCopy.confirm.successEndpoint}
+              {send.method === "confirmed"
+                ? bookingCopy.confirm.successConfirmed
+                : send.method === "mailto"
+                  ? bookingCopy.confirm.successMailto
+                  : bookingCopy.confirm.successEndpoint}
             </p>
+            {send.method === "confirmed" && (
+              <p className="mt-4 inline-flex items-baseline gap-2 rounded-xl border border-ink/10 bg-mist/40 px-4 py-2.5 text-sm">
+                <span className="text-xs font-medium tracking-wide text-ink/55 uppercase">
+                  {bookingCopy.confirm.refLabel}
+                </span>
+                <span className="font-display text-lg font-medium tabular-nums text-ink">{send.ref}</span>
+              </p>
+            )}
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
               <button
                 type="button"
                 onClick={reset}
                 className="min-h-11 text-left text-sm font-medium text-primary underline-offset-4 hover:underline sm:text-center"
               >
-                {bookingCopy.confirm.newRequest}
+                {send.method === "confirmed" ? bookingCopy.confirm.newBooking : bookingCopy.confirm.newRequest}
               </button>
-              {site.doctolibConfigured && (
+              {send.method !== "confirmed" && site.doctolibConfigured && (
                 <a
                   href={site.doctolibUrl}
                   target="_blank"
@@ -216,6 +241,7 @@ export function BookingCard() {
                 (provider ? (
                   <StepCalendar
                     provider={provider}
+                    typeId={draft.typeId}
                     selected={draft.date}
                     onSelect={selectDate}
                   />
@@ -228,6 +254,7 @@ export function BookingCard() {
                   slots={slots}
                   selected={draft.slotId}
                   dateLabel={slotDateLabel}
+                  mode={provider?.mode ?? "request"}
                   onSelect={(slot) => {
                     patchDraft({ slotId: slot.id, time: slot.time });
                     setStep(3);
@@ -279,10 +306,10 @@ export function BookingCard() {
 
       {/*
        * Sofort verbindlicher Weg – ab Schritt 1 leise erreichbar, damit
-       * niemand erst den ganzen Flow durchlaufen muss. In Schritt 5 zeigt
-       * StepConfirm dieselbe Alternative prominenter; dort nicht doppeln.
+       * niemand erst den ganzen Flow durchlaufen muss. Im verbindlichen
+       * Modus bucht die Website selbst verbindlich; dann entfällt der Hinweis.
        */}
-      {site.doctolibConfigured && send.kind !== "done" && step !== 4 && (
+      {!confirmed && site.doctolibConfigured && send.kind !== "done" && step !== 4 && (
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-ink/8 px-6 py-2.5 md:px-8">
           <p className="text-xs text-ink/55">{bookingCopy.doctolibHint}</p>
           <a

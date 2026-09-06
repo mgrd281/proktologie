@@ -15,7 +15,7 @@ export const NAV: NavItem[] = [
   { href: "/", label: "Heute", icon: "home", key: "h" },
   { href: "/termine", label: "Termine", icon: "calendar", key: "t" },
   { href: "/anfragen", label: "Anfragen", icon: "inbox", key: "a", phase: 2 },
-  { href: "/warteliste", label: "Warteliste", icon: "hourglass", key: "w", phase: 1 },
+  { href: "/warteliste", label: "Warteliste", icon: "hourglass", key: "w" },
   { href: "/website", label: "Website", icon: "globe", key: "s", phase: 3 },
   { href: "/aufnahme", label: "Aufnahme", icon: "file-text", key: "u", phase: 4 },
   { href: "/statistik", label: "Statistik", icon: "chart", key: "k", phase: 5 },

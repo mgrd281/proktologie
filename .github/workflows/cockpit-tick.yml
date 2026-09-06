@@ -1,0 +1,35 @@
+name: Cockpit Tick
+
+# Herzschlag der Praxis-Automatik (Erinnerungen, Wartelisten-Angebote,
+# abgelaufene Reservierungen, Mail-Warteschlange). Vercels Hobby-Plan erlaubt
+# nur einen täglichen Cron – deshalb stößt GitHub Actions den Tick alle
+# 15 Minuten an. Es werden keine Daten übertragen, nur ein Aufruf.
+#
+# Einrichtung im Repository (Settings → Secrets and variables → Actions):
+#   Variable  COCKPIT_TICK_URL = https://<cockpit-domain>/api/internal/tick
+#   Secret    CRON_SECRET      = derselbe Wert wie CRON_SECRET im Vercel-Projekt
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    if: ${{ vars.COCKPIT_TICK_URL != '' }}
+    timeout-minutes: 3
+    steps:
+      - name: Tick auslösen
+        env:
+          URL: ${{ vars.COCKPIT_TICK_URL }}
+          SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SECRET" ]; then echo "CRON_SECRET fehlt (Repository-Secret)"; exit 1; fi
+          code=$(curl -sS -o /tmp/tick.json -w '%{http_code}' -X POST "$URL" -H "Authorization: Bearer $SECRET")
+          echo "HTTP $code"
+          cat /tmp/tick.json; echo
+          [ "$code" = "200" ]

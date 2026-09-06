@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
-import { and, asc, count, eq, gt, gte, inArray, lt, lte, sql } from "drizzle-orm";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { audit } from "../audit.ts";
 import { currentKeyVersion, decryptJson, encrypt, decrypt, encryptJson } from "../crypto/aead.ts";
 import { emailHash, nameKey, phoneHash } from "../crypto/blindIndex.ts";
@@ -20,7 +20,13 @@ import {
   type SettingsView,
   type TypeColor,
   type TypeView,
+  type WaitlistStatus,
+  type WaitlistView,
 } from "./model.ts";
+
+/** Token für Verwaltungslinks: 32 zufällige Bytes, gespeichert nur als SHA-256 + verschlüsselt. */
+export const newManageToken = () => randomBytes(32).toString("base64url");
+export const hashToken = (t: string) => createHash("sha256").update(t).digest("hex");
 
 /**
  * Datenzugriff des Terminmotors. Verschlüsselung und Blind-Indizes passieren
@@ -63,11 +69,16 @@ export async function getSettings(): Promise<SettingsView & { pauseFrom: Date | 
     autoReplyText: row.autoReplyText,
     intakeRetentionDays: row.intakeRetentionDays,
     reminderOffsetsH: row.reminderOffsetsH,
+    siteUrl: row.siteUrl,
+    waitlistHoldHours: row.waitlistHoldHours,
+    maxFuturePerEmail: row.maxFuturePerEmail,
   };
 }
 
 export async function updateSettings(
-  patch: Partial<Pick<SettingsView, "slotStepMin" | "bookingPaused" | "bannerText" | "autoReplyText">> & {
+  patch: Partial<
+    Pick<SettingsView, "slotStepMin" | "bookingPaused" | "bannerText" | "autoReplyText" | "siteUrl" | "waitlistHoldHours" | "maxFuturePerEmail" | "reminderOffsetsH">
+  > & {
     bookingLive?: boolean;
   },
   actorId: string,
@@ -252,6 +263,26 @@ export async function availability(typeId: string, date: string, now = new Date(
   });
 }
 
+/**
+ * Verfügbarkeit über mehrere Tage in einem Rutsch: Stammdaten und Belegung
+ * werden einmal geladen, der Motor läuft je Tag. Für die öffentliche API.
+ */
+export async function availabilityRange(typeId: string, fromDate: string, toDate: string, now = new Date()) {
+  const type = await getType(typeId);
+  if (!type || !type.active) return [] as Array<{ date: string; slots: string[] }>;
+  const settings = await getSettings();
+  const from = startOfDay(fromDate);
+  const to = startOfDay(addDays(toDate, 1));
+  const [hours, exceptions, busy] = await Promise.all([listHours(), exceptionSpans(from, to), busySpans(from, to)]);
+  const spec = { id: type.id, durationMin: type.durationMin, bufferMin: type.bufferMin, leadTimeHours: type.leadTimeHours, maxAheadDays: type.maxAheadDays };
+  const out: Array<{ date: string; slots: string[] }> = [];
+  for (let date = fromDate; date <= toDate; date = addDays(date, 1)) {
+    const slots = generateSlots({ date, type: spec, hours, exceptions, busy, stepMin: settings.slotStepMin, now });
+    out.push({ date, slots: slots.map((s) => s.time) });
+  }
+  return out;
+}
+
 // ---------- Termine ----------
 
 function decryptPii(row: { id: string; piiEnc: string }): Pii {
@@ -282,6 +313,9 @@ function toView(
     isDemo: a.isDemo,
     remindedAt: a.remindedAt?.toISOString() ?? null,
     confirmedByPatientAt: a.confirmedByPatientAt?.toISOString() ?? null,
+    holdUntil: a.holdUntil?.toISOString() ?? null,
+    sequence: a.sequence,
+    hasManageLink: Boolean(a.manageTokenHash),
     createdAt: a.createdAt.toISOString(),
   };
 }
@@ -332,6 +366,10 @@ export interface CreateAppointmentInput {
   actorId?: string | null;
   /** Interne Anlage: Konflikt mit Sprechzeiten nur warnen, nicht sperren. */
   ignoreOpeningHours?: boolean;
+  /** Verwaltungslink für Patient:innen (Website-Buchung, Wartelisten-Angebot) */
+  manageToken?: string;
+  /** Wartelisten-Angebot: reserviert bis */
+  holdUntil?: Date | null;
 }
 
 export async function createAppointment(input: CreateAppointmentInput): Promise<AppointmentView> {
@@ -371,6 +409,9 @@ export async function createAppointment(input: CreateAppointmentInput): Promise<
     phoneHash: pii.phone ? phoneHash(pii.phone) : null,
     nameKey: nameKey(pii.lastName, pii.firstName),
     noteEnc: input.note?.trim() ? encrypt(input.note.trim(), `note:${id}`) : null,
+    manageTokenHash: input.manageToken ? hashToken(input.manageToken) : null,
+    manageTokenEnc: input.manageToken ? encrypt(input.manageToken, `mtok:${id}`) : null,
+    holdUntil: input.holdUntil ?? null,
     isDemo: input.isDemo ?? false,
     keyVersion: currentKeyVersion(),
     createdBy: input.actorId ?? null,
@@ -415,7 +456,10 @@ export async function updateAppointment(
     if (findConflicts({ startsAt, endsAt, bufferMin: type.bufferMin }, busy).length) throw new ConflictError();
   }
 
+  const moved = Boolean(patch.startsAt) && startsAt.getTime() !== new Date(current.startsAt).getTime();
   const set: Partial<typeof t.appointments.$inferInsert> = { typeId, startsAt, endsAt, bufferMin: type.bufferMin };
+  // Verschiebung: iCalendar-Sequenz erhöhen, damit Kalender-Apps die Änderung übernehmen
+  if (moved) set.sequence = current.sequence + 1;
   if (patch.pii) {
     const pii: Pii = {
       firstName: patch.pii.firstName.trim(),
@@ -461,9 +505,329 @@ export async function setStatus(
     set.cancelledBy = by;
   }
   if (status === "confirmed" && by === "patient") set.confirmedByPatientAt = new Date();
+  // Eine Reservierung endet mit jeder Entscheidung (Annahme, Absage, Ablauf)
+  if (status !== "booked") set.holdUntil = null;
   await db.update(t.appointments).set(set).where(eq(t.appointments.id, id));
   await audit({ actorId, action: `appointment.${status}`, entity: "appointment", entityId: id, meta: { by } });
   return (await getAppointment(id))!;
+}
+
+// ---------- Verwaltungslinks & Missbrauchsschutz ----------
+
+export async function findAppointmentByManageToken(token: string): Promise<AppointmentView | null> {
+  const db = await getDb();
+  const [row] = await db.select({ id: t.appointments.id }).from(t.appointments).where(eq(t.appointments.manageTokenHash, hashToken(token)));
+  return row ? getAppointment(row.id) : null;
+}
+
+/** Das Klartext-Token eines Termins (für Erinnerungen); null, wenn keins vergeben. */
+export async function manageTokenFor(id: string): Promise<string | null> {
+  const db = await getDb();
+  const [row] = await db.select({ enc: t.appointments.manageTokenEnc }).from(t.appointments).where(eq(t.appointments.id, id));
+  if (!row?.enc) return null;
+  return safeDecrypt(row.enc, `mtok:${id}`);
+}
+
+/** Neues Token vergeben (z. B. „Bestätigung erneut senden“ für einen Telefontermin). */
+export async function issueManageToken(id: string, actorId: string | null): Promise<string> {
+  const db = await getDb();
+  const token = newManageToken();
+  await db
+    .update(t.appointments)
+    .set({ manageTokenHash: hashToken(token), manageTokenEnc: encrypt(token, `mtok:${id}`) })
+    .where(eq(t.appointments.id, id));
+  await audit({ actorId, action: "appointment.token", entity: "appointment", entityId: id });
+  return token;
+}
+
+/** Offene Zukunftstermine je E-Mail – Grundlage für „höchstens N“ bei Website-Buchungen. */
+export async function countFutureActiveByEmail(email: string, now = new Date()): Promise<number> {
+  const db = await getDb();
+  const [row] = await db
+    .select({ n: count() })
+    .from(t.appointments)
+    .where(and(eq(t.appointments.emailHash, emailHash(email)), inArray(t.appointments.status, ACTIVE_STATUSES), gt(t.appointments.startsAt, now)));
+  return row?.n ?? 0;
+}
+
+/** Reservierte Wartelisten-Termine, deren Frist abgelaufen ist. */
+export async function expiredHolds(now = new Date()): Promise<AppointmentView[]> {
+  const db = await getDb();
+  const rows = await db
+    .select({ id: t.appointments.id })
+    .from(t.appointments)
+    .where(and(isNotNull(t.appointments.holdUntil), lt(t.appointments.holdUntil, now), eq(t.appointments.status, "booked")));
+  const out: AppointmentView[] = [];
+  for (const r of rows) {
+    const v = await getAppointment(r.id);
+    if (v) out.push(v);
+  }
+  return out;
+}
+
+/** Aktive Termine in einem Zeitfenster, die noch nicht an eine Erinnerung gedacht wurden. */
+export async function appointmentsForReminder(from: Date, to: Date): Promise<AppointmentView[]> {
+  const db = await getDb();
+  const rows = await db
+    .select({ id: t.appointments.id })
+    .from(t.appointments)
+    .where(and(inArray(t.appointments.status, ["booked", "confirmed", "reminded"]), gte(t.appointments.startsAt, from), lt(t.appointments.startsAt, to), isNull(t.appointments.holdUntil)));
+  const out: AppointmentView[] = [];
+  for (const r of rows) {
+    const v = await getAppointment(r.id);
+    if (v && v.pii.email && !v.isDemo) out.push(v);
+  }
+  return out;
+}
+
+export async function markReminded(id: string) {
+  const db = await getDb();
+  await db
+    .update(t.appointments)
+    .set({ remindedAt: new Date(), status: sql`CASE WHEN ${t.appointments.status} = 'booked' THEN 'reminded' ELSE ${t.appointments.status} END` })
+    .where(eq(t.appointments.id, id));
+}
+
+// ---------- Warteliste ----------
+
+interface WaitlistPii extends Pii {
+  email?: string;
+}
+
+function toWaitlistView(r: typeof t.waitlist.$inferSelect, type: { label: string; color: TypeColor } | null): WaitlistView {
+  let pii: Pii;
+  try {
+    pii = decryptJson<WaitlistPii>(r.piiEnc, `wl:${r.id}`);
+  } catch {
+    pii = { firstName: "—", lastName: "(nicht lesbar)" };
+  }
+  return {
+    id: r.id,
+    ref: r.ref,
+    typeId: r.typeId,
+    typeLabel: type?.label ?? r.typeId,
+    color: type?.color ?? "slate",
+    pii,
+    windowFrom: r.windowFrom?.toISOString() ?? null,
+    windowTo: r.windowTo?.toISOString() ?? null,
+    note: r.noteEnc ? safeDecrypt(r.noteEnc, `wlnote:${r.id}`) : null,
+    status: r.status,
+    source: r.source,
+    offeredAppointmentId: r.offeredAppointmentId,
+    offeredAt: r.offeredAt?.toISOString() ?? null,
+    offerExpiresAt: r.offerExpiresAt?.toISOString() ?? null,
+    isDemo: r.isDemo,
+    createdAt: r.createdAt.toISOString(),
+  };
+}
+
+export async function listWaitlist(opts: { includeClosed?: boolean } = {}): Promise<WaitlistView[]> {
+  const db = await getDb();
+  const rows = await db
+    .select({ w: t.waitlist, type: { label: t.appointmentTypes.label, color: t.appointmentTypes.color } })
+    .from(t.waitlist)
+    .leftJoin(t.appointmentTypes, eq(t.waitlist.typeId, t.appointmentTypes.id))
+    .where(opts.includeClosed ? undefined : inArray(t.waitlist.status, ["open", "offered"]))
+    .orderBy(asc(t.waitlist.createdAt));
+  return rows.map((r) => toWaitlistView(r.w, r.type));
+}
+
+export async function getWaitlistEntry(id: string): Promise<WaitlistView | null> {
+  const db = await getDb();
+  const [r] = await db
+    .select({ w: t.waitlist, type: { label: t.appointmentTypes.label, color: t.appointmentTypes.color } })
+    .from(t.waitlist)
+    .leftJoin(t.appointmentTypes, eq(t.waitlist.typeId, t.appointmentTypes.id))
+    .where(eq(t.waitlist.id, id));
+  return r ? toWaitlistView(r.w, r.type) : null;
+}
+
+export async function findWaitlistByManageToken(token: string): Promise<WaitlistView | null> {
+  const db = await getDb();
+  const [row] = await db.select({ id: t.waitlist.id }).from(t.waitlist).where(eq(t.waitlist.manageTokenHash, hashToken(token)));
+  return row ? getWaitlistEntry(row.id) : null;
+}
+
+export async function waitlistManageTokenFor(id: string): Promise<string | null> {
+  const db = await getDb();
+  const [row] = await db.select({ enc: t.waitlist.manageTokenEnc }).from(t.waitlist).where(eq(t.waitlist.id, id));
+  return row?.enc ? safeDecrypt(row.enc, `wltok:${id}`) : null;
+}
+
+export interface CreateWaitlistInput {
+  typeId: string;
+  pii: Pii;
+  windowFrom?: Date | null;
+  windowTo?: Date | null;
+  note?: string | null;
+  source: "web" | "cockpit" | "telefon";
+  manageToken?: string;
+  isDemo?: boolean;
+  actorId?: string | null;
+}
+
+export async function createWaitlistEntry(input: CreateWaitlistInput): Promise<WaitlistView> {
+  const type = await getType(input.typeId);
+  if (!type) throw new Error("Unbekannte Terminart");
+  const db = await getDb();
+  const id = randomUUID();
+  const pii: Pii = {
+    firstName: input.pii.firstName.trim(),
+    lastName: input.pii.lastName.trim(),
+    email: input.pii.email?.trim() || undefined,
+    phone: input.pii.phone?.trim() || undefined,
+  };
+  const values = {
+    id,
+    typeId: type.id,
+    piiEnc: encryptJson(pii, `wl:${id}`),
+    emailHash: pii.email ? emailHash(pii.email) : null,
+    phoneHash: pii.phone ? phoneHash(pii.phone) : null,
+    manageTokenHash: input.manageToken ? hashToken(input.manageToken) : null,
+    manageTokenEnc: input.manageToken ? encrypt(input.manageToken, `wltok:${id}`) : null,
+    windowFrom: input.windowFrom ?? null,
+    windowTo: input.windowTo ?? null,
+    noteEnc: input.note?.trim() ? encrypt(input.note.trim(), `wlnote:${id}`) : null,
+    source: input.source,
+    isDemo: input.isDemo ?? false,
+    keyVersion: currentKeyVersion(),
+  };
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      await db.insert(t.waitlist).values({ ...values, ref: makeRef("WL") });
+      break;
+    } catch (e) {
+      if (isUniqueViolation(e) && attempt < 5) continue;
+      throw e;
+    }
+  }
+  await audit({ actorId: input.actorId ?? null, action: "waitlist.create", entity: "waitlist", entityId: id, meta: { typeId: type.id, source: input.source } });
+  return (await getWaitlistEntry(id))!;
+}
+
+export async function setWaitlistStatus(
+  id: string,
+  status: WaitlistStatus,
+  actorId: string | null,
+  extra: { offeredAppointmentId?: string | null; offerExpiresAt?: Date | null } = {},
+): Promise<WaitlistView> {
+  const db = await getDb();
+  const set: Partial<typeof t.waitlist.$inferInsert> = { status };
+  if (status === "offered") {
+    set.offeredAppointmentId = extra.offeredAppointmentId ?? null;
+    set.offeredAt = new Date();
+    set.offerExpiresAt = extra.offerExpiresAt ?? null;
+  }
+  if (status === "open") {
+    set.offeredAppointmentId = null;
+    set.offerExpiresAt = null;
+  }
+  await db.update(t.waitlist).set(set).where(eq(t.waitlist.id, id));
+  await audit({ actorId, action: `waitlist.${status}`, entity: "waitlist", entityId: id });
+  return (await getWaitlistEntry(id))!;
+}
+
+export async function waitlistByOfferedAppointment(appointmentId: string): Promise<WaitlistView | null> {
+  const db = await getDb();
+  const [row] = await db.select({ id: t.waitlist.id }).from(t.waitlist).where(and(eq(t.waitlist.offeredAppointmentId, appointmentId), eq(t.waitlist.status, "offered")));
+  return row ? getWaitlistEntry(row.id) : null;
+}
+
+/**
+ * Älteste offene Person, deren Wunschfenster den freien Zeitpunkt umfasst
+ * (oder die kein Fenster gesetzt hat) – und die eine E-Mail hinterlassen hat.
+ */
+export async function nextWaitlistCandidate(typeId: string, slotStart: Date): Promise<WaitlistView | null> {
+  const db = await getDb();
+  const rows = await db
+    .select({ id: t.waitlist.id })
+    .from(t.waitlist)
+    .where(
+      and(
+        eq(t.waitlist.typeId, typeId),
+        eq(t.waitlist.status, "open"),
+        isNotNull(t.waitlist.emailHash),
+        or(isNull(t.waitlist.windowFrom), lte(t.waitlist.windowFrom, slotStart)),
+        or(isNull(t.waitlist.windowTo), gte(t.waitlist.windowTo, slotStart)),
+      ),
+    )
+    .orderBy(asc(t.waitlist.createdAt))
+    .limit(1);
+  return rows[0] ? getWaitlistEntry(rows[0].id) : null;
+}
+
+export async function countWaitlistOpen(): Promise<number> {
+  const db = await getDb();
+  const [row] = await db.select({ n: count() }).from(t.waitlist).where(inArray(t.waitlist.status, ["open", "offered"]));
+  return row?.n ?? 0;
+}
+
+// ---------- Versandprotokoll ----------
+
+export interface MessageLogRow {
+  id: string;
+  channel: "email" | "sms";
+  kind: string;
+  appointmentId: string | null;
+  status: "queued" | "sent" | "bounced" | "failed";
+  error: string | null;
+  sentAt: string | null;
+  createdAt: string;
+}
+
+export async function recentMessages(limit = 25): Promise<MessageLogRow[]> {
+  const db = await getDb();
+  const rows = await db.select().from(t.messages).orderBy(desc(t.messages.createdAt)).limit(limit);
+  return rows.map((m) => ({
+    id: m.id,
+    channel: m.channel,
+    kind: m.kind,
+    appointmentId: m.appointmentId,
+    status: m.status,
+    error: m.error,
+    sentAt: m.sentAt?.toISOString() ?? null,
+    createdAt: m.createdAt.toISOString(),
+  }));
+}
+
+export async function messageSent(appointmentId: string, kind: string): Promise<boolean> {
+  const db = await getDb();
+  const [row] = await db
+    .select({ n: count() })
+    .from(t.messages)
+    .where(and(eq(t.messages.appointmentId, appointmentId), eq(t.messages.kind, kind), inArray(t.messages.status, ["sent", "queued"])));
+  return (row?.n ?? 0) > 0;
+}
+
+export async function logMessage(input: {
+  channel: "email" | "sms";
+  kind: string;
+  appointmentId?: string | null;
+  requestId?: string | null;
+  waitlistId?: string | null;
+  status: "sent" | "failed";
+  providerId?: string | null;
+  error?: string | null;
+}) {
+  const db = await getDb();
+  await db.insert(t.messages).values({
+    channel: input.channel,
+    kind: input.kind,
+    appointmentId: input.appointmentId ?? null,
+    requestId: input.requestId ?? null,
+    waitlistId: input.waitlistId ?? null,
+    providerId: input.providerId ?? null,
+    status: input.status,
+    error: input.error ?? null,
+    sentAt: input.status === "sent" ? new Date() : null,
+  });
+}
+
+/** Vorbereitungshinweis je Terminart – von der Praxis gepflegt, sonst leer. */
+export async function prepTextFor(typeId: string): Promise<string | null> {
+  const db = await getDb();
+  const [row] = await db.select({ body: t.messageTemplates.body }).from(t.messageTemplates).where(eq(t.messageTemplates.key, `prep:${typeId}`));
+  return row?.body?.trim() || null;
 }
 
 // ---------- Demo ----------
@@ -500,6 +864,9 @@ export interface TodayOverview {
   counts: Record<"total" | "open" | "confirmed" | "completed" | "noShow" | "cancelled", number>;
   weekLoad: Array<{ date: string; count: number }>;
   openRequests: number;
+  /** Website-Buchungen der letzten 7 Tage */
+  webBookingsWeek: number;
+  waitlistOpen: number;
   demoCount: number;
   bookingLive: boolean;
   bookingPaused: boolean;
@@ -551,6 +918,11 @@ export async function todayOverview(now = new Date()): Promise<TodayOverview> {
     .from(t.requests)
     .where(inArray(t.requests.status, ["neu", "in_arbeit", "wartet"]));
   const openRequests = openRow?.n ?? 0;
+  const [webRow] = await db
+    .select({ n: count() })
+    .from(t.appointments)
+    .where(and(eq(t.appointments.source, "web"), gte(t.appointments.createdAt, new Date(now.getTime() - 7 * 86_400_000))));
+  const waitlistOpen = await countWaitlistOpen();
 
   return {
     date,
@@ -558,6 +930,8 @@ export async function todayOverview(now = new Date()): Promise<TodayOverview> {
     counts,
     weekLoad,
     openRequests: Number(openRequests ?? 0),
+    webBookingsWeek: Number(webRow?.n ?? 0),
+    waitlistOpen,
     demoCount,
     bookingLive: settings.bookingLive,
     bookingPaused: settings.bookingPaused,

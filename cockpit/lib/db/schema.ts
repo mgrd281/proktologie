@@ -43,6 +43,12 @@ export const practiceSettings = pgTable("practice_settings", {
   powEnabled: boolean("pow_enabled").notNull().default(false),
   intakeRetentionDays: smallint("intake_retention_days").notNull().default(30),
   reminderOffsetsH: jsonb("reminder_offsets_h").$type<number[]>().notNull().default([48, 24]),
+  /** Öffentliche Website – für Links in Patienten-Mails (Fallback: COCKPIT_URL) */
+  siteUrl: text("site_url"),
+  /** Wartelisten-Angebot: so lange bleibt der Termin reserviert */
+  waitlistHoldHours: smallint("waitlist_hold_hours").notNull().default(4),
+  /** Missbrauchsschutz: so viele offene Zukunftstermine je E-Mail-Adresse */
+  maxFuturePerEmail: smallint("max_future_per_email").notNull().default(2),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 });
 
@@ -132,6 +138,12 @@ export const appointments = pgTable(
     /** Interne Notiz des Teams – verschlüsselt (kann Gesundheitsbezug haben). */
     noteEnc: text("note_enc"),
     manageTokenHash: text("manage_token_hash"),
+    /** Dasselbe Token verschlüsselt (AAD "mtok:<id>") – damit Erinnerungen den Link erneut enthalten können */
+    manageTokenEnc: text("manage_token_enc"),
+    /** Wartelisten-Angebot: Termin ist bis dahin reserviert, dann wird er wieder frei */
+    holdUntil: ts("hold_until"),
+    /** iCalendar SEQUENCE – steigt bei jeder Änderung des Zeitpunkts */
+    sequence: smallint("sequence").notNull().default(0),
     remindedAt: ts("reminded_at"),
     confirmedByPatientAt: ts("confirmed_by_patient_at"),
     cancelledAt: ts("cancelled_at"),
@@ -144,6 +156,7 @@ export const appointments = pgTable(
   },
   (t) => [
     uniqueIndex("appointments_ref_idx").on(t.ref),
+    index("appointments_hold_idx").on(t.holdUntil),
     index("appointments_starts_at_idx").on(t.startsAt),
     index("appointments_email_hash_idx").on(t.emailHash),
     index("appointments_phone_hash_idx").on(t.phoneHash),
@@ -152,22 +165,40 @@ export const appointments = pgTable(
   ],
 );
 
-export const waitlist = pgTable("waitlist", {
-  id: id(),
-  typeId: text("type_id")
-    .notNull()
-    .references(() => appointmentTypes.id),
-  piiEnc: text("pii_enc").notNull(),
-  emailHash: text("email_hash"),
-  windowFrom: ts("window_from"),
-  windowTo: ts("window_to"),
-  offeredAppointmentId: text("offered_appointment_id"),
-  offerExpiresAt: ts("offer_expires_at"),
-  status: text("status").$type<"open" | "offered" | "booked" | "expired" | "withdrawn">().notNull().default("open"),
-  isDemo: boolean("is_demo").notNull().default(false),
-  keyVersion: smallint("key_version").notNull().default(1),
-  createdAt: ts("created_at").notNull().defaultNow(),
-});
+export const waitlist = pgTable(
+  "waitlist",
+  {
+    id: id(),
+    /** "WL-…" – für Rückfragen; bei Altdaten ohne Wert */
+    ref: text("ref"),
+    typeId: text("type_id")
+      .notNull()
+      .references(() => appointmentTypes.id),
+    piiEnc: text("pii_enc").notNull(),
+    emailHash: text("email_hash"),
+    phoneHash: text("phone_hash"),
+    /** Token im Fragment des Verwaltungslinks – gespeichert als SHA-256 (Suche) und verschlüsselt (Wiederverwendung) */
+    manageTokenHash: text("manage_token_hash"),
+    manageTokenEnc: text("manage_token_enc"),
+    windowFrom: ts("window_from"),
+    windowTo: ts("window_to"),
+    /** Freitext-Wunsch ("vormittags") – verschlüsselt */
+    noteEnc: text("note_enc"),
+    offeredAppointmentId: text("offered_appointment_id"),
+    offeredAt: ts("offered_at"),
+    offerExpiresAt: ts("offer_expires_at"),
+    status: text("status").$type<"open" | "offered" | "booked" | "expired" | "withdrawn">().notNull().default("open"),
+    source: text("source").$type<"web" | "cockpit" | "telefon">().notNull().default("web"),
+    isDemo: boolean("is_demo").notNull().default(false),
+    keyVersion: smallint("key_version").notNull().default(1),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("waitlist_ref_idx").on(t.ref),
+    index("waitlist_status_idx").on(t.status, t.typeId),
+    index("waitlist_manage_token_idx").on(t.manageTokenHash),
+  ],
+);
 
 export const requests = pgTable(
   "requests",
@@ -199,18 +230,23 @@ export const messageTemplates = pgTable("message_templates", {
 });
 
 /** Versandprotokoll – bewusst OHNE Nachrichtentext. */
-export const messages = pgTable("messages", {
-  id: id(),
-  channel: text("channel").$type<"email" | "sms">().notNull(),
-  kind: text("kind").notNull(),
-  appointmentId: text("appointment_id"),
-  requestId: text("request_id"),
-  providerId: text("provider_id"),
-  status: text("status").$type<"queued" | "sent" | "bounced" | "failed">().notNull().default("queued"),
-  error: text("error"),
-  sentAt: ts("sent_at"),
-  createdAt: ts("created_at").notNull().defaultNow(),
-});
+export const messages = pgTable(
+  "messages",
+  {
+    id: id(),
+    channel: text("channel").$type<"email" | "sms">().notNull(),
+    kind: text("kind").notNull(),
+    appointmentId: text("appointment_id"),
+    requestId: text("request_id"),
+    waitlistId: text("waitlist_id"),
+    providerId: text("provider_id"),
+    status: text("status").$type<"queued" | "sent" | "bounced" | "failed">().notNull().default("queued"),
+    error: text("error"),
+    sentAt: ts("sent_at"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("messages_appointment_kind_idx").on(t.appointmentId, t.kind), index("messages_created_idx").on(t.createdAt)],
+);
 
 export const intakeForms = pgTable("intake_forms", {
   id: id(),
@@ -239,6 +275,8 @@ export const jobs = pgTable(
     dedupeKey: text("dedupe_key").notNull(),
     attempts: smallint("attempts").notNull().default(0),
     lastError: text("last_error"),
+    /** Gesetzt, solange ein Tick den Job bearbeitet (Schutz vor Doppelverarbeitung) */
+    lockedAt: ts("locked_at"),
     doneAt: ts("done_at"),
     createdAt: ts("created_at").notNull().defaultNow(),
   },

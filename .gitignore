@@ -21,3 +21,5 @@ next-env.d.ts
 /cockpit/test-results/
 /cockpit/playwright-report/
 /cockpit/e2e/shots/
+# Protokollierte Mails im Entwicklungs-/Testbetrieb (LogChannel)
+/cockpit/.mail-outbox*/
