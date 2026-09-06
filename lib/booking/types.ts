@@ -17,8 +17,8 @@ export interface AppointmentType {
  * - "request":   Wunschtermin – Zeiten basieren auf den Sprechzeiten der
  *                Praxis, die Praxis bestätigt den Termin. Es wird KEINE
  *                Live-Verfügbarkeit behauptet.
- * - "confirmed": Echte, verbindlich buchbare Verfügbarkeit (erst mit
- *                offizieller Doctolib-/PVS-Integration).
+ * - "confirmed": Echte, verbindlich buchbare Verfügbarkeit – aus dem
+ *                Praxis-Cockpit (lib/booking/cockpitProvider.ts).
  * - "handoff":   Keine eigene Zeitwahl – Übergabe an die offizielle
  *                externe Buchungsstrecke (z. B. Doctolib-Seite).
  */
@@ -50,8 +50,12 @@ export interface BookingDraft {
   email: string;
   phone: string;
   consent: boolean;
+  /** Honigtopf – für Menschen unsichtbar, bleibt leer. */
+  website?: string;
 }
 
 export type BookingResult =
   | { ok: true; method: "mailto" | "endpoint" }
-  | { ok: false; error: string };
+  /** Verbindlich gebucht – Referenz für Rückfragen, Zeitpunkt in UTC (ISO). */
+  | { ok: true; method: "confirmed"; ref: string; startsAt: string; endsAt: string }
+  | { ok: false; error: string; code?: string };

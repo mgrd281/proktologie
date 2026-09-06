@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { availabilityAction, createAppointmentAction, setStatusAction, updateAppointmentAction } from "@/app/actions/appointments";
+import { availabilityAction, createAppointmentAction, resendConfirmationAction, setStatusAction, updateAppointmentAction } from "@/app/actions/appointments";
 import { cn } from "@/lib/cn";
 import { SOURCE_LABEL, STATUS_LABEL, type AppointmentStatus, type AppointmentView, type TypeView } from "@/lib/booking/model";
 import { dateKey, fmtLongDate, timeKey } from "@/lib/time";
@@ -10,7 +10,7 @@ import { DemoBadge, Notice, StatusPill } from "@/components/ui/Bits";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
-import { Drawer } from "@/components/ui/Overlay";
+import { Dialog, Drawer } from "@/components/ui/Overlay";
 import { useToast } from "@/components/ui/Toast";
 
 export type DrawerState = { mode: "new"; date: string; time?: string } | { mode: "edit"; appointment: AppointmentView } | null;
@@ -21,6 +21,7 @@ export function AppointmentDrawer({ state, types, onClose }: { state: DrawerStat
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [outsideHours, setOutsideHours] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
 
   const editing = state?.mode === "edit" ? state.appointment : null;
   const [typeId, setTypeId] = useState("");
@@ -38,6 +39,7 @@ export function AppointmentDrawer({ state, types, onClose }: { state: DrawerStat
     if (!state) return;
     setError(null);
     setOutsideHours(false);
+    setConfirmCancel(false);
     if (state.mode === "new") {
       setTypeId(types[0]?.id ?? "");
       setDate(state.date);
@@ -91,13 +93,19 @@ export function AppointmentDrawer({ state, types, onClose }: { state: DrawerStat
         setError(r.error);
         return;
       }
-      toast({ title: editing ? "Termin gespeichert" : `Termin angelegt · ${r.data.ref}`, tone: "ok" });
+      const moved = editing && new Date(editing.startsAt).getTime() !== new Date(r.data.startsAt).getTime();
+      toast({
+        title: editing ? "Termin gespeichert" : `Termin angelegt · ${r.data.ref}`,
+        description: !editing && email ? "Bestätigung mit Kalenderdatei geht per E-Mail raus." : moved && email ? "Neue Kalenderdatei geht per E-Mail raus." : undefined,
+        tone: "ok",
+      });
       router.refresh();
       onClose();
     });
   };
 
-  const setStatus = (status: AppointmentStatus) => {
+  /** Reversible Zustände (wahrgenommen, nicht erschienen, bestätigt) – mit Rückgängig statt Nachfrage. */
+  const setStatus = (status: Exclude<AppointmentStatus, "cancelled">) => {
     if (!editing) return;
     const previous = editing.status;
     start(async () => {
@@ -110,7 +118,7 @@ export function AppointmentDrawer({ state, types, onClose }: { state: DrawerStat
       onClose();
       toast({
         title: `${editing.pii.firstName} ${editing.pii.lastName}: ${STATUS_LABEL[status]}`,
-        tone: status === "cancelled" ? "warn" : "ok",
+        tone: "ok",
         action: {
           label: "Rückgängig",
           onClick: async () => {
@@ -119,6 +127,36 @@ export function AppointmentDrawer({ state, types, onClose }: { state: DrawerStat
           },
         },
       });
+    });
+  };
+
+  /** Absage löst Post an die Person und ein Wartelisten-Angebot aus – deshalb einmal nachfragen, kein Rückgängig. */
+  const cancelNow = () => {
+    if (!editing) return;
+    start(async () => {
+      const r = await setStatusAction({ id: editing.id, status: "cancelled" });
+      setConfirmCancel(false);
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      router.refresh();
+      onClose();
+      toast({
+        title: `${editing.pii.firstName} ${editing.pii.lastName}: abgesagt`,
+        description: editing.pii.email ? "Absage per E-Mail unterwegs; der Platz wird der Warteliste angeboten." : "Der Platz wird der Warteliste angeboten.",
+        tone: "warn",
+      });
+    });
+  };
+
+  const resend = () => {
+    if (!editing) return;
+    start(async () => {
+      const r = await resendConfirmationAction(editing.id);
+      if (!r.ok) return toast({ title: "Nicht verschickt", description: r.error, tone: "danger" });
+      toast({ title: r.data.sent ? "Bestätigung verschickt" : "Nicht verschickt", description: r.data.detail, tone: r.data.sent ? "ok" : "warn" });
+      router.refresh();
     });
   };
 
@@ -142,7 +180,7 @@ export function AppointmentDrawer({ state, types, onClose }: { state: DrawerStat
       footer={
         <>
           {editing && isOpen && (
-            <Button variant="danger" size="sm" onClick={() => setStatus("cancelled")} disabled={pending}>
+            <Button variant="danger" size="sm" onClick={() => setConfirmCancel(true)} disabled={pending}>
               Absagen
             </Button>
           )}
@@ -179,6 +217,32 @@ export function AppointmentDrawer({ state, types, onClose }: { state: DrawerStat
               <Button size="sm" variant="ghost" onClick={() => setStatus("confirmed")} disabled={pending}>
                 Wieder öffnen
               </Button>
+            )}
+          </div>
+        )}
+
+        {editing?.holdUntil && isOpen && (
+          <Notice tone="info">
+            Wartelisten-Angebot – reserviert bis {fmtLongDate(new Date(editing.holdUntil))}, {timeKey(new Date(editing.holdUntil))} Uhr. Nimmt die Person nicht an, wird der Platz automatisch frei und der nächsten Person angeboten.
+          </Notice>
+        )}
+
+        {editing && (editing.confirmedByPatientAt || editing.remindedAt || (isOpen && editing.pii.email)) && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-text-muted">
+            {editing.confirmedByPatientAt && (
+              <span className="flex items-center gap-1">
+                <Icon name="check" size={12} className="text-ok" /> Von Patient:in bestätigt am {new Date(editing.confirmedByPatientAt).toLocaleDateString("de-DE")}
+              </span>
+            )}
+            {editing.remindedAt && (
+              <span className="flex items-center gap-1">
+                <Icon name="bell" size={12} /> Erinnert am {new Date(editing.remindedAt).toLocaleDateString("de-DE")}
+              </span>
+            )}
+            {isOpen && editing.pii.email && (
+              <button type="button" onClick={resend} disabled={pending} className="flex items-center gap-1 font-medium text-brand underline-offset-2 hover:underline disabled:opacity-50">
+                <Icon name="mail" size={12} /> Bestätigung {editing.hasManageLink ? "erneut " : ""}senden
+              </button>
             )}
           </div>
         )}
@@ -229,10 +293,12 @@ export function AppointmentDrawer({ state, types, onClose }: { state: DrawerStat
           <Field label="Nachname">{(id) => <Input id={id} autoComplete="off" value={lastName} onChange={(e) => setLastName(e.target.value)} />}</Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Telefon" hint="Für Rückfragen und spätere Erinnerungen">
+          <Field label="Telefon" hint="Für Rückfragen">
             {(id) => <Input id={id} type="tel" autoComplete="off" value={phone} onChange={(e) => setPhone(e.target.value)} />}
           </Field>
-          <Field label="E-Mail">{(id) => <Input id={id} type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />}</Field>
+          <Field label="E-Mail" hint="Bestätigung, Erinnerungen und Verwaltungslink">
+            {(id) => <Input id={id} type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />}
+          </Field>
         </div>
         {!editing && (
           <Field label="Quelle">
@@ -255,6 +321,14 @@ export function AppointmentDrawer({ state, types, onClose }: { state: DrawerStat
           </p>
         )}
       </div>
+
+      {editing && (
+        <Dialog open={confirmCancel} onClose={() => setConfirmCancel(false)} title="Termin absagen?" confirmLabel="Absagen" danger busy={pending} onConfirm={cancelNow}>
+          {editing.pii.lastName}, {editing.pii.firstName} · {fmtLongDate(new Date(editing.startsAt))}, {timeKey(new Date(editing.startsAt))} Uhr.{" "}
+          {editing.pii.email ? "Die Person erhält eine Absage per E-Mail; " : "Es ist keine E-Mail-Adresse hinterlegt – bitte telefonisch informieren; "}
+          der Platz wird der Warteliste angeboten.
+        </Dialog>
+      )}
     </Drawer>
   );
 }

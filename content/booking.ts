@@ -27,12 +27,17 @@ export const bookingSteps = [
 
 export const bookingCopy = {
   cardTitle: "Online-Terminanfrage",
+  /** Titel im verbindlichen Modus (Provider „cockpit“). */
+  cardTitleConfirmed: "Online-Terminbuchung",
   /**
    * Ehrlichkeits-Hinweis des Wunschtermin-Modus – die Praxis bestätigt;
    * es wird keine Live-Verfügbarkeit behauptet.
    */
   requestModeNote:
     "Sie wählen einen Wunschtermin innerhalb unserer Sprechzeiten – die Praxis bestätigt Ihren Termin persönlich.",
+  /** Verbindlicher Modus: echte freie Zeiten aus dem Praxis-Cockpit. */
+  confirmedModeNote:
+    "Sie sehen echte freie Zeiten und buchen verbindlich – die Bestätigung mit Kalendereintrag kommt sofort per E-Mail.",
   back: "Zurück",
   /** Dezenter Hinweis in der Kartenfußzeile – ab Schritt 1 sichtbar. */
   doctolibHint: "Lieber sofort verbindlich buchen?",
@@ -45,8 +50,11 @@ export const bookingCopy = {
   nextMonth: "Nächster Monat",
   today: "Heute",
   slotsFor: "Wunschzeiten am",
+  slotsForConfirmed: "Freie Zeiten am",
   noSlots:
     "An diesem Tag hat die Praxis keine Sprechzeiten. Bitte wählen Sie einen anderen Tag.",
+  noSlotsConfirmed:
+    "An diesem Tag ist nichts mehr frei. Bitte wählen Sie einen anderen Tag.",
   slotUnavailable: "nicht verfügbar",
   details: {
     firstName: "Vorname",
@@ -72,6 +80,13 @@ export const bookingCopy = {
     change: "Termin ändern",
     requestHint:
       "Die Praxis prüft Ihren Wunschtermin und meldet sich zeitnah mit einer Bestätigung – telefonisch oder per E-Mail.",
+    confirmedHint:
+      "Mit dem Klick buchen Sie verbindlich. Sie erhalten sofort eine E-Mail mit Kalendereintrag und einem persönlichen Link, über den Sie den Termin bestätigen, verschieben oder absagen können.",
+    successHeadingConfirmed: "Termin verbindlich gebucht",
+    successConfirmed:
+      "Ihre Bestätigung mit Kalendereintrag ist unterwegs. Über den Link in der E-Mail können Sie den Termin jederzeit verschieben oder absagen – ganz ohne Anruf.",
+    refLabel: "Ihre Referenz",
+    newBooking: "Weiteren Termin buchen",
     doctolibAlt: "Lieber sofort verbindlich buchen?",
     doctolibCta: "Termin über Doctolib buchen",
     successMailto:
@@ -92,8 +107,12 @@ export const bookingCopy = {
     consent: "Bitte bestätigen Sie die Datenschutzerklärung.",
     summary: "Bitte prüfen Sie die markierten Felder.",
     send: "Ihre Anfrage konnte nicht übermittelt werden. Bitte versuchen Sie es erneut oder rufen Sie uns an.",
+    notLive:
+      "Die Online-Buchung ist derzeit nicht verfügbar. Bitte rufen Sie uns an oder nutzen Sie den Doctolib-Weg.",
     cancelUnsupported:
       "Bitte stornieren Sie Termine telefonisch oder per E-Mail bei der Praxis.",
+    cancelViaLink:
+      "Zum Absagen oder Verschieben nutzen Sie bitte den persönlichen Link aus Ihrer Bestätigungs-E-Mail – oder rufen Sie uns an.",
   },
   mailSubject: "Terminanfrage über die Website",
 } as const;

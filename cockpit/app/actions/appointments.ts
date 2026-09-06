@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { ActorError, requireActor } from "@/lib/auth/actor";
+import { afterBooked, afterCancelled, afterRescheduled, resendConfirmation } from "@/lib/booking/lifecycle";
 import * as repo from "@/lib/booking/repo";
 import type { AppointmentView, ExceptionView } from "@/lib/booking/model";
+import { maybeTick } from "@/lib/jobs/tick";
 import { zonedToUtc } from "@/lib/time";
 
 /**
@@ -48,15 +50,20 @@ export async function createAppointmentAction(input: z.input<typeof createSchema
   return guard(async () => {
     const actor = await requireActor();
     const v = createSchema.parse(input);
+    const email = v.pii.email || undefined;
     const view = await repo.createAppointment({
       typeId: v.typeId,
       startsAt: zonedToUtc(v.date, v.time),
-      pii: { ...v.pii, email: v.pii.email || undefined, phone: v.pii.phone || undefined },
+      pii: { ...v.pii, email, phone: v.pii.phone || undefined },
       note: v.note,
       source: v.source,
       actorId: actor.id,
       ignoreOpeningHours: v.ignoreOpeningHours,
+      // Mit E-Mail bekommt auch der Telefontermin Bestätigung, Kalenderdatei und Verwaltungslink
+      manageToken: email ? repo.newManageToken() : undefined,
     });
+    await afterBooked(view);
+    void maybeTick();
     revalidatePath("/");
     revalidatePath("/termine");
     return view;
@@ -76,6 +83,7 @@ export async function updateAppointmentAction(input: z.input<typeof updateSchema
   return guard(async () => {
     const actor = await requireActor();
     const v = updateSchema.parse(input);
+    const before = await repo.getAppointment(v.id);
     const view = await repo.updateAppointment(
       v.id,
       {
@@ -86,6 +94,12 @@ export async function updateAppointmentAction(input: z.input<typeof updateSchema
       },
       actor.id,
     );
+    // Verschoben → neue Kalenderdatei an die Person, alter Platz an die Warteliste
+    if (before && view.sequence > before.sequence) {
+      await afterRescheduled(view);
+      await afterCancelled({ ...before, holdUntil: null }, "praxis", { notify: false });
+      void maybeTick();
+    }
     revalidatePath("/");
     revalidatePath("/termine");
     return view;
@@ -101,10 +115,29 @@ export async function setStatusAction(input: z.input<typeof statusSchema>): Prom
   return guard(async () => {
     const actor = await requireActor();
     const v = statusSchema.parse(input);
+    const before = await repo.getAppointment(v.id);
     const view = await repo.setStatus(v.id, v.status, actor.id, "praxis");
+    if (v.status === "cancelled" && before && before.status !== "cancelled") {
+      await afterCancelled({ ...view, holdUntil: before.holdUntil }, "praxis");
+      void maybeTick();
+    }
     revalidatePath("/");
     revalidatePath("/termine");
+    revalidatePath("/warteliste");
     return view;
+  });
+}
+
+/** „Bestätigung erneut senden“ – auch für Telefontermine, die nachträglich eine E-Mail bekommen haben. */
+export async function resendConfirmationAction(id: string): Promise<ActionResult<{ sent: boolean; detail: string }>> {
+  return guard(async () => {
+    const actor = await requireActor();
+    const r = await resendConfirmation(z.string().min(1).parse(id), actor.id);
+    revalidatePath("/termine");
+    if (r.sent) return { sent: true, detail: "Bestätigung mit Kalenderdatei verschickt." };
+    const detail =
+      r.reason === "no_email" ? "Keine E-Mail-Adresse hinterlegt." : r.reason === "failed" ? `Versand fehlgeschlagen: ${r.error ?? "unbekannt"}` : "Nicht verschickt.";
+    return { sent: false, detail };
   });
 }
 

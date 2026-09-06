@@ -19,6 +19,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 interface StepCalendarProps {
   provider: BookingProvider;
+  /** Gewählte Terminart – echte Verfügbarkeit gilt je Terminart. */
+  typeId?: string | null;
   selected: ISODate | null;
   onSelect: (date: ISODate) => void;
 }
@@ -111,7 +113,7 @@ function CalendarCell({
   );
 }
 
-export function StepCalendar({ provider, selected, onSelect }: StepCalendarProps) {
+export function StepCalendar({ provider, typeId, selected, onSelect }: StepCalendarProps) {
   const today = useRef(new Date()).current;
   const [view, setView] = useState(() => {
     const base = selected ? fromISO(selected) : today;
@@ -126,14 +128,14 @@ export function StepCalendar({ provider, selected, onSelect }: StepCalendarProps
     let cancelled = false;
     setDays(null);
     provider
-      .getAvailableDates(monthKey(view.year, view.month))
+      .getAvailableDates(monthKey(view.year, view.month), typeId)
       .then((result) => {
         if (!cancelled) setDays(result);
       });
     return () => {
       cancelled = true;
     };
-  }, [provider, view]);
+  }, [provider, view, typeId]);
 
   // Nach Monatswechsel per Tastatur: Fokus auf den Zieltag setzen
   useEffect(() => {

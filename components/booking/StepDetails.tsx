@@ -93,7 +93,7 @@ export function StepDetails({ draft, onChange, onContinue }: StepDetailsProps) {
   );
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="space-y-4">
+    <form onSubmit={handleSubmit} noValidate className="relative space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
         {field("firstName", copy.firstName, "text", "given-name")}
         {field("lastName", copy.lastName, "text", "family-name")}
@@ -133,6 +133,21 @@ export function StepDetails({ draft, onChange, onContinue }: StepDetailsProps) {
             {errors.consent}
           </p>
         )}
+      </div>
+
+      {/* Honigtopf: für Menschen unsichtbar und nicht fokussierbar, für
+          Screenreader ausgeblendet – füllt ihn ein Bot, lehnt die API ab. */}
+      <div aria-hidden="true" className="absolute h-0 w-0 overflow-hidden opacity-0">
+        <label htmlFor="booking-website">Website (bitte leer lassen)</label>
+        <input
+          id="booking-website"
+          name="website"
+          type="text"
+          tabIndex={-1}
+          autoComplete="off"
+          value={draft.website ?? ""}
+          onChange={(event) => onChange({ website: event.target.value })}
+        />
       </div>
 
       <p role="alert" className={cn("text-sm font-medium text-red-800", !summary && "sr-only")}>

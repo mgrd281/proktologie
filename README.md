@@ -279,6 +279,7 @@ Die Termin-Sektion ist eine mehrstufige Booking-Experience
 | Provider | Modus | Verhalten |
 |---|---|---|
 | `RequestBookingProvider` (Default) | `request` | **Wunschtermin**: wählbare Tage/Zeiten werden aus den echten Sprechzeiten (`site.hoursJsonLd`) abgeleitet, die Praxis bestätigt persönlich. Es wird nie behauptet, ein Slot sei live verfügbar. |
+| `CockpitBookingProvider` (`NEXT_PUBLIC_BOOKING_PROVIDER=cockpit`) | `confirmed` | **Verbindlich**: echte freie Zeiten aus dem Praxis-Cockpit, atomare Vergabe, Bestätigung mit Kalendereintrag und Verwaltungslink. Braucht `NEXT_PUBLIC_COCKPIT_API`. |
 | `MockBookingProvider` | `request` | Nur Entwicklung/Screenshots (`NEXT_PUBLIC_BOOKING_PROVIDER=mock`): simuliert belegte Slots. Niemals produktiv einsetzen. |
 | `DoctolibBookingProvider` | `confirmed` | Bewusst **nicht implementiert** — wirft „nicht konfiguriert“. Wird erst gebaut, wenn ein offizieller Doctolib-Zugang existiert. |
 
@@ -317,13 +318,39 @@ Unterordner `cockpit/`** mit eigener `package.json`, eigenem Vercel-Projekt
 statische Website bleibt davon unberührt; die Verbindung entsteht erst in
 Phase 1 über die öffentliche Buchungs-API.
 
-**Stand: Phase 0 „Fundament und Bühne“** – Anmeldung (nur per Einladung,
-Passkey + TOTP Pflicht), Rollen, revisionssicheres Audit-Log, Terminmotor
-intern (Terminarten, Sprechzeiten, Ausnahmen, Konflikt-Constraint in der
-Datenbank), Kalender Tag/Woche/Agenda, Dashboard „Heute“, Einstellungen,
-Demo-Daten mit Löschschalter. Die späteren Phasen (Anfragen, Website-
-Steuerung, Aufnahmebogen, Statistik, öffentliche Buchung) sind als ehrlich
-beschriftete Platzhalter angelegt.
+**Stand: Phase 1 „Der Motor für die Öffentlichkeit“.**
+
+Phase 0 legte das Fundament: Anmeldung (nur per Einladung, Passkey + TOTP
+Pflicht), Rollen, revisionssicheres Audit-Log, Terminmotor intern
+(Terminarten, Sprechzeiten, Ausnahmen, Konflikt-Constraint in der Datenbank),
+Kalender Tag/Woche/Agenda, Dashboard „Heute“, Einstellungen, Demo-Daten mit
+Löschschalter.
+
+Phase 1 öffnet diesen Motor für Patient:innen – die Website bucht jetzt
+verbindlich statt anzufragen:
+
+| Auslöser | Was automatisch passiert |
+|---|---|
+| Buchung auf der Website | Atomare Vergabe (`EXCLUDE`-Constraint), Referenz `PE-…`, Bestätigung per E-Mail mit **.ics-Kalendereintrag** und persönlichem Verwaltungslink |
+| 48 h und 24 h vorher | Erinnerung mit Ein-Klick-Bestätigung |
+| Patient:in sagt ab oder verschiebt | Sofort frei, neue Kalenderdatei (`SEQUENCE`+1) bzw. `METHOD:CANCEL` |
+| Ein Platz wird frei | Erste passende Person der Warteliste bekommt ihn reserviert (Standard 4 h), nimmt sie nicht an, rückt die nächste nach |
+| Alle 15 Minuten | Herzschlag `POST /api/internal/tick` (GitHub Actions, `.github/workflows/cockpit-tick.yml`) – zusätzlich ein gedrosselter Tick aus jedem Cockpit-Seitenaufruf |
+
+Öffentliche API (CORS nur für die konfigurierten Website-Ursprünge):
+`GET status · appointment-types · availability`, `POST bookings · waitlist ·
+manage`. Missbrauchsschutz ohne Fremd-Dienste: Honigtopf, HMAC-Formular-Token
+(frühestens nach 3 s gültig, 30 min Frist), Rate-Limit in der Datenbank mit
+Tagessalz statt roher IP, Obergrenze offener Termine je E-Mail-Adresse.
+
+Die Website schaltet über `NEXT_PUBLIC_BOOKING_PROVIDER=cockpit` +
+`NEXT_PUBLIC_COCKPIT_API` auf `mode: "confirmed"` um; ohne diese Variablen
+bleibt sie beim Wunschtermin-Provider. Der Live-Betrieb selbst hängt am
+Schalter „Website-Buchung live“ im Cockpit – und der lässt sich erst
+umlegen, wenn keine Demo-Zeile mehr existiert.
+
+Noch offen (als ehrlich beschriftete Platzhalter angelegt): Anfragen-Inbox,
+Website-Steuerung, Aufnahmebogen, Statistik.
 
 ```bash
 cd cockpit
@@ -332,8 +359,14 @@ cp .env.example .env.local      # Schlüssel erzeugen: openssl rand -base64 48 /
 npm run dev                     # PGlite unter .pglite/dev – kein Postgres nötig
 npm run db:bootstrap-admin      # ersten Administrator anlegen (einmalig)
 npm test                        # Node-Suiten: Tokens, Krypto, Terminmotor, DB-Integrität
-npm run e2e                     # Playwright: Einladung → Passkey → TOTP → Termin (CHROME_PATH setzen)
+npm run e2e                     # Playwright: startet Cockpit UND Website und bucht wirklich durch
+                                # (CHROME_PATH setzen; Mails landen als JSON in .mail-outbox-e2e/)
 ```
+
+Die Browser-Suite deckt beide Wege ab: das Team (Einladung → Passkey → TOTP →
+Termin) und die Patientin (Website → verbindliche Buchung → Bestätigungsmail
+mit .ics → bestätigen → absagen → Wartelisten-Angebot → annehmen), dazu
+Missbrauchsschutz, CORS und zwei Axe-Prüfungen.
 
 Grundsätze, die im Code erzwungen werden:
 
@@ -350,8 +383,15 @@ Grundsätze, die im Code erzwungen werden:
   auf Datenbankebene – auch bei parallelen Anfragen.
 - **Audit-Log nur INSERT.** Ein Trigger verweigert UPDATE/DELETE, jede Zeile
   ist per Hash mit der Vorgängerin verkettet.
-- **Keine Tokens in URLs.** Einladungs- und (ab Phase 1) Termin-Links tragen
-  ihr Token im Fragment (`#…`); es erreicht weder Server-Logs noch Referrer.
+- **Keine Tokens in URLs.** Einladungs- und Termin-Links tragen ihr Token im
+  Fragment (`/t/#…`); die Seite schickt es per POST – es erreicht weder
+  Server-Logs noch Referrer.
+- **E-Mails ohne Medizin.** Bestätigungen, Erinnerungen und Absagen nennen
+  Terminart, Zeit, Ort und Referenz. Vorbereitungshinweise kommen
+  ausschließlich aus Vorlagen, die die Praxis selbst pflegt.
+- **Kein Versand ohne Schlüssel.** Ohne `EMAIL_API_KEY` läuft der
+  Protokoll-Kanal: Nichts verlässt das System, jede Nachricht steht mit
+  Zeitpunkt und Status unter *Einstellungen → Demo & Betrieb*.
 - **Markentokens gespiegelt.** `cockpit/app/tokens.css` kopiert den
   `@theme`-Block dieser Website; `lib/design/tokens.test.mjs` schlägt bei
   Abweichung fehl.

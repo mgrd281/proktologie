@@ -1,12 +1,14 @@
 import { cn } from "@/lib/cn";
 import { bookingCopy } from "@/content/booking";
-import type { BookingSlot } from "@/lib/booking/types";
+import type { BookingProviderMode, BookingSlot } from "@/lib/booking/types";
 
 interface StepSlotsProps {
   slots: BookingSlot[];
   selected: string | null;
   dateLabel: string;
   onSelect: (slot: BookingSlot) => void;
+  /** „request“: Wunschzeiten, „confirmed“: echte freie Zeiten. */
+  mode?: BookingProviderMode;
 }
 
 /**
@@ -16,19 +18,25 @@ interface StepSlotsProps {
  * Nicht verfügbare Zeiten sind nicht interaktiv, bleiben aber für
  * Screenreader lesbar („nicht verfügbar").
  */
-export function StepSlots({ slots, selected, dateLabel, onSelect }: StepSlotsProps) {
+export function StepSlots({ slots, selected, dateLabel, onSelect, mode = "request" }: StepSlotsProps) {
+  const confirmed = mode === "confirmed";
   if (slots.length === 0) {
-    return <p className="text-sm leading-relaxed text-ink/70">{bookingCopy.noSlots}</p>;
+    return (
+      <p className="text-sm leading-relaxed text-ink/70">
+        {confirmed ? bookingCopy.noSlotsConfirmed : bookingCopy.noSlots}
+      </p>
+    );
   }
+  const label = confirmed ? bookingCopy.slotsForConfirmed : bookingCopy.slotsFor;
 
   return (
     <div>
       <p className="text-sm text-ink/60">
-        {bookingCopy.slotsFor} <span className="font-medium text-ink">{dateLabel}</span>
+        {label} <span className="font-medium text-ink">{dateLabel}</span>
       </p>
       <div
         role="group"
-        aria-label={`Wunschzeiten am ${dateLabel}`}
+        aria-label={`${label} ${dateLabel}`}
         className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4"
       >
         {slots.map((slot) => {
