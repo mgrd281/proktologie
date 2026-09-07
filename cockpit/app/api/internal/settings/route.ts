@@ -17,7 +17,7 @@ export const maxDuration = 30;
  * das ohnehin Migrationen ausführen darf.
  *
  * Aufruf: POST mit `Authorization: Bearer <MIGRATE_SECRET>` und JSON-Körper
- * `{ bookingLive?, bookingPaused?, bannerText? }`. Antwort: der öffentliche
+ * `{ bookingLive?, bookingPaused?, bannerText?, chatEnabled? }`. Antwort: der öffentliche
  * Zustand, wie ihn die Website sieht. Ohne Geheimnis existiert die Route
  * nach außen nicht (404).
  */
@@ -26,6 +26,7 @@ const schema = z
     bookingLive: z.boolean().optional(),
     bookingPaused: z.boolean().optional(),
     bannerText: z.string().trim().max(300).nullable().optional(),
+    chatEnabled: z.boolean().optional(),
   })
   .strict();
 
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Erwartet: { bookingLive?: boolean, bookingPaused?: boolean, bannerText?: string | null }" },
+      { error: "Erwartet: { bookingLive?: boolean, bookingPaused?: boolean, bannerText?: string | null, chatEnabled?: boolean }" },
       { status: 400 },
     );
   }

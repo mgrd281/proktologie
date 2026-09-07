@@ -18,6 +18,7 @@ interface S {
   waitlistHoldHours: number;
   maxFuturePerEmail: number;
   reminderOffsetsH: number[];
+  chatEnabled: boolean;
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -87,6 +88,7 @@ export function DemoPanel({
         waitlistHoldHours: s.waitlistHoldHours,
         maxFuturePerEmail: s.maxFuturePerEmail,
         reminderOffsetsH: parsedOffsets,
+        chatEnabled: s.chatEnabled,
       });
       if (!r.ok) {
         toast({ title: "Nicht gespeichert", description: r.error, tone: "danger" });
@@ -154,6 +156,15 @@ export function DemoPanel({
           <Field label="Offene Termine je E-Mail-Adresse" hint="Obergrenze für Website-Buchungen (Missbrauchsschutz)">
             {(id) => <Input id={id} type="number" min={1} max={10} value={s.maxFuturePerEmail} disabled={!canEdit} onChange={(e) => setS({ ...s, maxFuturePerEmail: Number(e.target.value) })} className="tnum" />}
           </Field>
+          <div className="border-t border-line pt-4">
+            <Switch
+              checked={s.chatEnabled}
+              onChange={(v) => setS({ ...s, chatEnabled: v })}
+              label="Chat-Assistent auf der Website"
+              description="Aus: Das Chat-Symbol zeigt nur Telefonnummer und Sprechzeiten. Buchungen über die Terminkarte laufen weiter."
+              disabled={!canEdit}
+            />
+          </div>
           {!settings.bookingLive && <Notice tone="info">Solange die Buchung nicht live ist, zeigt die Website Wunschtermine zur Anfrage. Die Website muss zusätzlich mit NEXT_PUBLIC_BOOKING_PROVIDER=cockpit gebaut sein (siehe README).</Notice>}
           {canEdit && (
             <div className="flex justify-end gap-2">

@@ -26,7 +26,7 @@ type Body = {
   action?: "bootstrap" | "seed-demo" | "golive" | "tick" | "state" | "expire-holds" | "settings";
   inviteEmail?: string;
   role?: "arzt" | "empfang" | "admin";
-  settings?: { bookingLive?: boolean; bookingPaused?: boolean; bannerText?: string | null };
+  settings?: { bookingLive?: boolean; bookingPaused?: boolean; bannerText?: string | null; chatEnabled?: boolean };
 };
 
 export async function POST(req: Request) {

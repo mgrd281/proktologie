@@ -12,6 +12,7 @@ import {
   ACTIVE_STATUSES,
   type AppointmentSource,
   type AppointmentStatus,
+  type Locale,
   type AppointmentView,
   type ExceptionKind,
   type ExceptionView,
@@ -72,12 +73,13 @@ export async function getSettings(): Promise<SettingsView & { pauseFrom: Date | 
     siteUrl: row.siteUrl,
     waitlistHoldHours: row.waitlistHoldHours,
     maxFuturePerEmail: row.maxFuturePerEmail,
+    chatEnabled: row.chatEnabled,
   };
 }
 
 export async function updateSettings(
   patch: Partial<
-    Pick<SettingsView, "slotStepMin" | "bookingPaused" | "bannerText" | "autoReplyText" | "siteUrl" | "waitlistHoldHours" | "maxFuturePerEmail" | "reminderOffsetsH">
+    Pick<SettingsView, "slotStepMin" | "bookingPaused" | "bannerText" | "autoReplyText" | "siteUrl" | "waitlistHoldHours" | "maxFuturePerEmail" | "reminderOffsetsH" | "chatEnabled">
   > & {
     bookingLive?: boolean;
   },
@@ -308,6 +310,7 @@ function toView(
     bufferMin: a.bufferMin,
     status: a.status,
     source: a.source,
+    locale: a.locale,
     pii: decryptPii(a),
     note: a.noteEnc ? safeDecrypt(a.noteEnc, `note:${a.id}`) : null,
     isDemo: a.isDemo,
@@ -361,6 +364,8 @@ export interface CreateAppointmentInput {
   pii: Pii;
   note?: string;
   source: AppointmentSource;
+  /** Sprache der Patienten-Mails – Standard Deutsch */
+  locale?: Locale;
   status?: AppointmentStatus;
   isDemo?: boolean;
   actorId?: string | null;
@@ -404,6 +409,7 @@ export async function createAppointment(input: CreateAppointmentInput): Promise<
     bufferMin,
     status: input.status ?? "booked",
     source: input.source,
+    locale: input.locale ?? "de",
     piiEnc: encryptJson(pii, `appt:${id}`),
     emailHash: pii.email ? emailHash(pii.email) : null,
     phoneHash: pii.phone ? phoneHash(pii.phone) : null,

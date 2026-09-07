@@ -5,7 +5,9 @@
  * Cockpit-Nutzer, nie an die öffentliche API.
  */
 export type AppointmentStatus = "booked" | "confirmed" | "reminded" | "completed" | "no_show" | "cancelled";
-export type AppointmentSource = "web" | "cockpit" | "telefon";
+export type AppointmentSource = "web" | "cockpit" | "telefon" | "chat";
+/** Sprache der Patienten-Mails zu einem Termin */
+export type Locale = "de" | "en";
 export type TypeColor = "green" | "moss" | "amber" | "slate" | "blue";
 export type ExceptionKind = "closed" | "blocker" | "urlaub" | "extern";
 
@@ -43,6 +45,8 @@ export interface AppointmentView {
   bufferMin: number;
   status: AppointmentStatus;
   source: AppointmentSource;
+  /** Sprache der Patienten-Mails zu diesem Termin */
+  locale: Locale;
   pii: Pii;
   note: string | null;
   isDemo: boolean;
@@ -113,6 +117,8 @@ export interface SettingsView {
   siteUrl: string | null;
   waitlistHoldHours: number;
   maxFuturePerEmail: number;
+  /** Chat-Assistent auf der Website sichtbar */
+  chatEnabled: boolean;
 }
 
 export const STATUS_LABEL: Record<AppointmentStatus, string> = {
@@ -128,6 +134,7 @@ export const SOURCE_LABEL: Record<AppointmentSource, string> = {
   web: "Website",
   cockpit: "Cockpit",
   telefon: "Telefon",
+  chat: "Chat",
 };
 
 export const KIND_LABEL: Record<ExceptionKind, string> = {

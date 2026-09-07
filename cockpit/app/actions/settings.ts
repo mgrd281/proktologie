@@ -72,6 +72,7 @@ const settingsSchema = z.object({
   waitlistHoldHours: z.number().int().min(1).max(72).optional(),
   maxFuturePerEmail: z.number().int().min(1).max(10).optional(),
   reminderOffsetsH: z.array(z.number().int().min(1).max(24 * 14)).max(4).optional(),
+  chatEnabled: z.boolean().optional(),
 });
 
 export async function updateSettingsAction(input: z.input<typeof settingsSchema>): Promise<ActionResult<null>> {

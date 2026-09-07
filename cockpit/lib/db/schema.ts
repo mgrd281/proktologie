@@ -49,6 +49,8 @@ export const practiceSettings = pgTable("practice_settings", {
   waitlistHoldHours: smallint("waitlist_hold_hours").notNull().default(4),
   /** Missbrauchsschutz: so viele offene Zukunftstermine je E-Mail-Adresse */
   maxFuturePerEmail: smallint("max_future_per_email").notNull().default(2),
+  /** Chat-Assistent auf der Website – aus: das Symbol zeigt nur Telefon und Sprechzeiten */
+  chatEnabled: boolean("chat_enabled").notNull().default(true),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 });
 
@@ -129,7 +131,9 @@ export const appointments = pgTable(
     endsAt: ts("ends_at").notNull(),
     bufferMin: smallint("buffer_min").notNull().default(0),
     status: text("status").$type<AppointmentStatus>().notNull().default("booked"),
-    source: text("source").$type<"web" | "cockpit" | "telefon">().notNull().default("cockpit"),
+    source: text("source").$type<"web" | "cockpit" | "telefon" | "chat">().notNull().default("cockpit"),
+    /** Sprache der Patienten-Mails zu diesem Termin (Bestätigung, Erinnerung, Absage) */
+    locale: text("locale").$type<"de" | "en">().notNull().default("de"),
     /** { firstName, lastName, email, phone } – verschlüsselt, AAD = "appt:<id>" */
     piiEnc: text("pii_enc").notNull(),
     emailHash: text("email_hash"),
