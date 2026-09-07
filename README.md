@@ -190,6 +190,7 @@ node --experimental-strip-types --test lib/cinema/frames.test.mjs
 node --experimental-strip-types --test lib/cinema/camera.test.mjs
 node --experimental-strip-types --test lib/cinema/leistungen.test.mjs
 node --experimental-strip-types --test lib/team/scene.test.mjs
+node --experimental-strip-types --test lib/booking/status.test.mjs
 ```
 
 Dazu die Browser-Suite (Chromium): Zähler monoton in BEIDE Richtungen,
@@ -279,7 +280,7 @@ Die Termin-Sektion ist eine mehrstufige Booking-Experience
 | Provider | Modus | Verhalten |
 |---|---|---|
 | `RequestBookingProvider` (Default) | `request` | **Wunschtermin**: wählbare Tage/Zeiten werden aus den echten Sprechzeiten (`site.hoursJsonLd`) abgeleitet, die Praxis bestätigt persönlich. Es wird nie behauptet, ein Slot sei live verfügbar. |
-| `CockpitBookingProvider` (`NEXT_PUBLIC_BOOKING_PROVIDER=cockpit`) | `confirmed` | **Verbindlich**: echte freie Zeiten aus dem Praxis-Cockpit, atomare Vergabe, Bestätigung mit Kalendereintrag und Verwaltungslink. Braucht `NEXT_PUBLIC_COCKPIT_API`. |
+| `CockpitBookingProvider` (`NEXT_PUBLIC_BOOKING_PROVIDER=cockpit`) | `confirmed` | **Verbindlich**: echte freie Zeiten aus dem Praxis-Cockpit, atomare Vergabe, Bestätigung mit Kalendereintrag und Verwaltungslink. Braucht `NEXT_PUBLIC_COCKPIT_API`. Gilt nur, solange das Cockpit beim Laden „Website-Buchung live“ meldet (`lib/booking/status.ts`, ein `GET status` ohne Cookies, 4 s Frist) – nicht live, pausiert oder keine Antwort → Wunschtermin wie ohne Cockpit, bei Pause mit dem Hinweistext der Praxis. |
 | `MockBookingProvider` | `request` | Nur Entwicklung/Screenshots (`NEXT_PUBLIC_BOOKING_PROVIDER=mock`): simuliert belegte Slots. Niemals produktiv einsetzen. |
 | `DoctolibBookingProvider` | `confirmed` | Bewusst **nicht implementiert** — wirft „nicht konfiguriert“. Wird erst gebaut, wenn ein offizieller Doctolib-Zugang existiert. |
 
@@ -335,7 +336,7 @@ verbindlich statt anzufragen:
 | 48 h und 24 h vorher | Erinnerung mit Ein-Klick-Bestätigung |
 | Patient:in sagt ab oder verschiebt | Sofort frei, neue Kalenderdatei (`SEQUENCE`+1) bzw. `METHOD:CANCEL` |
 | Ein Platz wird frei | Erste passende Person der Warteliste bekommt ihn reserviert (Standard 4 h), nimmt sie nicht an, rückt die nächste nach |
-| Alle 15 Minuten | Herzschlag `POST /api/internal/tick` (GitHub Actions, `.github/workflows/cockpit-tick.yml`) – zusätzlich ein gedrosselter Tick aus jedem Cockpit-Seitenaufruf |
+| Täglich (Vercel Cron, `cockpit/vercel.json`) und alle 15 Minuten (GitHub Actions, `.github/workflows/cockpit-tick.yml`) | Herzschlag `/api/internal/tick` – dazu ein Tick aus jeder Buchung, Absage und Wartelisten-Aktion sowie gedrosselt aus jedem Cockpit-Seitenaufruf. Ohne GitHub-Variable laufen Erinnerungen als Morgen-Stapel; Angebote und Freigaben sofort. |
 
 Öffentliche API (CORS nur für die konfigurierten Website-Ursprünge):
 `GET status · appointment-types · availability`, `POST bookings · waitlist ·
@@ -343,11 +344,17 @@ manage`. Missbrauchsschutz ohne Fremd-Dienste: Honigtopf, HMAC-Formular-Token
 (frühestens nach 3 s gültig, 30 min Frist), Rate-Limit in der Datenbank mit
 Tagessalz statt roher IP, Obergrenze offener Termine je E-Mail-Adresse.
 
-Die Website schaltet über `NEXT_PUBLIC_BOOKING_PROVIDER=cockpit` +
-`NEXT_PUBLIC_COCKPIT_API` auf `mode: "confirmed"` um; ohne diese Variablen
-bleibt sie beim Wunschtermin-Provider. Der Live-Betrieb selbst hängt am
-Schalter „Website-Buchung live“ im Cockpit – und der lässt sich erst
-umlegen, wenn keine Demo-Zeile mehr existiert.
+Die Website wird mit `NEXT_PUBLIC_BOOKING_PROVIDER=cockpit` +
+`NEXT_PUBLIC_COCKPIT_API` gebaut (Vercel: nur Production). Ob sie
+verbindlich bucht, entscheidet dann das Cockpit: Die Terminkarte fragt beim
+Laden einmal `GET /api/public/v1/status` ab (ohne Cookies, 4 s Frist). Nur
+„live und nicht pausiert“ schaltet auf `mode: "confirmed"`; nicht live,
+pausiert oder keine Antwort → Wunschtermin wie ohne Cockpit, bei Pause mit
+dem Hinweistext der Praxis. Der Status ist an der Kante 60 s zwischengespeichert –
+nach dem Umlegen folgt die Website innerhalb weniger Minuten; jede Buchung
+wird serverseitig erneut geprüft (`not_live`/`paused` → 503). Der Schalter
+„Website-Buchung live“ im Cockpit lässt sich erst umlegen, wenn keine
+Demo-Zeile mehr existiert.
 
 Noch offen (als ehrlich beschriftete Platzhalter angelegt): Anfragen-Inbox,
 Website-Steuerung, Aufnahmebogen, Statistik.
@@ -407,13 +414,16 @@ Vercel-Marketplace); `BETTER_AUTH_SECRET`, `DATA_KEY_V1`, `INDEX_KEY`,
 angelegtes `DATABASE_URL` lässt sich nach dem Speichern durch niemanden mehr
 auslesen – auch nicht über die API oder `vercel env pull`. Die beiden
 Skripte oben brauchen die Variable dann lokal, wo sie nicht existiert.
-Für genau diesen Fall gibt es zwei gleichwertige, per Geheimnis
-abgesicherte Routen, die innerhalb der laufenden Vercel-Funktion
-arbeiten: `POST /api/internal/migrate` (`MIGRATE_SECRET`) und
-`POST /api/internal/bootstrap-admin` (`BOOTSTRAP_ADMIN_EMAIL`/`_SECRET`,
-kein Body). Beide antworten ohne konfiguriertes Geheimnis mit 404;
-`bootstrap-admin` verweigert sich zusätzlich dauerhaft, sobald ein erstes
-Konto existiert.
+Für genau diesen Fall gibt es per Geheimnis abgesicherte Routen, die
+innerhalb der laufenden Vercel-Funktion arbeiten: `POST /api/internal/migrate`
+(`MIGRATE_SECRET`), `POST /api/internal/bootstrap-admin`
+(`BOOTSTRAP_ADMIN_EMAIL`/`_SECRET`, kein Body) und
+`POST /api/internal/settings` (`MIGRATE_SECRET`, Body
+`{ bookingLive?, bookingPaused?, bannerText? }` – schaltet die Online-Buchung
+über denselben `updateSettings`-Weg wie das Cockpit, samt Demo-Sperre und
+Audit; Antwort ist der öffentliche Status). Alle antworten ohne
+konfiguriertes Geheimnis mit 404; `bootstrap-admin` verweigert sich
+zusätzlich dauerhaft, sobald ein erstes Konto existiert.
 
 Vor dem ersten echten Patientendatensatz: DSB-Freigabe und DSFA, AVVs mit
 Vercel und dem Datenbank-Anbieter, Datenschutzerklärung ergänzen (siehe

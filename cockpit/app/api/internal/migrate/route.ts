@@ -1,7 +1,7 @@
-import { timingSafeEqual } from "node:crypto";
 import { readdirSync } from "node:fs";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { NextResponse } from "next/server";
+import { bearerAuthorized } from "@/lib/api/bearer";
 import { dbKind, getDb, migrationsFolder } from "@/lib/db/client";
 
 export const dynamic = "force-dynamic";
@@ -19,15 +19,7 @@ export const maxDuration = 60;
  * Aufruf: POST mit `Authorization: Bearer <MIGRATE_SECRET>`.
  * Ohne konfiguriertes Geheimnis existiert die Route nach außen nicht (404).
  */
-function authorized(req: Request): boolean {
-  const secret = process.env.MIGRATE_SECRET;
-  if (!secret) return false;
-  const header = req.headers.get("authorization") ?? "";
-  const given = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const a = Buffer.from(given);
-  const b = Buffer.from(secret);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
+const authorized = (req: Request) => bearerAuthorized(req, process.env.MIGRATE_SECRET);
 
 /**
  * Fehlermeldungen dürfen hier ausnahmsweise nach außen: Der Aufrufer hält

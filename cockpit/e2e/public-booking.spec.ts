@@ -1,12 +1,14 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type APIRequestContext } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Browser, type Locator, type Page } from "@playwright/test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MAIL_OUTBOX_DIR } from "../playwright.config";
 
 /**
  * Der Weg einer Patientin ohne Cockpit-Konto:
- * Website (Provider „cockpit“) → verbindliche Buchung → Bestätigungs-Mail mit
+ * Website vor dem Live-Schalter (Wunschtermin, kein Versprechen) → Cockpit
+ * nicht erreichbar (dasselbe, still) → Website (Provider „cockpit“) →
+ * pausierte Buchung mit Hinweistext → verbindliche Buchung → Bestätigungs-Mail mit
  * Kalenderdatei und Verwaltungslink → bestätigen → Warteliste → absagen →
  * automatisches Angebot an die Warteliste → annehmen. Dazu Missbrauchsschutz
  * (Honigtopf, Formular-Token, Doppelbuchung) und Barrierefreiheit der
@@ -54,6 +56,76 @@ let confirmationToken = "";
 let bookedRef = "";
 let bookedDate = "";
 let bookedTime = "";
+
+/** Terminkarte der Website in frischem Kontext; `before` darf Routen setzen. */
+async function openCard(browser: Browser, before?: (page: Page) => Promise<void> | void) {
+  const context = await browser.newContext({ reducedMotion: "reduce", viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
+  await before?.(page);
+  await page.goto(`${SITE}/#kontakt`, { waitUntil: "domcontentloaded" });
+  const card = page.locator("#kontakt");
+  await card.scrollIntoViewIfNeeded();
+  return { context, page, card };
+}
+
+/** Wunschtermin-Ansicht: Anfrage-Titel, kein Live-Versprechen, wählbarer Tag mit Wunschzeiten. */
+async function expectRequestFlow(card: Locator) {
+  await expect(card.getByText("Online-Terminanfrage", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(card.getByText(/Wunschtermin innerhalb unserer Sprechzeiten/)).toBeVisible();
+  await expect(card.getByText("Online-Terminbuchung", { exact: true })).toHaveCount(0);
+  // Die Wunschtermin-Ansicht steht schon im statischen HTML – ob React
+  // hydriert ist, zeigt erst ein Klick, der den Schritt wechselt. Im Dev-
+  // Server kann das dauern; deshalb wird geklickt, bis es greift.
+  await expect(async () => {
+    await card.getByRole("button", { name: /Kontrolltermin/ }).click();
+    await expect(card.getByText(/Schritt 2 von 5/)).toBeVisible({ timeout: 1_500 });
+  }).toPass({ timeout: 60_000 });
+  const cell = card.locator('[role="gridcell"][data-date]:not([aria-disabled="true"])').first();
+  await expect(cell).toBeVisible({ timeout: 20_000 });
+  await cell.click();
+  await expect(card.locator("button[data-slot]").first()).toBeVisible({ timeout: 20_000 });
+}
+
+test("Website vor dem Live-Schalter: Wunschtermin, keine Live-Zeiten, kein Hinweis", async ({ request, browser }) => {
+  const s = await e2e(request, { action: "settings", settings: { bookingLive: false, bookingPaused: false, bannerText: null } });
+  expect(s).toMatchObject({ bookingLive: false, bookingPaused: false, banner: null });
+
+  const apiCalls: string[] = [];
+  let statusHeaders: Record<string, string> = {};
+  const { context, page, card } = await openCard(browser, (p) => {
+    p.on("request", (r) => {
+      const u = new URL(r.url());
+      if (u.port === "3100") apiCalls.push(u.pathname);
+    });
+    p.on("response", (r) => {
+      if (r.url().includes("/api/public/v1/status")) statusHeaders = r.headers();
+    });
+  });
+  await expectRequestFlow(card);
+  await expect(card.getByRole("note")).toHaveCount(0);
+  await page.screenshot({ path: "e2e/shots/website-vor-live.png" });
+  // Genau ein Aufruf – der Zustand. Keine Verfügbarkeit, kein Buchungsversuch,
+  // und auch nicht wiederholt (toEqual statt toContain: eine Regression, die
+  // den Provider bei jedem Rendern neu erzeugt, soll hier auffallen).
+  expect(apiCalls).toEqual(["/api/public/v1/status"]);
+  expect(statusHeaders["access-control-allow-origin"]).toBe("http://localhost:3000");
+  expect(statusHeaders["cache-control"]).toContain("s-maxage=60");
+  await context.close();
+});
+
+test("Cockpit nicht erreichbar: Website bleibt still beim Wunschtermin", async ({ browser }) => {
+  // Verbindung verweigert
+  const refused = await openCard(browser, (p) => p.route("**/api/public/v1/status", (route) => route.abort("connectionrefused")));
+  await expectRequestFlow(refused.card);
+  await expect(refused.card.getByRole("note")).toHaveCount(0);
+  await refused.context.close();
+
+  // Keine Antwort – die Frist von vier Sekunden greift im echten Browser
+  const hanging = await openCard(browser, (p) => p.route("**/api/public/v1/status", () => undefined));
+  await expectRequestFlow(hanging.card);
+  await expect(hanging.card.getByRole("note")).toHaveCount(0);
+  await hanging.context.close();
+});
 
 test("Live schalten geht erst ohne Demo-Daten; Status und Terminarten sind öffentlich", async ({ request }) => {
   const seeded = await e2e(request, { action: "seed-demo" });
@@ -109,9 +181,19 @@ test("Verbindliche Buchung; Doppelbuchung derselben Zeit scheitert", async ({ re
   expect(j2.days[0]?.slots ?? []).not.toContain(time);
 });
 
+/** Alle Jobs dieser Art sind erledigt – egal, ob dieser Tick oder der aus der Buchung heraus sie erledigt hat. */
+async function expectJobsDone(request: APIRequestContext, kind: string) {
+  const st = (await e2e(request, { action: "state" })) as { jobs: Array<{ kind: string; done: boolean; err: string }> };
+  const ofKind = st.jobs.filter((j) => j.kind === kind);
+  expect(ofKind.length, `Job ${kind} eingereiht`).toBeGreaterThanOrEqual(1);
+  expect(ofKind.filter((j) => !j.done), `Job ${kind} erledigt: ${JSON.stringify(ofKind)}`).toEqual([]);
+}
+
 test("Bestätigungs-Mail mit Kalenderdatei und Verwaltungslink", async ({ request }) => {
-  const report = await e2e(request, { action: "tick" });
-  expect(report.jobs.done).toBeGreaterThanOrEqual(1);
+  // Die Buchung stößt den Herzschlag selbst an (Bestätigung sofort, nicht erst
+  // beim nächsten Tick) – dieser Tick darf also schon nichts mehr vorfinden.
+  await e2e(request, { action: "tick" });
+  await expectJobsDone(request, "mail.confirmation");
   const mails = outbox().filter((m) => m.to === patient.email);
   expect(mails.length).toBeGreaterThanOrEqual(1);
   const mail = mails.at(-1)!;
@@ -167,8 +249,8 @@ test("Warteliste: Eintrag, automatisches Angebot nach Absage, Annahme, Ablauf", 
   const cancel = await request.post("/api/public/v1/manage", { data: { token: token3, action: "cancel" } });
   expect(cancel.ok(), await cancel.text()).toBeTruthy();
 
-  const report = await e2e(request, { action: "tick" });
-  expect(report.jobs.done).toBeGreaterThanOrEqual(1);
+  await e2e(request, { action: "tick" });
+  await expectJobsDone(request, "waitlist.offer_next");
   const offer = outbox().filter((m) => m.to === "max.mustermann@example.invalid").find((m) => /reserviert/i.test(m.text));
   expect(offer, `Wartelisten-Angebot per Mail. Zustand: ${JSON.stringify(await e2e(request, { action: "state" }))}`).toBeTruthy();
   const offerToken = manageToken(offer!)!;
@@ -201,13 +283,35 @@ test("Warteliste: Eintrag, automatisches Angebot nach Absage, Annahme, Ablauf", 
   expect((await view.json()).status).toBe("cancelled");
 });
 
+test("Online-Buchung pausiert: Hinweistext auf der Website, weiterhin Wunschtermin", async ({ request, browser }) => {
+  const banner = "Vom 12. bis 23. August ist die Praxis geschlossen.";
+  const paused = await e2e(request, { action: "settings", settings: { bookingPaused: true, bannerText: banner } });
+  expect(paused).toMatchObject({ bookingLive: true, bookingPaused: true, banner });
+  // Der Server lehnt Buchungen währenddessen ab, egal was die Website zeigt
+  const blocked = await request.get("/api/public/v1/availability?type=kontrolle");
+  expect(blocked.status()).toBe(503);
+  expect((await blocked.json()).error.code).toBe("paused");
+
+  const { context, page, card } = await openCard(browser);
+  await expect(card.getByRole("note")).toContainText(banner, { timeout: 30_000 });
+  await expect(card.getByText("Online-Terminanfrage", { exact: true })).toBeVisible();
+  await expect(card.getByText("Online-Terminbuchung", { exact: true })).toHaveCount(0);
+  await page.screenshot({ path: "e2e/shots/website-pausiert.png" });
+  await context.close();
+
+  const resumed = await e2e(request, { action: "settings", settings: { bookingPaused: false, bannerText: null } });
+  expect(resumed).toMatchObject({ bookingLive: true, bookingPaused: false, banner: null });
+});
+
 test("Website: verbindliche Buchung über die Terminkarte", async ({ browser }) => {
   const context = await browser.newContext({ reducedMotion: "reduce", viewport: { width: 1280, height: 900 } });
   const page = await context.newPage();
   await page.goto(`${SITE}/#kontakt`, { waitUntil: "domcontentloaded" });
   const card = page.locator("#kontakt");
   await card.scrollIntoViewIfNeeded();
-  await expect(card.getByText(/verbindlich/i).first()).toBeVisible({ timeout: 30_000 });
+  await expect(card.getByText("Online-Terminbuchung", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(card.getByText(/verbindlich/i).first()).toBeVisible();
+  await expect(card.getByRole("note")).toHaveCount(0);
   await card.getByRole("button", { name: /Kontrolltermin/ }).click();
   // Kalender: erster wählbarer Tag
   const cell = card.locator('[role="gridcell"][data-date]:not([aria-disabled="true"])').first();

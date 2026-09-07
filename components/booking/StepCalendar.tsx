@@ -131,6 +131,10 @@ export function StepCalendar({ provider, typeId, selected, onSelect }: StepCalen
       .getAvailableDates(monthKey(view.year, view.month), typeId)
       .then((result) => {
         if (!cancelled) setDays(result);
+      })
+      .catch(() => {
+        // Fehler: leerer Monat statt hängendem Ladezustand – nichts Falsches anzeigen
+        if (!cancelled) setDays([]);
       });
     return () => {
       cancelled = true;

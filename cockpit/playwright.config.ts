@@ -58,15 +58,18 @@ export default defineConfig({
       },
     },
     {
-      // Die statische Website im Dev-Modus, gebaut gegen das Cockpit (Provider „cockpit“)
-      command: "npx next dev -p 3000",
+      // Die Website so, wie sie ausgeliefert wird: statischer Export, gebaut
+      // gegen das Cockpit (Provider „cockpit“) und aus out/ serviert – kein
+      // Dev-Server, der nach Laune kompiliert und hydriert (e2e/site-server.mjs)
+      command: "npm run build --silent && node cockpit/e2e/site-server.mjs",
       cwd: "..",
       url: "http://localhost:3000/",
       reuseExistingServer: false,
-      timeout: 240_000,
+      timeout: 600_000,
       env: {
         NEXT_PUBLIC_BOOKING_PROVIDER: "cockpit",
         NEXT_PUBLIC_COCKPIT_API: "http://localhost:3100",
+        PORT: "3000",
       },
     },
   ],

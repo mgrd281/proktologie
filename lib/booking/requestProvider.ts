@@ -61,6 +61,12 @@ function isSelectable(date: Date, today: Date): boolean {
 
 export class RequestBookingProvider implements BookingProvider {
   readonly mode = "request" as const;
+  /** Hinweis der Praxis aus dem Cockpit-Status (pausierte Buchung) – sonst leer. */
+  readonly notice?: string;
+
+  constructor(notice?: string) {
+    this.notice = notice;
+  }
 
   async getAppointmentTypes() {
     return appointmentTypes;

@@ -127,7 +127,10 @@ export function BookingCard() {
       )
     : "";
 
-  const confirmed = provider?.mode === "confirmed";
+  // Bis der Provider steht, zeigt die Karte den Wunschtermin – der ehrliche
+  // Default, und auf dem heutigen Weg gibt es so keinen Sprung beim Laden.
+  const mode = provider?.mode ?? "request";
+  const confirmed = mode === "confirmed";
 
   return (
     <div className="rounded-2xl bg-white ring-1 ring-ink/8 shadow-[0_20px_50px_-30px_rgba(23,37,27,0.25)]">
@@ -138,7 +141,7 @@ export function BookingCard() {
           </p>
           <BookingProgress step={step} />
         </div>
-        {provider?.mode === "request" && send.kind !== "done" && (
+        {mode === "request" && send.kind !== "done" && (
           <p className="mt-2.5 text-xs leading-relaxed text-ink/55">
             {bookingCopy.requestModeNote}
           </p>
@@ -146,6 +149,16 @@ export function BookingCard() {
         {confirmed && send.kind !== "done" && (
           <p className="mt-2.5 text-xs leading-relaxed text-ink/55">
             {bookingCopy.confirmedModeNote}
+          </p>
+        )}
+        {/* Die Praxis hat die Online-Buchung pausiert: ein ruhiger Satz, kein Alarm */}
+        {provider?.notice && send.kind !== "done" && (
+          <p
+            role="note"
+            className="mt-3 flex items-start gap-2 rounded-lg bg-mist px-3.5 py-2.5 text-xs leading-relaxed text-ink/75"
+          >
+            <Icon name="phone" size={14} className="mt-0.5 shrink-0 text-primary" />
+            <span>{provider.notice}</span>
           </p>
         )}
       </div>
@@ -254,7 +267,7 @@ export function BookingCard() {
                   slots={slots}
                   selected={draft.slotId}
                   dateLabel={slotDateLabel}
-                  mode={provider?.mode ?? "request"}
+                  mode={mode}
                   onSelect={(slot) => {
                     patchDraft({ slotId: slot.id, time: slot.time });
                     setStep(3);

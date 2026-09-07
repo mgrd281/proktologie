@@ -1,4 +1,5 @@
 import { appointmentTypes, bookingCopy } from "@/content/booking";
+import { site } from "@/content/site";
 import type { BookingProvider } from "@/lib/booking/provider";
 import type {
   AppointmentType,
@@ -13,7 +14,9 @@ import type {
  * Provider „verbindlich" (mode: "confirmed"): spricht mit der öffentlichen
  * API des Praxis-Cockpits. Aktiv nur, wenn der Build mit
  * NEXT_PUBLIC_BOOKING_PROVIDER=cockpit und NEXT_PUBLIC_COCKPIT_API gebaut
- * wurde – sonst bleibt die Website beim Wunschtermin-Provider.
+ * wurde UND das Cockpit beim Laden „Website-Buchung live“ meldet (die
+ * Auswahl trifft createBookingProvider) – sonst bleibt die Website beim
+ * Wunschtermin-Provider.
  *
  * Grundsätze:
  * - Es werden nur Terminart, Datum, Uhrzeit und die vier Kontaktangaben
@@ -24,7 +27,8 @@ import type {
  * - Der Honigtopf (`website`) wird als `hp` mitgeschickt: leer für Menschen.
  */
 
-const API_BASE = (process.env.NEXT_PUBLIC_COCKPIT_API ?? "").replace(/\/$/, "");
+// Eine Quelle für die Basis-URL: content/site.ts liest die Umgebung
+const API_BASE = site.cockpitApiUrl;
 const MIN_TOKEN_AGE_MS = 3200;
 const MAX_TOKEN_AGE_MS = 25 * 60_000;
 

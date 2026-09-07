@@ -2,6 +2,7 @@ import { and, count, eq, isNotNull, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { createInvite } from "@/lib/auth/invites";
+import { publicStatus } from "@/lib/booking/public";
 import * as repo from "@/lib/booking/repo";
 import { getDb } from "@/lib/db/client";
 import { appointments, user as userTable } from "@/lib/db/schema";
@@ -17,12 +18,15 @@ import { runTick } from "@/lib/jobs/tick";
  * - "tick":         den Herzschlag synchron ausführen, Bericht zurück
  * - "state":        Jobs und Warteliste als Diagnose bei fehlgeschlagenen Erwartungen
  * - "expire-holds": alle laufenden Wartelisten-Reservierungen sofort ablaufen lassen
+ * - "settings":     Zustand der Online-Buchung setzen, wie die Praxis es täte
+ *                   (live / pausiert / Hinweistext) – Antwort ist, was die Website sieht
  */
 type Body = {
   secret?: string;
-  action?: "bootstrap" | "seed-demo" | "golive" | "tick" | "state" | "expire-holds";
+  action?: "bootstrap" | "seed-demo" | "golive" | "tick" | "state" | "expire-holds" | "settings";
   inviteEmail?: string;
   role?: "arzt" | "empfang" | "admin";
+  settings?: { bookingLive?: boolean; bookingPaused?: boolean; bannerText?: string | null };
 };
 
 export async function POST(req: Request) {
@@ -64,6 +68,10 @@ export async function POST(req: Request) {
       db.execute(sql`select ref, status, type_id, (email_hash is not null) as has_mail, window_from, window_to from waitlist order by created_at`),
     ]);
     return NextResponse.json({ jobs: rowsOf(jobRows), waitlist: rowsOf(waitRows) });
+  }
+  if (body.action === "settings") {
+    await repo.updateSettings(body.settings ?? {}, "e2e");
+    return NextResponse.json(await publicStatus());
   }
   if (body.action === "expire-holds") {
     const rows = await db
