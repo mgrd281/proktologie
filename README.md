@@ -397,12 +397,27 @@ Grundsätze, die im Code erzwungen werden:
   Abweichung fehl.
 
 Betrieb (Schritte der Praxis, nicht des Codes): Vercel-Projekt mit Root
-Directory `cockpit` und Region `fra1`; Neon-Postgres in `eu-central-1`
-(`DATABASE_URL`); `BETTER_AUTH_SECRET`, `DATA_KEY_V1`, `INDEX_KEY`,
+Directory `cockpit` und Region `fra1`; Postgres in `eu-central-1`
+(`DATABASE_URL`, z. B. über die Neon- oder Supabase-Integration aus dem
+Vercel-Marketplace); `BETTER_AUTH_SECRET`, `DATA_KEY_V1`, `INDEX_KEY`,
 `COCKPIT_URL` (Passkeys binden sich an dessen Hostname); Migrationen per
-`npm run db:migrate`, erster Admin per `npm run db:bootstrap-admin`. Vor
-dem ersten echten Patientendatensatz: DSB-Freigabe und DSFA, AVVs mit
-Vercel/Neon, Datenschutzerklärung ergänzen (siehe Plan im PR).
+`npm run db:migrate`, erster Admin per `npm run db:bootstrap-admin`.
+
+**Marketplace-Datenbanken sind "sensitive":** Ein über die Vercel-Integration
+angelegtes `DATABASE_URL` lässt sich nach dem Speichern durch niemanden mehr
+auslesen – auch nicht über die API oder `vercel env pull`. Die beiden
+Skripte oben brauchen die Variable dann lokal, wo sie nicht existiert.
+Für genau diesen Fall gibt es zwei gleichwertige, per Geheimnis
+abgesicherte Routen, die innerhalb der laufenden Vercel-Funktion
+arbeiten: `POST /api/internal/migrate` (`MIGRATE_SECRET`) und
+`POST /api/internal/bootstrap-admin` (`BOOTSTRAP_ADMIN_EMAIL`/`_SECRET`,
+kein Body). Beide antworten ohne konfiguriertes Geheimnis mit 404;
+`bootstrap-admin` verweigert sich zusätzlich dauerhaft, sobald ein erstes
+Konto existiert.
+
+Vor dem ersten echten Patientendatensatz: DSB-Freigabe und DSFA, AVVs mit
+Vercel und dem Datenbank-Anbieter, Datenschutzerklärung ergänzen (siehe
+Plan im PR).
 
 ## Architektur
 
