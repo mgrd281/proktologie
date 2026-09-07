@@ -40,13 +40,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "BOOTSTRAP_ADMIN_EMAIL fehlt, oder das Passwort hat weniger als 12 Zeichen." }, { status: 400 });
   }
 
-  const db = await getDb();
-  const [row] = await db.select({ n: count() }).from(user);
-  if ((row?.n ?? 0) > 0) {
-    return NextResponse.json({ error: "Es existieren bereits Konten – Bootstrap verweigert. Weitere Konten nur per Einladung." }, { status: 409 });
-  }
+  try {
+    const db = await getDb();
+    const [row] = await db.select({ n: count() }).from(user);
+    if ((row?.n ?? 0) > 0) {
+      return NextResponse.json({ error: "Es existieren bereits Konten – Bootstrap verweigert. Weitere Konten nur per Einladung." }, { status: 409 });
+    }
 
-  const created = await auth.api.createUser({ body: { email, password, name: "Administrator", role: "admin" } });
-  await audit({ action: "user.bootstrap", entity: "user", entityId: created.user.id, meta: { role: "admin" } });
-  return NextResponse.json({ ok: true, email });
+    const created = await auth.api.createUser({ body: { email, password, name: "Administrator", role: "admin" } });
+    await audit({ action: "user.bootstrap", entity: "user", entityId: created.user.id, meta: { role: "admin" } });
+    return NextResponse.json({ ok: true, email });
+  } catch (err) {
+    // Wie bei der Migration: Der Aufrufer hält das Geheimnis, ohne Grund ist
+    // nichts zu reparieren. Verbindungszeichenketten bleiben draußen.
+    const raw = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: raw.replace(/postgres(?:ql)?:\/\/\S+/gi, "postgres://…") }, { status: 500 });
+  }
 }
