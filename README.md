@@ -319,7 +319,8 @@ Unterordner `cockpit/`** mit eigener `package.json`, eigenem Vercel-Projekt
 statische Website bleibt davon unberührt; die Verbindung entsteht erst in
 Phase 1 über die öffentliche Buchungs-API.
 
-**Stand: Phase 1 „Der Motor für die Öffentlichkeit“.**
+**Stand: Phase 1 „Der Motor für die Öffentlichkeit“ – plus Chat-Assistent
+und Anfragen-Posteingang.**
 
 Phase 0 legte das Fundament: Anmeldung (nur per Einladung, Passkey + TOTP
 Pflicht), Rollen, revisionssicheres Audit-Log, Terminmotor intern
@@ -356,7 +357,56 @@ wird serverseitig erneut geprüft (`not_live`/`paused` → 503). Der Schalter
 „Website-Buchung live“ im Cockpit lässt sich erst umlegen, wenn keine
 Demo-Zeile mehr existiert.
 
-Noch offen (als ehrlich beschriftete Platzhalter angelegt): Anfragen-Inbox,
+### Chat-Assistent
+
+Unten rechts auf jeder Seite ein runder Knopf. Er vereinbart echte Termine
+über denselben Motor wie die Terminkarte und beantwortet Fragen zur Praxis –
+auf Deutsch und Englisch, in der Sie-Form.
+
+**Der Ablauf ist ein Automat, kein Sprachmodell.** Buchung, Verfügbarkeit,
+Zusammenfassung und Bestätigung entscheidet ausschließlich der Code. Das
+Modell wird an zwei Stellen gefragt, und beide Male ist seine Antwort nur ein
+Vorschlag: eine freie Nachricht einordnen (striktes JSON gegen Zod; genannte
+Daten und Uhrzeiten werden anschließend gegen die eigenen Parser
+gegengeprüft, erfundene Termine kommen so nicht durch) und eine Antwort aus
+gepflegten Fakten umformulieren (jede Zahl der Antwort muss in den Fakten
+vorkommen, sonst gilt der Faktentext). Ohne erreichbaren Anbieter
+funktioniert jeder Weg über Schaltflächen unverändert weiter.
+
+**Was das Modell nie zu sehen bekommt.** Name, E-Mail und Telefonnummer
+werden über beschriftete Formularfelder erfasst und gehen direkt an die
+Buchung; der Typ `ModelView` hat für sie kein Feld. Freitext wird vorher
+maskiert (E-Mail, Telefon, Versichertennummer, IBAN), und Gesundheitsangaben
+werden abgefangen, bevor irgendein Aufruf entsteht. Grund: Die kostenlosen
+Anbieter (NVIDIA, OpenRouter; USA) haben keinen Auftragsverarbeitungsvertrag.
+
+**Sicherheit vor allem anderen.** Die Notfallerkennung läuft in der Route
+vor Zählung, Datenbank und Modell – 112 und 116 117 erscheinen auch dann,
+wenn der Chat abgeschaltet ist oder das Limit erreicht wurde; danach
+verschwindet das Eingabefeld. Medizinische Fragen bekommen einen
+vorgegebenen Satz und keinen Modellaufruf. Nach Symptomen, Diagnosen,
+Medikamenten oder der Versichertennummer wird nie gefragt.
+
+**Nichts wird gespeichert.** Der Verlauf liegt in `sessionStorage` des
+Browsers, nicht auf dem Server: Ein Seitenwechsel behält ihn, das Schließen
+des Tabs löscht ihn. Dauerhaft entstehen nur Buchungen und Rückrufbitten –
+verschlüsselt, wie beim Formular. Was die Praxis nicht in
+`cockpit/content/praxis-wissen.ts` hinterlegt hat, beantwortet der Assistent
+mit „das weiß ich leider nicht“ und der Telefonnummer; Sprechzeiten kommen
+live aus der Datenbank, damit Chat und Buchung nie auseinanderlaufen.
+
+Grenzen: 20 Nachrichten je Sitzung, 120 je Stunde und IP, 3 Buchungen je
+E-Mail-Adresse und Kalendertag. Abschalten unter *Einstellungen →
+Demo & Betrieb*; das Fenster zeigt dann nur Telefonnummer und Sprechzeiten.
+
+### Anfragen-Posteingang
+
+Alles, was kein Termin ist: Rückrufbitten aus dem Chat, Folgerezepte,
+Überweisungen, Befundkopien – mit Frist, Stand und verschlüsselten
+Kontaktdaten. Jede Anfrage von außen löst eine kurze Meldung an die Praxis
+aus (`EMAIL_PRACTICE_TO`); im Cockpit angelegte Zeilen bleiben still.
+
+Noch offen (als ehrlich beschriftete Platzhalter angelegt):
 Website-Steuerung, Aufnahmebogen, Statistik.
 
 ```bash
@@ -370,10 +420,15 @@ npm run e2e                     # Playwright: startet Cockpit UND Website und bu
                                 # (CHROME_PATH setzen; Mails landen als JSON in .mail-outbox-e2e/)
 ```
 
-Die Browser-Suite deckt beide Wege ab: das Team (Einladung → Passkey → TOTP →
-Termin) und die Patientin (Website → verbindliche Buchung → Bestätigungsmail
-mit .ics → bestätigen → absagen → Wartelisten-Angebot → annehmen), dazu
-Missbrauchsschutz, CORS und zwei Axe-Prüfungen.
+Die Browser-Suite deckt drei Wege ab: das Team (Einladung → Passkey → TOTP →
+Termin → Anfragen-Posteingang), die Patientin am Formular (Website →
+verbindliche Buchung → Bestätigungsmail mit .ics → bestätigen → absagen →
+Wartelisten-Angebot → annehmen) und die Patientin im Chat (`public-chat.spec.ts`,
+sechzehn Abnahmefälle vom Notfall bis zum Abschalter), dazu Missbrauchsschutz,
+CORS und drei Axe-Prüfungen. Das Sprachmodell ist dabei gestellt
+(`e2e/fake-llm.mjs`, OpenAI-kompatibel, Modi `ok|fail|timeout|hallucinate`);
+es zählt seine Aufrufe mit, damit auch beweisbar ist, was *nicht* passiert –
+bei Notfall und medizinischer Frage wird es kein einziges Mal gefragt.
 
 Grundsätze, die im Code erzwungen werden:
 
@@ -394,8 +449,18 @@ Grundsätze, die im Code erzwungen werden:
   Fragment (`/t/#…`); die Seite schickt es per POST – es erreicht weder
   Server-Logs noch Referrer.
 - **E-Mails ohne Medizin.** Bestätigungen, Erinnerungen und Absagen nennen
-  Terminart, Zeit, Ort und Referenz. Vorbereitungshinweise kommen
-  ausschließlich aus Vorlagen, die die Praxis selbst pflegt.
+  Terminart, Zeit, Ort und Referenz – auf Deutsch oder Englisch, je nachdem,
+  in welcher Sprache gebucht wurde (`appointments.locale`). Vorbereitungs-
+  hinweise kommen ausschließlich aus Vorlagen, die die Praxis selbst pflegt.
+- **Kein Personenbezug zum Sprachmodell.** Der Typ, den das Modell zu sehen
+  bekommt, hat kein Feld für Name, E-Mail oder Telefon; Freitext wird vorher
+  maskiert und auf Gesundheitsangaben geprüft. Zwei Tests im
+  Gesprächsablauf sind reine Kanarienvögel: Sie legen Kontaktdaten an und
+  prüfen, dass sie in keinem Modellaufruf auftauchen.
+- **Nur `:free` bei OpenRouter.** Modell-Ids ohne dieses Suffix werden
+  verworfen – geprüft beim Lesen der Kette und noch einmal unmittelbar vor
+  dem Netzaufruf. Ein Anbieter ohne Schlüssel wird ohne Netzaufruf
+  übersprungen.
 - **Kein Versand ohne Schlüssel.** Ohne `EMAIL_API_KEY` läuft der
   Protokoll-Kanal: Nichts verlässt das System, jede Nachricht steht mit
   Zeitpunkt und Status unter *Einstellungen → Demo & Betrieb*.
@@ -419,7 +484,7 @@ innerhalb der laufenden Vercel-Funktion arbeiten: `POST /api/internal/migrate`
 (`MIGRATE_SECRET`), `POST /api/internal/bootstrap-admin`
 (`BOOTSTRAP_ADMIN_EMAIL`/`_SECRET`, kein Body) und
 `POST /api/internal/settings` (`MIGRATE_SECRET`, Body
-`{ bookingLive?, bookingPaused?, bannerText? }` – schaltet die Online-Buchung
+`{ bookingLive?, bookingPaused?, bannerText?, chatEnabled? }` – schaltet die Online-Buchung
 über denselben `updateSettings`-Weg wie das Cockpit, samt Demo-Sperre und
 Audit; Antwort ist der öffentliche Status). Alle antworten ohne
 konfiguriertes Geheimnis mit 404; `bootstrap-admin` verweigert sich
