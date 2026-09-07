@@ -13,6 +13,15 @@ const nextConfig: NextConfig = {
   images: { unoptimized: true },
   // DB-Treiber nicht bündeln: PGlite (WASM) nur lokal, pg nativ auf Vercel
   serverExternalPackages: ["@electric-sql/pglite", "pg"],
+  /**
+   * Die Migrationen sind SQL-Dateien, die erst zur Laufzeit gelesen werden –
+   * das Tracing sieht sie deshalb nicht und packt sie nicht ins Bundle. Ohne
+   * diese Zeile findet `/api/internal/migrate` auf Vercel keinen einzigen
+   * Schritt vor und bricht ab, obwohl der Ordner im Repository liegt.
+   */
+  outputFileTracingIncludes: {
+    "/api/internal/migrate": ["drizzle/**/*"],
+  },
   experimental: {
     serverActions: { bodySizeLimit: "1mb" },
   },

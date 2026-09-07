@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { readdirSync } from "node:fs";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { NextResponse } from "next/server";
 import { dbKind, getDb, migrationsFolder } from "@/lib/db/client";
@@ -28,12 +29,40 @@ function authorized(req: Request): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+/**
+ * Fehlermeldungen dürfen hier ausnahmsweise nach außen: Der Aufrufer hält
+ * bereits das Geheimnis, und ohne den Grund ist eine ferngesteuerte Migration
+ * nicht zu reparieren. Verbindungszeichenketten werden trotzdem entfernt –
+ * ein Treiberfehler zitiert gern die ganze DATABASE_URL samt Passwort.
+ */
+function safeMessage(err: unknown): string {
+  const raw = err instanceof Error ? `${err.message}` : String(err);
+  return raw.replace(/postgres(?:ql)?:\/\/\S+/gi, "postgres://…");
+}
+
 export async function POST(req: Request) {
   if (!authorized(req)) return new NextResponse(null, { status: 404 });
   if (dbKind() !== "pg") {
     return NextResponse.json({ error: "DATABASE_URL fehlt – nichts zu migrieren." }, { status: 400 });
   }
-  const db = await getDb();
-  await migrate(db as never, { migrationsFolder: migrationsFolder() });
-  return NextResponse.json({ ok: true, at: new Date().toISOString() });
+  const folder = migrationsFolder();
+  try {
+    const db = await getDb();
+    await migrate(db as never, { migrationsFolder: folder });
+    return NextResponse.json({ ok: true, at: new Date().toISOString() });
+  } catch (err) {
+    return NextResponse.json(
+      { error: safeMessage(err), folder, files: listMigrations(folder) },
+      { status: 500 },
+    );
+  }
+}
+
+/** Welche Dateien die Funktion tatsächlich sieht – die häufigste Fehlerursache. */
+function listMigrations(folder: string): string[] {
+  try {
+    return readdirSync(folder).sort();
+  } catch (err) {
+    return [`nicht lesbar: ${safeMessage(err)}`];
+  }
 }
