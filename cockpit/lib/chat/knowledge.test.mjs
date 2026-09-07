@@ -92,3 +92,23 @@ test("Zu lange Antworten und leere Antworten fallen durch", () => {
   assert.equal(groundingCheck("   ", facts), false);
   assert.equal(groundingCheck("Die Praxis liegt in der Schäferkampsallee.", facts), true);
 });
+
+// ---- Wie Patientinnen wirklich fragen ----
+
+test("Die Anfahrtsfrage wird in ihren gängigen Formen erkannt", () => {
+  const fragen = {
+    de: ["Wie komme ich zu Ihnen?", "Wie finde ich die Praxis?", "Gibt es eine U-Bahn in der Nähe?", "Wie ist die Anfahrt?"],
+    en: ["How do I get to your practice?", "How can I find you?", "Is there an underground station nearby?", "What are the directions?"],
+  };
+  for (const [lang, liste] of Object.entries(fragen)) {
+    for (const frage of liste) {
+      const topics = findTopics(frage, lang);
+      assert.ok(topics.includes("anfahrt") || topics.includes("adresse"), `nicht erkannt (${lang}): ${frage}`);
+    }
+  }
+});
+
+test("Ein Terminwunsch ist keine Anfahrtsfrage", () => {
+  assert.deepEqual(findTopics("Ich hätte gern einen Kontrolltermin", "de"), []);
+  assert.deepEqual(findTopics("I would like an appointment", "en"), []);
+});

@@ -41,20 +41,30 @@ export const PRAXIS_WISSEN: Record<Topic, Fact> = {
     // Kommt live aus der Datenbank – hier stehen nur die Erkennungswörter.
     de: null,
     en: null,
+    // Vorsicht bei kurzen Wörtern: „auf“ und „zu“ als bloße Zeichenfolge
+    // stecken in fast jedem deutschen Satz („zu Ihnen“, „verkaufen“) und
+    // hätten die Sprechzeiten an jede zweite Antwort gehängt. Deshalb nur
+    // Wendungen, die wirklich nach der Öffnung fragen.
     keywords: {
-      de: ["öffnungszeit", "oeffnungszeit", "sprechzeit", "sprechstunde", "geöffnet", "geoeffnet", "auf", "zu", "wann", "uhrzeit"],
-      en: ["opening", "hours", "open", "closed", "when"],
+      de: [
+        "öffnungszeit", "oeffnungszeit", "sprechzeit", "sprechstunde", "geöffnet", "geoeffnet",
+        "haben sie auf", "habt ihr auf", "wann haben sie", "wann sind sie", "wann ist die praxis", "wann kann ich kommen",
+      ],
+      en: ["opening hour", "opening time", "office hours", "surgery hours", "when are you open", "when do you open", "when are you there", "hours", "open?"],
     },
   },
   adresse: {
     de: "Die Praxis liegt in der Schäferkampsallee 56, 20357 Hamburg (Eimsbüttel).",
     en: "The practice is at Schäferkampsallee 56, 20357 Hamburg (Eimsbüttel).",
-    keywords: { de: ["adresse", "anschrift", "wo ist", "wo finde", "straße", "strasse"], en: ["address", "where are you", "where is", "street"] },
+    keywords: { de: ["adresse", "anschrift", "wo ist", "wo finde", "wo sind sie", "straße", "strasse"], en: ["address", "where are you", "where is", "where can i find", "street"] },
   },
   anfahrt: {
     de: "Direkt an der U-Bahn-Haltestelle Christuskirche (U2), Schäferkampsallee 56, 20357 Hamburg.",
     en: "Right at the Christuskirche underground station (line U2), Schäferkampsallee 56, 20357 Hamburg.",
-    keywords: { de: ["anfahrt", "hinkommen", "u-bahn", "ubahn", "bus", "bahn", "haltestelle", "öffentlich", "weg"], en: ["directions", "get there", "getting here", "underground", "metro", "subway", "bus", "train", "station"] },
+    keywords: {
+      de: ["anfahrt", "hinkommen", "wie komme", "wie finde", "zu ihnen", "u-bahn", "ubahn", "bus", "bahn", "haltestelle", "öffentlich", "weg"],
+      en: ["directions", "get there", "get to", "getting here", "how do i get", "find you", "reach you", "way to", "underground", "metro", "subway", "bus", "train", "station"],
+    },
   },
   parken: {
     // [OFFEN] Die Praxis hat zu Parkplätzen nichts hinterlegt.

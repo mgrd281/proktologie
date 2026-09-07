@@ -327,20 +327,42 @@ function forwardKind(text: string): CallbackKind {
 
 // -------------------------------------------------------------- Ablauf
 
+/** Alles, was die Patientin in diesem Zug geschrieben hat – auch in Formularfeldern. */
+export function collectText(req: ChatRequest): string {
+  return [req.message ?? "", ...Object.values(req.action?.kind === "form" ? req.action.values : {})].join("\n");
+}
+
+/** Notfall? Diese Prüfung braucht weder Datenbank noch Modell noch Zustand. */
+export function isEmergency(req: ChatRequest): boolean {
+  return detectEmergency(collectText(req)) !== null;
+}
+
+/** Der geprüfte Zustand aus der Anfrage – manipuliertes wird verworfen. */
+export function stateFor(req: ChatRequest): ChatState {
+  return reviveState(req.state, detectLanguage(req.message ?? "", "de").lang);
+}
+
+/**
+ * Die Notfallantwort. Sie steht bewusst als eigene Funktion da: Die Route
+ * gibt sie aus, bevor gezählt, geprüft oder abgeschaltet wird – 112 muss
+ * auch dann erscheinen, wenn der Chat pausiert oder das Limit erreicht ist.
+ */
+export function emergencyReply(state: ChatState): ChatResponse {
+  return say({ ...state, stage: "idle", failures: 0 }, t(state.lang).emergency, {
+    links: telLinks(state.lang),
+    flags: { emergency: true },
+  });
+}
+
 export async function runTurn(req: ChatRequest, deps: ChatDeps): Promise<ChatResponse> {
   const now = deps.now();
-  const firstGuess = detectLanguage(req.message ?? "", "de");
-  let state = reviveState(req.state, firstGuess.lang);
+  let state = stateFor(req);
   state = { ...state, turns: Math.min(state.turns + 1, 500) };
 
   // 1. Notfall geht allem voraus – auch dem, was in einem Formularfeld steht.
-  const everything = [req.message ?? "", ...Object.values(req.action?.kind === "form" ? req.action.values : {})].join("\n");
-  if (detectEmergency(everything)) {
+  if (isEmergency(req)) {
     deps.audit("chat.emergency");
-    return say({ ...state, stage: "idle", failures: 0 }, t(state.lang).emergency, {
-      links: telLinks(state.lang),
-      flags: { emergency: true },
-    });
+    return emergencyReply(state);
   }
 
   if (req.action?.kind === "form") return handleForm(req.action, state, deps);
