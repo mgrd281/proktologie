@@ -60,31 +60,31 @@ export const PRAXIS_WISSEN: Record<Topic, Fact> = {
     // [OFFEN] Die Praxis hat zu Parkplätzen nichts hinterlegt.
     de: null,
     en: null,
-    keywords: { de: ["parken", "parkplatz", "parkhaus", "auto"], en: ["parking", "park", "car"] },
+    keywords: { de: ["parken", "parkpl", "parkhaus", "auto"], en: ["parking", "park", "car"] },
   },
   barrierefreiheit: {
     // [OFFEN] Aufzug, Stufen, Rollstuhl – von der Praxis zu bestätigen.
     de: null,
     en: null,
-    keywords: { de: ["barrierefrei", "rollstuhl", "aufzug", "fahrstuhl", "stufen", "treppe", "gehbehindert"], en: ["accessible", "wheelchair", "lift", "elevator", "stairs", "step-free"] },
+    keywords: { de: ["barrierefrei", "rollstuhl", "aufzug", "fahrstuhl", "stufe", "treppe", "gehbehindert"], en: ["accessible", "wheelchair", "lift", "elevator", "stairs", "step-free"] },
   },
   kassen: {
     // [OFFEN] Gesetzlich/privat/Selbstzahler – von der Praxis zu bestätigen.
     de: null,
     en: null,
-    keywords: { de: ["kasse", "krankenkasse", "gesetzlich", "privat", "selbstzahler", "versichert", "kosten", "bezahlen"], en: ["insurance", "insured", "private", "public", "statutory", "self-pay", "cost", "pay"] },
+    keywords: { de: ["kasse", "krankenkasse", "gesetzlich", "privat", "selbstzahler", "versichert", "kosten", "bezahl"], en: ["insurance", "insured", "private", "public", "statutory", "self-pay", "cost", "pay"] },
   },
   urlaubsvertretung: {
     // [OFFEN] Wer vertritt im Urlaub? Ohne Angabe verweist der Assistent aufs Telefon.
     de: null,
     en: null,
-    keywords: { de: ["vertretung", "urlaub", "geschlossen", "ferien", "wer vertritt"], en: ["holiday", "vacation", "closed", "cover", "substitute"] },
+    keywords: { de: ["vertretung", "urlaub", "geschlossen", "ferien", "vertritt"], en: ["holiday", "vacation", "closed", "cover", "substitute"] },
   },
   mitbringen: {
     // [OFFEN] Versichertenkarte, Überweisung, Medikamentenliste – von der Praxis zu bestätigen.
     de: null,
     en: null,
-    keywords: { de: ["mitbringen", "mitnehmen", "dabei haben", "unterlagen", "karte"], en: ["bring", "take with", "documents", "card"] },
+    keywords: { de: ["mitbring", "mitnehm", "dabei haben", "unterlagen", "versichertenkarte"], en: ["bring", "take with", "documents", "card"] },
   },
   kontakt: {
     de: "Telefonisch erreichen Sie uns unter 040 490 80 21, per E-Mail unter info@proktologie-eimsbuettel.de, Fax 040 40 93 83.",
