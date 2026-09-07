@@ -1,6 +1,6 @@
-import { timingSafeEqual } from "node:crypto";
 import { count } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { bearerAuthorized } from "@/lib/api/bearer";
 import { audit } from "@/lib/audit";
 import { auth } from "@/lib/auth/auth";
 import { getDb } from "@/lib/db/client";
@@ -21,15 +21,7 @@ export const maxDuration = 30;
  * (BOOTSTRAP_ADMIN_EMAIL/_SECRET), damit sie nie über die Anfrage selbst
  * laufen. Danach beide Variablen aus Vercel entfernen.
  */
-function authorized(req: Request): boolean {
-  const secret = process.env.BOOTSTRAP_ADMIN_SECRET;
-  if (!secret) return false;
-  const header = req.headers.get("authorization") ?? "";
-  const given = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const a = Buffer.from(given);
-  const b = Buffer.from(secret);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
+const authorized = (req: Request) => bearerAuthorized(req, process.env.BOOTSTRAP_ADMIN_SECRET);
 
 export async function POST(req: Request) {
   if (!authorized(req)) return new NextResponse(null, { status: 404 });

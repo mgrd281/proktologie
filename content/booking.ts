@@ -38,6 +38,12 @@ export const bookingCopy = {
   /** Verbindlicher Modus: echte freie Zeiten aus dem Praxis-Cockpit. */
   confirmedModeNote:
     "Sie sehen echte freie Zeiten und buchen verbindlich – die Bestätigung mit Kalendereintrag kommt sofort per E-Mail.",
+  /**
+   * Die Praxis hat die Online-Buchung im Cockpit pausiert und keinen eigenen
+   * Text hinterlegt – die Website fällt auf den Wunschtermin zurück.
+   */
+  pausedNotice:
+    "Die Online-Buchung ist vorübergehend pausiert. Wunschtermine können Sie weiterhin anfragen – oder rufen Sie uns an.",
   back: "Zurück",
   /** Dezenter Hinweis in der Kartenfußzeile – ab Schritt 1 sichtbar. */
   doctolibHint: "Lieber sofort verbindlich buchen?",
