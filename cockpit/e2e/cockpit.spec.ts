@@ -162,3 +162,61 @@ test("Ohne Sitzung wird auf die Anmeldung umgeleitet; Login-Seite ist barrierefr
   const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
   expect(axe.violations, JSON.stringify(axe.violations.map((v) => `${v.id}: ${v.nodes.length}`))).toEqual([]);
 });
+
+test("Rückruf aus dem Chat erscheint im Posteingang und lässt sich abschließen", async ({ page, request }) => {
+  test.setTimeout(180_000);
+  // Eine Rückrufbitte auf demselben Weg wie eine Patientin: über den Chat.
+  const sessionId = "00000000-0000-4000-8000-0000000000ff";
+  const erste = await request.post("/api/public/v1/chat", {
+    data: { v: 1, sessionId, state: null, message: "Ich möchte mit einem Menschen sprechen" },
+    headers: { Origin: "http://localhost:3000" },
+  });
+  expect(erste.ok(), await erste.text()).toBeTruthy();
+  const nachFrage = await request.post("/api/public/v1/chat", {
+    data: { v: 1, sessionId, state: (await erste.json()).state, action: { kind: "quick", id: "callback" } },
+    headers: { Origin: "http://localhost:3000" },
+  });
+  const gesendet = await request.post("/api/public/v1/chat", {
+    data: {
+      v: 1,
+      sessionId,
+      state: (await nachFrage.json()).state,
+      action: {
+        kind: "form",
+        formId: "callback",
+        values: { kind: "rueckruf", firstName: "Paula", lastName: "Posteingang", phone: "040 99 88 77", preferredTime: "nachmittags" },
+      },
+    },
+    headers: { Origin: "http://localhost:3000" },
+  });
+  const ref = ((await gesendet.json()) as { reply: string }).reply.match(/AN-[A-Z0-9]{4}/)?.[0];
+  expect(ref, "Referenz der Rückrufbitte").toBeTruthy();
+
+  // Anmelden wie das Team und nachsehen
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Mit Passwort anmelden" }).click();
+  await page.getByLabel("E-Mail-Adresse").fill("empfang@example.invalid");
+  await page.getByLabel("Passwort").fill("Sehr-sicheres-Passwort-1");
+  await page.getByRole("button", { name: "Anmelden" }).click();
+  // Ein einmal benutzter Code gilt nicht erneut, und der vorige Test hat
+  // gerade einen verbraucht. Deshalb das nächste Zeitfenster abwarten –
+  // höchstens 31 Sekunden, dafür ohne Rateversuche.
+  await page.waitForTimeout(31_000 - (Date.now() % 30_000));
+  await page.getByLabel("6-stelliger Code").fill(totp(totpSecret));
+  await page.getByRole("button", { name: "Bestätigen" }).click();
+  await expect(page.getByText(/Termine heute/)).toBeVisible({ timeout: 20_000 });
+
+  await page.goto("/anfragen");
+  await expect(page.getByRole("heading", { name: "Anfragen" })).toBeVisible();
+  const zeile = page.getByRole("row").filter({ hasText: "Paula Posteingang" });
+  await expect(zeile).toBeVisible();
+  await expect(zeile).toContainText("Rückruf");
+  await expect(zeile).toContainText("040 99 88 77");
+  await page.screenshot({ path: "e2e/shots/anfragen.png" });
+
+  await zeile.click();
+  await expect(page.getByText(`${ref} · Chat`)).toBeVisible();
+  await expect(page.getByText("nachmittags")).toBeVisible();
+  await page.getByRole("button", { name: "Erledigt", exact: true }).click();
+  await expect(page.getByRole("row").filter({ hasText: "Paula Posteingang" })).toHaveCount(0);
+});

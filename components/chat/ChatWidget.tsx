@@ -31,25 +31,28 @@ export function ChatWidget() {
   const [lang, setLang] = useState<ChatLang>("de");
   const [availability, setAvailability] = useState<Availability>("unknown");
   const launcher = useRef<HTMLButtonElement>(null);
+  const asked = useRef(false);
   const copy = chatCopy[lang];
 
-  // Beim ersten Öffnen einmal nachsehen, ob die Praxis den Chat anbietet.
+  /**
+   * Beim ersten Öffnen einmal nachsehen, ob die Praxis den Chat anbietet.
+   *
+   * Absichtlich mit einem Ref statt mit `availability` in den
+   * Abhängigkeiten: Sonst löst `setAvailability("checking")` den Effekt
+   * erneut aus, dessen Aufräumen die noch laufende Antwort verwirft – der
+   * Schalter der Praxis käme nie an. Ein Abbruch ist auch nicht nötig,
+   * denn dieser Knopf bleibt stehen, solange die Seite lebt.
+   */
   useEffect(() => {
-    if (!open || availability !== "unknown") return;
+    if (!open || asked.current) return;
+    asked.current = true;
     if (!site.cockpitApiUrl) {
       setAvailability("off");
       return;
     }
-    let alive = true;
     setAvailability("checking");
-    void fetchCockpitStatus(site.cockpitApiUrl).then((status) => {
-      if (!alive) return;
-      setAvailability(status?.chatEnabled ? "on" : "off");
-    });
-    return () => {
-      alive = false;
-    };
-  }, [open, availability]);
+    void fetchCockpitStatus(site.cockpitApiUrl).then((status) => setAvailability(status?.chatEnabled ? "on" : "off"));
+  }, [open]);
 
   const close = useCallback(() => {
     setOpen(false);

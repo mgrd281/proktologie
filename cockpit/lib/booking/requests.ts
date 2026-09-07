@@ -6,6 +6,33 @@ import { currentKeyVersion, decryptJson, encryptJson } from "../crypto/aead.ts";
 import { getDb } from "../db/client.ts";
 import * as t from "../db/schema.ts";
 import { makeRef } from "../ref.ts";
+import {
+  OPEN_REQUEST_STATUSES,
+  REQUEST_KIND_LABEL,
+  REQUEST_STATUS_LABEL,
+  type RequestKind,
+  type RequestMessage,
+  type RequestPii,
+  type RequestStatus,
+  type RequestView,
+} from "./model.ts";
+
+/**
+ * Die Typen und Beschriftungen der Anfragen liegen in model.ts – frei von
+ * Server-Importen. Client-Komponenten (RequestsPanel) dürfen diese Datei
+ * nicht anfassen: Sie zieht über getDb den Postgres-Treiber mit, und der
+ * gehört nicht in ein Browser-Bündel.
+ */
+export {
+  OPEN_REQUEST_STATUSES,
+  REQUEST_KIND_LABEL,
+  REQUEST_STATUS_LABEL,
+  type RequestKind,
+  type RequestMessage,
+  type RequestPii,
+  type RequestStatus,
+  type RequestView,
+};
 
 /**
  * Anfragen der Patient:innen, die kein Termin sind: Rückruf, Folgerezept,
@@ -17,58 +44,6 @@ import { makeRef } from "../ref.ts";
  * steht verschlüsselt in `messageEnc` und verlässt den Server nur an
  * angemeldete Cockpit-Nutzer.
  */
-export type RequestKind = "rueckruf" | "folgerezept" | "ueberweisung" | "befundkopie" | "sonstiges";
-export type RequestStatus = "neu" | "in_arbeit" | "wartet" | "erledigt";
-
-export const REQUEST_KIND_LABEL: Record<RequestKind, string> = {
-  rueckruf: "Rückruf",
-  folgerezept: "Folgerezept",
-  ueberweisung: "Überweisung",
-  befundkopie: "Befundkopie",
-  sonstiges: "Sonstiges",
-};
-
-export const REQUEST_STATUS_LABEL: Record<RequestStatus, string> = {
-  neu: "Neu",
-  in_arbeit: "In Arbeit",
-  wartet: "Wartet",
-  erledigt: "Erledigt",
-};
-
-/** Offen = liegt noch beim Team. */
-export const OPEN_REQUEST_STATUSES: RequestStatus[] = ["neu", "in_arbeit", "wartet"];
-
-export interface RequestPii {
-  firstName: string;
-  lastName: string;
-  phone?: string;
-  email?: string;
-}
-
-export interface RequestMessage {
-  /** Freitext der Patientin – kann leer sein */
-  text: string;
-  source: "chat" | "web";
-  /** Wunschzeit für den Rückruf */
-  preferredTime?: "egal" | "vormittags" | "nachmittags";
-  locale?: "de" | "en";
-}
-
-export interface RequestView {
-  id: string;
-  ref: string;
-  kind: RequestKind;
-  status: RequestStatus;
-  assigneeId: string | null;
-  pii: RequestPii;
-  message: RequestMessage | null;
-  slaDueAt: string | null;
-  closedAt: string | null;
-  isDemo: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
 /** Standardfrist, bis sich das Team gemeldet haben soll. */
 const DEFAULT_SLA_HOURS = 24;
 
@@ -258,9 +233,20 @@ export async function createCallbackRequest(raw: unknown, ctx: CallbackContext):
     throw new RequestError(403, "blocked", "Bitte rufen Sie uns an: 040 490 80 21.");
   }
 
-  return createRequest({
+  const view = await createRequest({
     kind: v.kind,
     pii: { firstName: v.firstName, lastName: v.lastName, phone: v.phone, email },
     message: { text: v.note || "", source: ctx.source, preferredTime: v.preferredTime, locale: v.locale },
   });
+
+  // Eine Rückrufbitte von außen sieht das Team sonst erst beim nächsten
+  // Blick ins Cockpit – deshalb eine kurze Meldung an die Praxis. Nur für
+  // Anfragen von außen; im Cockpit angelegte Zeilen bleiben still.
+  const { enqueue } = await import("../jobs/queue.ts");
+  await enqueue({
+    kind: "mail.practice_notice",
+    payload: { kind: "callback", requestId: view.id },
+    dedupeKey: `mail.practice_notice:${view.id}`,
+  });
+  return view;
 }

@@ -4,12 +4,14 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { setRequestStatusAction } from "@/app/actions/requests";
 import { cn } from "@/lib/cn";
+// Aus model.ts, nicht aus requests.ts: Diese Datei läuft im Browser, und
+// requests.ts zieht über getDb den Postgres-Treiber mit.
 import {
   REQUEST_KIND_LABEL,
   REQUEST_STATUS_LABEL,
   type RequestStatus,
   type RequestView,
-} from "@/lib/booking/requests";
+} from "@/lib/booking/model";
 import { fmtShortDate, timeKey } from "@/lib/time";
 import { Card, DemoBadge, EmptyState, Eyebrow, PageTitle } from "@/components/ui/Bits";
 import { Button } from "@/components/ui/Button";

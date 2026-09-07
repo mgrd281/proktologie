@@ -51,7 +51,7 @@ export function ChatWindow({ lang, onLang, onClose, available, checking, hours }
   const [emergency, setEmergency] = useState(false);
   const [pending, setPending] = useState(false);
   const [draft, setDraft] = useState("");
-  const logRef = useRef<HTMLOListElement>(null);
+  const logRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { stop, start } = useLenis();
 
@@ -63,6 +63,11 @@ export function ChatWindow({ lang, onLang, onClose, available, checking, hours }
     if (restored && restored.messages.length > 0) {
       setSession(restored);
       onLang(restored.lang);
+      setForm(restored.form ?? null);
+      setEmergency(restored.emergency === true);
+      // Ohne gespeicherte Auswahl bleiben die drei Einstiege – besser als
+      // ein Fenster ohne jeden Weg.
+      setQuick(restored.quick?.length ? restored.quick : restored.form || restored.emergency ? [] : chatCopy[restored.lang].quickStart);
       return;
     }
     const fresh = newSession(lang);
@@ -74,8 +79,8 @@ export function ChatWindow({ lang, onLang, onClose, available, checking, hours }
 
   // Jede Änderung sofort sichern; der Tab kann jederzeit geschlossen werden.
   useEffect(() => {
-    if (session.messages.length > 0) save(storeRef.current, { ...session, lang, open: true });
-  }, [session, lang]);
+    if (session.messages.length > 0) save(storeRef.current, { ...session, lang, open: true, quick, form, emergency });
+  }, [session, lang, quick, form, emergency]);
 
   // Auf dem Telefon füllt das Fenster den Schirm – dann darf die Seite
   // dahinter nicht mitscrollen.
@@ -181,7 +186,11 @@ export function ChatWindow({ lang, onLang, onClose, available, checking, hours }
         <ChatOffline lang={lang} hours={hours} />
       ) : (
         <>
-          <ol ref={logRef} role="log" aria-live="polite" aria-relevant="additions" aria-label={copy.logLabel} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+          {/* role="log" gehört auf die Hülle, nicht auf die Liste: Sonst
+              verliert das <ol> seine Listenrolle und die Einträge stehen
+              nach WCAG 1.3.1 elternlos da. */}
+          <div ref={logRef} role="log" aria-live="polite" aria-relevant="additions" aria-label={copy.logLabel} className="flex-1 overflow-y-auto px-4 py-4">
+            <ol className="space-y-3">
             {session.messages.map((m, i) => (
               <li key={`${m.at}-${i}`} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
                 <div className="max-w-[85%]">
@@ -205,12 +214,13 @@ export function ChatWindow({ lang, onLang, onClose, available, checking, hours }
                 </div>
               </li>
             ))}
-            {pending && (
-              <li className="flex justify-start">
-                <p className="rounded-2xl rounded-bl-sm bg-mist px-3.5 py-2.5 text-sm text-ink/70">{copy.typing}</p>
-              </li>
-            )}
-          </ol>
+              {pending && (
+                <li className="flex justify-start">
+                  <p className="rounded-2xl rounded-bl-sm bg-mist px-3.5 py-2.5 text-sm text-ink/70">{copy.typing}</p>
+                </li>
+              )}
+            </ol>
+          </div>
 
           {emergency && (
             <div role="alert" className="border-t border-mist bg-white px-4 py-3">

@@ -99,3 +99,31 @@ test("Eingabeprüfung der Rückrufbitte: Telefon nötig, Wunschzeit hat einen St
   assert.equal(requests.callbackSchema.safeParse({ firstName: "E", lastName: "M", phone: "123" }).success, false);
   assert.equal(requests.callbackSchema.safeParse({ firstName: "", lastName: "M", phone: "040 490 80 21" }).success, false);
 });
+
+test("Eine Rückrufbitte von außen meldet sich bei der Praxis", async () => {
+  const view = await requests.createCallbackRequest(
+    { kind: "rueckruf", firstName: "Meldung", lastName: "Test", phone: "040 22 33 44", preferredTime: "egal" },
+    { ip: "203.0.113.77", source: "chat" },
+  );
+  const db = await getDb();
+  const jobs = await db.select().from(schema.jobs);
+  const meldung = jobs.find((j) => j.dedupeKey === `mail.practice_notice:${view.id}`);
+  assert.ok(meldung, "Meldung an die Praxis steht in der Warteschlange");
+  assert.equal(meldung.kind, "mail.practice_notice");
+  assert.equal(meldung.payload.kind, "callback");
+  assert.equal(meldung.payload.requestId, view.id);
+});
+
+test("Im Cockpit angelegte Anfragen melden sich nicht", async () => {
+  const view = await requests.createRequest({
+    kind: "sonstiges",
+    pii: { firstName: "Intern", lastName: "Angelegt", phone: "040 1" },
+  });
+  const db = await getDb();
+  const jobs = await db.select().from(schema.jobs);
+  assert.equal(
+    jobs.some((j) => j.dedupeKey === `mail.practice_notice:${view.id}`),
+    false,
+    "nur Anfragen von außen lösen eine Meldung aus",
+  );
+});

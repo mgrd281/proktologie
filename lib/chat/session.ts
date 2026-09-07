@@ -13,6 +13,8 @@
  *   node --experimental-strip-types --test lib/chat/session.test.mjs
  */
 
+import type { ChatForm, ChatQuick } from "./api.ts";
+
 export type ChatRole = "user" | "assistant";
 
 export interface StoredMessage {
@@ -31,6 +33,15 @@ export interface StoredSession {
   state: unknown;
   messages: StoredMessage[];
   open: boolean;
+  /**
+   * Auch die zuletzt angebotenen Schaltflächen und ein offenes Formular
+   * gehören zum Gespräch: Wer mitten in einer Buchung die Seite wechselt,
+   * soll dort weitermachen, wo er war – nicht von vorn anfangen.
+   */
+  quick?: ChatQuick[];
+  form?: ChatForm | null;
+  /** Ein einmal erkannter Notfall bleibt bestehen, auch nach einem Seitenwechsel. */
+  emergency?: boolean;
 }
 
 export const STORAGE_KEY = "pe-chat-v1";
@@ -38,7 +49,7 @@ export const STORAGE_KEY = "pe-chat-v1";
 export const MAX_MESSAGES = 60;
 
 export function newSession(lang: "de" | "en" = "de", id = randomId()): StoredSession {
-  return { v: 1, sessionId: id, lang, state: null, messages: [], open: false };
+  return { v: 1, sessionId: id, lang, state: null, messages: [], open: false, quick: [], form: null, emergency: false };
 }
 
 /** UUID v4, wenn der Browser sie anbietet – sonst ein einfacher Ersatz. */
@@ -79,7 +90,30 @@ export function parseSession(raw: string | null): StoredSession | null {
         })
         .slice(-MAX_MESSAGES)
     : [];
-  return { v: 1, sessionId: s.sessionId, lang: s.lang, state: s.state ?? null, messages, open: s.open === true };
+  return {
+    v: 1,
+    sessionId: s.sessionId,
+    lang: s.lang,
+    state: s.state ?? null,
+    messages,
+    open: s.open === true,
+    quick: parseQuick(s.quick),
+    form: parseForm(s.form),
+    emergency: s.emergency === true,
+  };
+}
+
+function parseQuick(v: unknown): ChatQuick[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter((q): q is ChatQuick => Boolean(q) && typeof q === "object" && typeof (q as ChatQuick).id === "string" && typeof (q as ChatQuick).label === "string").slice(0, 12);
+}
+
+function parseForm(v: unknown): ChatForm | null {
+  if (!v || typeof v !== "object") return null;
+  const f = v as ChatForm;
+  if (f.id !== "contact" && f.id !== "callback") return null;
+  if (typeof f.title !== "string" || !Array.isArray(f.fields)) return null;
+  return f;
 }
 
 export interface SessionStore {

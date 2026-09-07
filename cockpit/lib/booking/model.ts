@@ -143,3 +143,57 @@ export const KIND_LABEL: Record<ExceptionKind, string> = {
   urlaub: "Urlaub",
   extern: "Extern belegt",
 };
+
+// ---------------------------------------------------------- Anfragen
+
+export type RequestKind = "rueckruf" | "folgerezept" | "ueberweisung" | "befundkopie" | "sonstiges";
+export type RequestStatus = "neu" | "in_arbeit" | "wartet" | "erledigt";
+
+export const REQUEST_KIND_LABEL: Record<RequestKind, string> = {
+  rueckruf: "Rückruf",
+  folgerezept: "Folgerezept",
+  ueberweisung: "Überweisung",
+  befundkopie: "Befundkopie",
+  sonstiges: "Sonstiges",
+};
+
+export const REQUEST_STATUS_LABEL: Record<RequestStatus, string> = {
+  neu: "Neu",
+  in_arbeit: "In Arbeit",
+  wartet: "Wartet",
+  erledigt: "Erledigt",
+};
+
+/** Offen = liegt noch beim Team. */
+export const OPEN_REQUEST_STATUSES: RequestStatus[] = ["neu", "in_arbeit", "wartet"];
+
+export interface RequestPii {
+  firstName: string;
+  lastName: string;
+  phone?: string;
+  email?: string;
+}
+
+export interface RequestMessage {
+  /** Freitext der Patientin – kann leer sein */
+  text: string;
+  source: "chat" | "web";
+  /** Wunschzeit für den Rückruf */
+  preferredTime?: "egal" | "vormittags" | "nachmittags";
+  locale?: "de" | "en";
+}
+
+export interface RequestView {
+  id: string;
+  ref: string;
+  kind: RequestKind;
+  status: RequestStatus;
+  assigneeId: string | null;
+  pii: RequestPii;
+  message: RequestMessage | null;
+  slaDueAt: string | null;
+  closedAt: string | null;
+  isDemo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
