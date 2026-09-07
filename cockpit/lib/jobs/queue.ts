@@ -17,6 +17,8 @@ export type JobKind =
   | "mail.reminder"
   | "mail.waitlist_offer"
   | "mail.waitlist_joined"
+  /** Kurze Meldung an die Praxis: neue Buchung aus dem Chat, neue Anfrage */
+  | "mail.practice_notice"
   | "waitlist.offer_next";
 
 export type JobPayload = Record<string, unknown>;

@@ -24,7 +24,9 @@ export type IconName =
   | "close"
   | "plus"
   | "mouse"
-  | "check";
+  | "check"
+  | "chat"
+  | "send";
 
 const paths: Record<IconName, ReactPath> = {
   leaf: (
@@ -63,6 +65,9 @@ const paths: Record<IconName, ReactPath> = {
     <path d="M12 3a6 6 0 0 1 6 6v6a6 6 0 0 1-12 0V9a6 6 0 0 1 6-6Zm0 4v4" />
   ),
   check: <path d="M4.5 12.5l5 5L19.5 7" />,
+  // Sprechblase mit abgesetzter Spitze – der Einstieg in den Chat
+  chat: <path d="M20 4H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3v4l4.5-4H20a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1Z" />,
+  send: <path d="M4 12l16-8-5.5 16-3-6.5L4 12Z" />,
 };
 
 type ReactPath = ReactElement;

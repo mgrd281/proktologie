@@ -81,6 +81,9 @@ export function Header() {
       headerRef.current,
       document.getElementById("main"),
       document.getElementById("site-footer"),
+      // Der Chat schwebt über der Seite; bei offenem Menü darf er weder
+      // angeklickt noch mit der Tabulatortaste erreicht werden.
+      document.getElementById("site-chat"),
     ].filter((el): el is HTMLElement => el !== null);
 
     if (menuOpen) {

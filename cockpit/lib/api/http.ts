@@ -54,7 +54,9 @@ export type ApiErrorCode =
   | "too_many"
   | "not_found"
   | "conflict"
-  | "unsupported";
+  | "unsupported"
+  | "blocked"
+  | "chat_disabled";
 
 export function apiError(req: Request, status: number, code: ApiErrorCode, message: string, extra?: Record<string, unknown>) {
   return json(req, { error: { code, message, ...extra } }, { status });

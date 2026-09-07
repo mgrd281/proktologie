@@ -33,6 +33,9 @@ test("Migrationen: Stammdaten vorhanden", async () => {
   const types = await db.select().from(schema.appointmentTypes);
   assert.equal(types.length, 7);
   assert.ok(types.some((t) => t.id === "unklar"));
+  // Migration 0003: Der Chat ist nach der Migration sichtbar, bis die Praxis
+  // ihn bewusst abschaltet; Termine sind standardmäßig deutschsprachig.
+  assert.equal(settings[0].chatEnabled, true);
 });
 
 test("Ausschluss-Constraint: überlappende aktive Termine sind unmöglich", async () => {
@@ -102,6 +105,8 @@ test("updated_at wird beim UPDATE automatisch gesetzt", async () => {
       updatedAt: new Date("2020-01-01T00:00:00Z"),
     })
     .returning();
+  // Migration 0003: Bestandstermine bleiben deutschsprachig, solange nichts anderes gebucht wird
+  assert.equal(row.locale, "de");
   await db.execute(sql`UPDATE appointments SET status = 'confirmed' WHERE id = ${row.id}`);
   const [after] = await db.select().from(schema.appointments).where(sql`id = ${row.id}`);
   assert.ok(after.updatedAt.getTime() > new Date("2025-01-01").getTime());

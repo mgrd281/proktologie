@@ -12,6 +12,7 @@ import {
   ACTIVE_STATUSES,
   type AppointmentSource,
   type AppointmentStatus,
+  type Locale,
   type AppointmentView,
   type ExceptionKind,
   type ExceptionView,
@@ -72,12 +73,13 @@ export async function getSettings(): Promise<SettingsView & { pauseFrom: Date | 
     siteUrl: row.siteUrl,
     waitlistHoldHours: row.waitlistHoldHours,
     maxFuturePerEmail: row.maxFuturePerEmail,
+    chatEnabled: row.chatEnabled,
   };
 }
 
 export async function updateSettings(
   patch: Partial<
-    Pick<SettingsView, "slotStepMin" | "bookingPaused" | "bannerText" | "autoReplyText" | "siteUrl" | "waitlistHoldHours" | "maxFuturePerEmail" | "reminderOffsetsH">
+    Pick<SettingsView, "slotStepMin" | "bookingPaused" | "bannerText" | "autoReplyText" | "siteUrl" | "waitlistHoldHours" | "maxFuturePerEmail" | "reminderOffsetsH" | "chatEnabled">
   > & {
     bookingLive?: boolean;
   },
@@ -308,6 +310,7 @@ function toView(
     bufferMin: a.bufferMin,
     status: a.status,
     source: a.source,
+    locale: a.locale,
     pii: decryptPii(a),
     note: a.noteEnc ? safeDecrypt(a.noteEnc, `note:${a.id}`) : null,
     isDemo: a.isDemo,
@@ -361,6 +364,8 @@ export interface CreateAppointmentInput {
   pii: Pii;
   note?: string;
   source: AppointmentSource;
+  /** Sprache der Patienten-Mails – Standard Deutsch */
+  locale?: Locale;
   status?: AppointmentStatus;
   isDemo?: boolean;
   actorId?: string | null;
@@ -404,6 +409,7 @@ export async function createAppointment(input: CreateAppointmentInput): Promise<
     bufferMin,
     status: input.status ?? "booked",
     source: input.source,
+    locale: input.locale ?? "de",
     piiEnc: encryptJson(pii, `appt:${id}`),
     emailHash: pii.email ? emailHash(pii.email) : null,
     phoneHash: pii.phone ? phoneHash(pii.phone) : null,
@@ -863,8 +869,10 @@ export interface TodayOverview {
   appointments: AppointmentView[];
   counts: Record<"total" | "open" | "confirmed" | "completed" | "noShow" | "cancelled", number>;
   weekLoad: Array<{ date: string; count: number }>;
+  /** Termine des Folgetags – damit das Team den Tag vorbereiten kann */
+  tomorrow: { date: string; appointments: AppointmentView[] };
   openRequests: number;
-  /** Website-Buchungen der letzten 7 Tage */
+  /** Buchungen der letzten 7 Tage über Website und Chat */
   webBookingsWeek: number;
   waitlistOpen: number;
   demoCount: number;
@@ -876,8 +884,10 @@ export async function todayOverview(now = new Date()): Promise<TodayOverview> {
   const date = dateKey(now);
   const from = startOfDay(date);
   const to = startOfDay(addDays(date, 1));
-  const [appointments, settings, demoCount] = await Promise.all([
+  const tomorrowDate = addDays(date, 1);
+  const [appointments, tomorrowAppointments, settings, demoCount] = await Promise.all([
     listAppointments(from, to, { includeCancelled: true }),
+    listAppointments(startOfDay(tomorrowDate), startOfDay(addDays(tomorrowDate, 1))),
     getSettings(),
     countDemo(),
   ]);
@@ -921,7 +931,7 @@ export async function todayOverview(now = new Date()): Promise<TodayOverview> {
   const [webRow] = await db
     .select({ n: count() })
     .from(t.appointments)
-    .where(and(eq(t.appointments.source, "web"), gte(t.appointments.createdAt, new Date(now.getTime() - 7 * 86_400_000))));
+    .where(and(inArray(t.appointments.source, ["web", "chat"]), gte(t.appointments.createdAt, new Date(now.getTime() - 7 * 86_400_000))));
   const waitlistOpen = await countWaitlistOpen();
 
   return {
@@ -929,6 +939,7 @@ export async function todayOverview(now = new Date()): Promise<TodayOverview> {
     appointments,
     counts,
     weekLoad,
+    tomorrow: { date: tomorrowDate, appointments: tomorrowAppointments },
     openRequests: Number(openRequests ?? 0),
     webBookingsWeek: Number(webRow?.n ?? 0),
     waitlistOpen,

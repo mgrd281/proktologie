@@ -13,6 +13,8 @@ process.env.E2E_SECRET ??= randomBytes(16).toString("hex");
 const E2E_SECRET = process.env.E2E_SECRET;
 // Datenverzeichnis und Mail-Ausgang nur im Hauptprozess leeren – im Worker läuft der Server schon darauf
 export const MAIL_OUTBOX_DIR = ".mail-outbox-e2e";
+/** Der gestellte Modell-Server (e2e/fake-llm.mjs). */
+export const FAKE_LLM_PORT = 3200;
 if (!process.env.E2E_DB_RESET) {
   rmSync(".pglite/e2e", { recursive: true, force: true });
   rmSync(MAIL_OUTBOX_DIR, { recursive: true, force: true });
@@ -55,7 +57,27 @@ export default defineConfig({
         MAIL_OUTBOX_DIR,
         CRON_SECRET: "e2e-cron-secret",
         SITE_ORIGINS: "http://localhost:3000",
+        // Der Chat spricht mit dem gestellten Modell (e2e/fake-llm.mjs).
+        // Für OpenRouter gibt es bewusst KEINEN Schlüssel: Damit lässt sich
+        // beweisen, dass ein Anbieter ohne Schlüssel gar nicht erst
+        // aufgerufen wird.
+        NVIDIA_API_KEY: "e2e-nvidia-dummy",
+        CHAT_NVIDIA_BASE_URL: `http://localhost:${FAKE_LLM_PORT}/v1`,
+        CHAT_OPENROUTER_BASE_URL: `http://localhost:${FAKE_LLM_PORT}/v1`,
+        CHAT_MODEL_CHAIN: "nvidia:fake/one,openrouter:fake/two:free",
+        CHAT_LLM_TIMEOUT_MS: "2000",
+        CHAT_LLM_BUDGET_MS: "5000",
+        CHAT_BLOCKLIST: "gesperrt@example.invalid",
+        EMAIL_PRACTICE_TO: "praxis@example.invalid",
       },
+    },
+    {
+      // Das gestellte Sprachmodell – siehe e2e/fake-llm.mjs
+      command: "node e2e/fake-llm.mjs",
+      url: `http://localhost:${FAKE_LLM_PORT}/__calls`,
+      reuseExistingServer: false,
+      timeout: 30_000,
+      env: { PORT: String(FAKE_LLM_PORT) },
     },
     {
       // Die Website so, wie sie ausgeliefert wird: statischer Export, gebaut

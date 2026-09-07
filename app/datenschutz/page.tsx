@@ -134,9 +134,50 @@ export default function DatenschutzPage() {
             </p>
           </section>
 
+          <section id="chat">
+            <h2 className="font-display text-xl font-medium text-ink">
+              6. Chat-Assistent
+            </h2>
+            <p className="mt-3">
+              Der Chat-Assistent beantwortet Fragen zu Praxis und Terminen und
+              vereinbart Termine. Der <strong>Gesprächsverlauf</strong> wird
+              ausschließlich in Ihrem Browser gehalten (Sitzungsspeicher) und{" "}
+              <strong>nicht auf unseren Servern gespeichert</strong>; er ist
+              gelöscht, sobald Sie den Tab schließen. Dauerhaft gespeichert
+              werden nur Terminbuchungen und Rückrufbitten – dieselben Angaben
+              wie bei der Terminanfrage nach Abschnitt&nbsp;4.
+            </p>
+            <p className="mt-3">
+              Zur sprachlichen Formulierung von Antworten übermitteln wir den{" "}
+              <strong>anonymisierten Text Ihrer Nachricht</strong> an
+              KI-Dienste (NVIDIA Corporation und OpenRouter, Inc.; USA). Vorher
+              werden Name, E-Mail-Adresse und Telefonnummer entfernt und
+              erkennbare Gesundheitsangaben herausgefiltert; Ihre Kontaktdaten
+              erfassen wir ausschließlich über beschriftete Formularfelder, die
+              diesen Weg gar nicht erst nehmen. Buchungen, freie Zeiten und
+              Auskünfte zur Praxis entscheidet ausschließlich unser eigenes
+              System.
+            </p>
+            <p className="mt-3">
+              <strong>
+                Bitte nennen Sie im Chat keine Gesundheitsdaten.
+              </strong>{" "}
+              Beschwerden, Diagnosen und Medikamente besprechen Sie
+              vertraulich in der Praxis. Der Assistent gibt keine
+              medizinischen Auskünfte. In einem Notfall wenden Sie sich bitte
+              sofort an den Notruf 112.
+            </p>
+            <p className="mt-3 text-sm text-ink/70">
+              [MUSTER — Rechtsgrundlage, Empfänger und
+              Auftragsverarbeitungsverträge der genannten KI-Dienste mit dem
+              Datenschutzbeauftragten abstimmen; ohne Vertrag dürfen keine
+              personenbezogenen Daten übermittelt werden]
+            </p>
+          </section>
+
           <section>
             <h2 className="font-display text-xl font-medium text-ink">
-              6. Speicherdauer
+              7. Speicherdauer
             </h2>
             <p className="mt-3">
               Personenbezogene Daten aus Kontaktanfragen speichern wir nur so
@@ -149,7 +190,7 @@ export default function DatenschutzPage() {
 
           <section>
             <h2 className="font-display text-xl font-medium text-ink">
-              7. Ihre Rechte
+              8. Ihre Rechte
             </h2>
             <p className="mt-3">
               Sie haben das Recht auf Auskunft (Art.&nbsp;15 DSGVO),
@@ -164,7 +205,7 @@ export default function DatenschutzPage() {
 
           <section>
             <h2 className="font-display text-xl font-medium text-ink">
-              8. Beschwerderecht
+              9. Beschwerderecht
             </h2>
             <p className="mt-3">
               Sie haben das Recht, sich bei einer Datenschutz-Aufsichtsbehörde
@@ -176,7 +217,7 @@ export default function DatenschutzPage() {
 
           <section>
             <h2 className="font-display text-xl font-medium text-ink">
-              9. Stand dieser Erklärung
+              10. Stand dieser Erklärung
             </h2>
             <p className="mt-3">[MUSTER — Datum des Inkrafttretens eintragen]</p>
           </section>

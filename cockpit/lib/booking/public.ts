@@ -5,7 +5,7 @@ import { enqueue } from "../jobs/queue.ts";
 import { hit } from "../ratelimit.ts";
 import { addDays, dateKey, startOfDay, zonedToUtc } from "../time.ts";
 import { acceptOffer, afterBooked, afterCancelled, afterRescheduled } from "./lifecycle.ts";
-import type { AppointmentView, WaitlistView } from "./model.ts";
+import type { AppointmentView, Locale, WaitlistView } from "./model.ts";
 import * as repo from "./repo.ts";
 
 /**
@@ -48,6 +48,8 @@ export interface PublicStatus {
   banner: string | null;
   pauseFrom: string | null;
   pauseTo: string | null;
+  /** Chat-Assistent auf der Website sichtbar */
+  chatEnabled: boolean;
 }
 
 export async function publicStatus(): Promise<PublicStatus> {
@@ -58,6 +60,7 @@ export async function publicStatus(): Promise<PublicStatus> {
     banner: s.bannerText?.trim() || null,
     pauseFrom: s.pauseFrom?.toISOString() ?? null,
     pauseTo: s.pauseTo?.toISOString() ?? null,
+    chatEnabled: s.chatEnabled,
   };
 }
 
@@ -112,19 +115,41 @@ export interface PublicBookingResult {
   typeLabel: string;
 }
 
-export async function createPublicBooking(raw: unknown, ip: string, now = new Date()): Promise<PublicBookingResult> {
-  const rl = await hit("booking", ip, { limit: 6, windowSec: 3600 }, now);
+/**
+ * Buchung eines öffentlich angebotenen Platzes – der gemeinsame Weg von
+ * Website-Formular und Chat-Assistent. Alles, was einen Platz schützt,
+ * steht hier und gilt damit für beide: Rate-Limit je IP, Live-Schalter,
+ * öffentliche Terminart, erneute Prüfung gegen die echte Verfügbarkeit
+ * (Vorlauf, Horizont, Sprechzeit, Raster), Obergrenze je E-Mail-Adresse
+ * und zuletzt der Ausschluss-Constraint der Datenbank.
+ *
+ * Was NICHT hier steht, weil es nur den Weg über das Website-Formular
+ * betrifft: Zod-Prüfung des Roh-Körpers, Honigtopf und Formular-Token.
+ */
+export interface BookSlotInput {
+  typeId: string;
+  date: string;
+  time: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  /** Im Chat freiwillig; das Website-Formular verlangt ihn weiterhin. */
+  phone?: string;
+  /** Sprache der Patienten-Mails zu diesem Termin */
+  locale?: Locale;
+}
+
+export interface BookSlotContext {
+  ip: string;
+  source: "web" | "chat";
+  now?: Date;
+}
+
+export async function bookPublicSlot(v: BookSlotInput, ctx: BookSlotContext): Promise<PublicBookingResult & { appointmentId: string }> {
+  const now = ctx.now ?? new Date();
+  const rl = await hit("booking", ctx.ip, { limit: 6, windowSec: 3600 }, now);
   if (!rl.ok) throw new PublicError(429, "rate_limited", "Zu viele Buchungsversuche. Bitte rufen Sie uns an.");
   const settings = await requireLive();
-
-  const parsed = bookingSchema.safeParse(raw);
-  if (!parsed.success) {
-    // Honigtopf gefüllt → wie Validierungsfehler behandeln, ohne Hinweis
-    throw new PublicError(422, "validation", parsed.error.issues.map((i) => i.message).join(" "));
-  }
-  const v = parsed.data;
-  const tok = verifyFormToken(v.formToken, now.getTime());
-  if (!tok.ok) throw new PublicError(400, "form_token", "Das Formular ist abgelaufen. Bitte laden Sie die Seite neu und versuchen Sie es noch einmal.");
 
   const type = (await publicTypes()).find((t) => t.id === v.typeId);
   if (!type) throw new PublicError(404, "unknown_type", "Unbekannte Terminart.");
@@ -146,7 +171,8 @@ export async function createPublicBooking(raw: unknown, ip: string, now = new Da
       typeId: v.typeId,
       startsAt: slot.startsAt,
       pii: { firstName: v.firstName, lastName: v.lastName, email: v.email, phone: v.phone },
-      source: "web",
+      source: ctx.source,
+      locale: v.locale ?? "de",
       status: "booked",
       manageToken: token,
       actorId: null,
@@ -156,7 +182,21 @@ export async function createPublicBooking(raw: unknown, ip: string, now = new Da
     throw e;
   }
   await afterBooked(a);
-  return { ref: a.ref, startsAt: a.startsAt, endsAt: a.endsAt, typeLabel: a.typeLabel };
+  return { ref: a.ref, startsAt: a.startsAt, endsAt: a.endsAt, typeLabel: a.typeLabel, appointmentId: a.id };
+}
+
+/** Weg über das Website-Formular: Roh-Körper prüfen, Formular-Token, dann buchen. */
+export async function createPublicBooking(raw: unknown, ip: string, now = new Date()): Promise<PublicBookingResult> {
+  const parsed = bookingSchema.safeParse(raw);
+  if (!parsed.success) {
+    // Honigtopf gefüllt → wie Validierungsfehler behandeln, ohne Hinweis
+    throw new PublicError(422, "validation", parsed.error.issues.map((i) => i.message).join(" "));
+  }
+  const v = parsed.data;
+  const tok = verifyFormToken(v.formToken, now.getTime());
+  if (!tok.ok) throw new PublicError(400, "form_token", "Das Formular ist abgelaufen. Bitte laden Sie die Seite neu und versuchen Sie es noch einmal.");
+  const booked = await bookPublicSlot(v, { ip, source: "web", now });
+  return { ref: booked.ref, startsAt: booked.startsAt, endsAt: booked.endsAt, typeLabel: booked.typeLabel };
 }
 
 // ---------- Terminverwaltung durch Patient:innen ----------

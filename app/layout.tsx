@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Fraunces, Inter } from "next/font/google";
+import { ChatWidget } from "@/components/chat/ChatWidget";
 import { Footer } from "@/components/layout/Footer";
 import { Header } from "@/components/layout/Header";
 import { SkipLink } from "@/components/layout/SkipLink";
@@ -68,6 +69,9 @@ export default function RootLayout({
           <Header />
           <main id="main">{children}</main>
           <Footer />
+          {/* Schwebt über allem und wird bei offenem Menü inert geschaltet
+              (siehe Header.tsx). Das Fenster selbst lädt erst beim Klick. */}
+          <ChatWidget />
         </LenisProvider>
       </body>
     </html>

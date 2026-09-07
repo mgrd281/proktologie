@@ -1,17 +1,13 @@
-import { PhasePlaceholder } from "../Placeholder";
+import { requireActorOrRedirect } from "@/lib/auth/actor";
+import { listRequests, OPEN_REQUEST_STATUSES } from "@/lib/booking/requests";
+import { RequestsPanel } from "@/components/requests/RequestsPanel";
+
 export const metadata = { title: "Anfragen" };
-export default function Page() {
-  return (
-    <PhasePlaceholder
-      title="Anfragen"
-      icon="inbox"
-      phase={2}
-      text="Rückrufe, Folgerezepte, Überweisungen und Befundkopien laufen von der Website direkt in einen Posteingang mit Zuständigkeit und Fristen."
-      bullets={[
-        "Ein-Klick-Antworten aus Vorlagen („Rezept liegt bereit“)",
-        "Zeitziel je Anfrageart, überfällige Anfragen oben",
-        "Zuweisung an Mitarbeitende, Verlauf im Audit-Log",
-      ]}
-    />
-  );
+
+export default async function RequestsPage() {
+  await requireActorOrRedirect();
+  const all = await listRequests({ limit: 300 });
+  const open = all.filter((r) => OPEN_REQUEST_STATUSES.includes(r.status));
+  const closed = all.filter((r) => !OPEN_REQUEST_STATUSES.includes(r.status)).slice(0, 30);
+  return <RequestsPanel open={open} closed={closed} now={new Date().toISOString()} />;
 }

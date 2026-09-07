@@ -5,7 +5,9 @@
  * Cockpit-Nutzer, nie an die öffentliche API.
  */
 export type AppointmentStatus = "booked" | "confirmed" | "reminded" | "completed" | "no_show" | "cancelled";
-export type AppointmentSource = "web" | "cockpit" | "telefon";
+export type AppointmentSource = "web" | "cockpit" | "telefon" | "chat";
+/** Sprache der Patienten-Mails zu einem Termin */
+export type Locale = "de" | "en";
 export type TypeColor = "green" | "moss" | "amber" | "slate" | "blue";
 export type ExceptionKind = "closed" | "blocker" | "urlaub" | "extern";
 
@@ -43,6 +45,8 @@ export interface AppointmentView {
   bufferMin: number;
   status: AppointmentStatus;
   source: AppointmentSource;
+  /** Sprache der Patienten-Mails zu diesem Termin */
+  locale: Locale;
   pii: Pii;
   note: string | null;
   isDemo: boolean;
@@ -113,6 +117,8 @@ export interface SettingsView {
   siteUrl: string | null;
   waitlistHoldHours: number;
   maxFuturePerEmail: number;
+  /** Chat-Assistent auf der Website sichtbar */
+  chatEnabled: boolean;
 }
 
 export const STATUS_LABEL: Record<AppointmentStatus, string> = {
@@ -128,6 +134,7 @@ export const SOURCE_LABEL: Record<AppointmentSource, string> = {
   web: "Website",
   cockpit: "Cockpit",
   telefon: "Telefon",
+  chat: "Chat",
 };
 
 export const KIND_LABEL: Record<ExceptionKind, string> = {
@@ -136,3 +143,57 @@ export const KIND_LABEL: Record<ExceptionKind, string> = {
   urlaub: "Urlaub",
   extern: "Extern belegt",
 };
+
+// ---------------------------------------------------------- Anfragen
+
+export type RequestKind = "rueckruf" | "folgerezept" | "ueberweisung" | "befundkopie" | "sonstiges";
+export type RequestStatus = "neu" | "in_arbeit" | "wartet" | "erledigt";
+
+export const REQUEST_KIND_LABEL: Record<RequestKind, string> = {
+  rueckruf: "Rückruf",
+  folgerezept: "Folgerezept",
+  ueberweisung: "Überweisung",
+  befundkopie: "Befundkopie",
+  sonstiges: "Sonstiges",
+};
+
+export const REQUEST_STATUS_LABEL: Record<RequestStatus, string> = {
+  neu: "Neu",
+  in_arbeit: "In Arbeit",
+  wartet: "Wartet",
+  erledigt: "Erledigt",
+};
+
+/** Offen = liegt noch beim Team. */
+export const OPEN_REQUEST_STATUSES: RequestStatus[] = ["neu", "in_arbeit", "wartet"];
+
+export interface RequestPii {
+  firstName: string;
+  lastName: string;
+  phone?: string;
+  email?: string;
+}
+
+export interface RequestMessage {
+  /** Freitext der Patientin – kann leer sein */
+  text: string;
+  source: "chat" | "web";
+  /** Wunschzeit für den Rückruf */
+  preferredTime?: "egal" | "vormittags" | "nachmittags";
+  locale?: "de" | "en";
+}
+
+export interface RequestView {
+  id: string;
+  ref: string;
+  kind: RequestKind;
+  status: RequestStatus;
+  assigneeId: string | null;
+  pii: RequestPii;
+  message: RequestMessage | null;
+  slaDueAt: string | null;
+  closedAt: string | null;
+  isDemo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}

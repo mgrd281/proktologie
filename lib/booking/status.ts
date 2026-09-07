@@ -18,6 +18,13 @@ export interface CockpitStatus {
   bookingPaused: boolean;
   /** Hinweistext der Praxis (getrimmt), sonst null. */
   banner: string | null;
+  /**
+   * Chat-Assistent auf der Website sichtbar. Fehlt das Feld – etwa weil
+   * das Cockpit noch älter ist als das Widget –, gilt „an“: Der Chat kann
+   * ohnehin nichts anrichten, er ruft dieselbe Route auf, die ihn selbst
+   * abschaltet.
+   */
+  chatEnabled: boolean;
 }
 
 export type ProviderChoice = {
@@ -42,7 +49,12 @@ function parseStatus(body: unknown): CockpitStatus | null {
   const b = body as Record<string, unknown>;
   if (typeof b.bookingLive !== "boolean" || typeof b.bookingPaused !== "boolean") return null;
   const banner = typeof b.banner === "string" ? b.banner.trim() : "";
-  return { bookingLive: b.bookingLive, bookingPaused: b.bookingPaused, banner: banner || null };
+  return {
+    bookingLive: b.bookingLive,
+    bookingPaused: b.bookingPaused,
+    banner: banner || null,
+    chatEnabled: typeof b.chatEnabled === "boolean" ? b.chatEnabled : true,
+  };
 }
 
 /**

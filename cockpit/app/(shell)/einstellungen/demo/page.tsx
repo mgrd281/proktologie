@@ -22,6 +22,7 @@ export default async function DemoPage() {
         waitlistHoldHours: settings.waitlistHoldHours,
         maxFuturePerEmail: settings.maxFuturePerEmail,
         reminderOffsetsH: settings.reminderOffsetsH,
+        chatEnabled: settings.chatEnabled,
       }}
       channel={{ label: channel.label, live: channel.live }}
       messages={messages}
