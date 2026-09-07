@@ -212,3 +212,55 @@ export const callbackSchema = z.object({
   locale: z.enum(["de", "en"]).default("de"),
 });
 export type CallbackInput = z.input<typeof callbackSchema>;
+
+/**
+ * Fehler mit Absicht: Der Aufrufer bestimmt Status und Code der Antwort.
+ * Felder werden bewusst einzeln zugewiesen statt als Parameter-Properties –
+ * nur so lässt sich diese Datei mit `node --test` laden (strip-only-Modus
+ * kennt keine Parameter-Properties).
+ */
+export class RequestError extends Error {
+  readonly status: number;
+  readonly code: "rate_limited" | "validation" | "blocked";
+
+  constructor(status: number, code: "rate_limited" | "validation" | "blocked", message: string) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
+export interface CallbackContext {
+  ip: string;
+  source: "chat" | "web";
+  now?: Date;
+  /** Gesperrte Adressen: der Aufrufer entscheidet, hier wird nur gefragt. */
+  isBlocked?: (email: string | undefined, phone: string) => boolean;
+}
+
+/**
+ * Rückrufbitte von außen: Rate-Limit je IP, Prüfung, Sperrliste, Anlage.
+ * Der Versand der Praxis-Meldung geschieht über die Job-Warteschlange –
+ * eingereiht vom Aufrufer, damit dieses Modul ohne Mail-Abhängigkeit
+ * (und damit ohne Import von send.ts) in Node-Tests läuft.
+ */
+export async function createCallbackRequest(raw: unknown, ctx: CallbackContext): Promise<RequestView> {
+  const now = ctx.now ?? new Date();
+  const { hit } = await import("../ratelimit.ts");
+  const rl = await hit("request", ctx.ip, { limit: 6, windowSec: 3600 }, now);
+  if (!rl.ok) throw new RequestError(429, "rate_limited", "Zu viele Anfragen. Bitte rufen Sie uns an.");
+
+  const parsed = callbackSchema.safeParse(raw);
+  if (!parsed.success) throw new RequestError(422, "validation", parsed.error.issues.map((i) => i.message).join(" "));
+  const v = parsed.data;
+  const email = v.email || undefined;
+  if (ctx.isBlocked?.(email, v.phone)) {
+    throw new RequestError(403, "blocked", "Bitte rufen Sie uns an: 040 490 80 21.");
+  }
+
+  return createRequest({
+    kind: v.kind,
+    pii: { firstName: v.firstName, lastName: v.lastName, phone: v.phone, email },
+    message: { text: v.note || "", source: ctx.source, preferredTime: v.preferredTime, locale: v.locale },
+  });
+}

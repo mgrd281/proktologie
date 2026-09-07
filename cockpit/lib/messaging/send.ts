@@ -2,8 +2,9 @@ import { audit } from "../audit.ts";
 import { COCKPIT_URL } from "../auth/auth.ts";
 import * as repo from "../booking/repo.ts";
 import { buildIcs } from "../ics.ts";
+import { PRAXIS_WISSEN } from "../../content/praxis-wissen.ts";
 import { PRACTICE } from "../practice.ts";
-import { fmtLongDate, timeKey } from "../time.ts";
+import { dateKey, fmtLongDate, timeKey } from "../time.ts";
 import { emailChannel } from "./email.ts";
 import * as tpl from "./templates.ts";
 
@@ -51,6 +52,11 @@ export async function sendAppointmentMail(kind: AppointmentMailKind, appointment
     manageUrl: manageUrlFor(token),
     prepText: kind === "cancellation" ? null : await repo.prepTextFor(a.typeId),
     holdUntil: a.holdUntil ? new Date(a.holdUntil) : null,
+    // Die Sprache steht am Termin: In welcher Sprache gebucht wurde, in der
+    // kommen auch Erinnerung, Verschiebung und Absage.
+    locale: a.locale,
+    directionsText: PRAXIS_WISSEN.anfahrt[a.locale],
+    bringText: PRAXIS_WISSEN.mitbringen[a.locale],
   };
 
   const mail =
@@ -90,7 +96,7 @@ export async function sendAppointmentMail(kind: AppointmentMailKind, appointment
       toName: `${a.pii.firstName} ${a.pii.lastName}`,
       subject: mail.subject,
       text: mail.text,
-      html: tpl.textToHtml(mail.text),
+      html: tpl.textToHtml(mail.text, a.locale),
       calendarMethod: ics ? (kind === "cancellation" ? "CANCEL" : "REQUEST") : undefined,
       attachments: ics ? [{ filename: kind === "cancellation" ? "absage.ics" : "termin.ics", contentType: "text/calendar", content: ics, encoding: "utf8" }] : undefined,
     });
@@ -100,6 +106,66 @@ export async function sendAppointmentMail(kind: AppointmentMailKind, appointment
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);
     await repo.logMessage({ channel: "email", kind: kindKey, appointmentId: a.id, status: "failed", error });
+    return { sent: false, reason: "failed", error };
+  }
+}
+
+/**
+ * Kurze Meldung an die Praxis – nicht an Patient:innen. Sie ersetzt das
+ * Cockpit nicht, sie macht nur aufmerksam: „Es ist etwas hereingekommen.“
+ * Empfänger ist EMAIL_PRACTICE_TO, sonst die Praxis-Adresse.
+ */
+export type PracticeNotice = { kind: "booking"; appointmentId: string } | { kind: "callback"; requestId: string };
+
+export async function sendPracticeNotice(notice: PracticeNotice): Promise<SendOutcome> {
+  const to = process.env.EMAIL_PRACTICE_TO?.trim() || PRACTICE.email;
+  const kindKey = `practice_notice:${notice.kind}`;
+
+  let mail: { subject: string; text: string };
+  let appointmentId: string | undefined;
+  let requestId: string | undefined;
+
+  if (notice.kind === "booking") {
+    const a = await repo.getAppointment(notice.appointmentId);
+    if (!a) return { sent: false, reason: "not_found" };
+    if (await repo.messageSent(a.id, kindKey)) return { sent: false, reason: "duplicate" };
+    appointmentId = a.id;
+    mail = tpl.practiceBookingNotice({
+      typeLabel: a.typeLabel,
+      startsAt: new Date(a.startsAt),
+      ref: a.ref,
+      patientName: `${a.pii.firstName} ${a.pii.lastName}`,
+      phone: a.pii.phone ?? null,
+      email: a.pii.email ?? null,
+      source: a.source,
+      locale: a.locale,
+      cockpitUrl: `${COCKPIT_URL}/termine?v=tag&d=${dateKey(new Date(a.startsAt))}`,
+    });
+  } else {
+    const { getRequest, REQUEST_KIND_LABEL } = await import("../booking/requests.ts");
+    const r = await getRequest(notice.requestId);
+    if (!r) return { sent: false, reason: "not_found" };
+    requestId = r.id;
+    mail = tpl.practiceCallbackNotice({
+      kindLabel: REQUEST_KIND_LABEL[r.kind],
+      ref: r.ref,
+      patientName: `${r.pii.firstName} ${r.pii.lastName}`,
+      phone: r.pii.phone ?? null,
+      preferredTime: r.message?.preferredTime ?? "egal",
+      note: r.message?.text || null,
+      locale: r.message?.locale ?? "de",
+      cockpitUrl: `${COCKPIT_URL}/anfragen`,
+    });
+  }
+
+  const channel = emailChannel();
+  try {
+    const res = await channel.send({ to, toName: PRACTICE.name, subject: mail.subject, text: mail.text, html: tpl.textToHtml(mail.text) });
+    await repo.logMessage({ channel: "email", kind: kindKey, appointmentId, requestId, status: "sent", providerId: res.providerId ?? null });
+    return { sent: true, kindKey };
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e);
+    await repo.logMessage({ channel: "email", kind: kindKey, appointmentId, requestId, status: "failed", error });
     return { sent: false, reason: "failed", error };
   }
 }

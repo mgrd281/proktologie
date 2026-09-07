@@ -1,6 +1,6 @@
 import { offerNext } from "../booking/lifecycle.ts";
 import { markReminded } from "../booking/repo.ts";
-import { sendAppointmentMail, sendWaitlistJoinedMail } from "../messaging/send.ts";
+import { sendAppointmentMail, sendPracticeNotice, sendWaitlistJoinedMail } from "../messaging/send.ts";
 import { registerHandler } from "./queue.ts";
 
 /**
@@ -37,6 +37,13 @@ export function registerAllHandlers() {
   });
   registerHandler("mail.waitlist_joined", async (p) => {
     const r = await sendWaitlistJoinedMail(String(p.waitlistId));
+    if (!r.sent && r.reason === "failed") throw new Error(r.error ?? "Versand fehlgeschlagen");
+  });
+  registerHandler("mail.practice_notice", async (p) => {
+    const r =
+      p.kind === "callback"
+        ? await sendPracticeNotice({ kind: "callback", requestId: String(p.requestId) })
+        : await sendPracticeNotice({ kind: "booking", appointmentId: String(p.appointmentId) });
     if (!r.sent && r.reason === "failed") throw new Error(r.error ?? "Versand fehlgeschlagen");
   });
   registerHandler("waitlist.offer_next", async (p, ctx) => {

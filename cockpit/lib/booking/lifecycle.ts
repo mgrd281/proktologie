@@ -13,6 +13,12 @@ import * as repo from "./repo.ts";
 
 export async function afterBooked(a: AppointmentView) {
   if (a.pii.email && !a.isDemo) await enqueue({ kind: "mail.confirmation", payload: { appointmentId: a.id }, dedupeKey: `mail.confirmation:${a.id}` });
+  // Buchungen aus dem Chat sieht das Team sonst erst beim nächsten Blick ins
+  // Cockpit – deshalb eine kurze Meldung. Das Website-Formular bleibt still,
+  // dort ist der Weg seit jeher der Kalender.
+  if (a.source === "chat" && !a.isDemo) {
+    await enqueue({ kind: "mail.practice_notice", payload: { kind: "booking", appointmentId: a.id }, dedupeKey: `mail.practice_notice:${a.id}` });
+  }
 }
 
 export async function afterRescheduled(a: AppointmentView) {

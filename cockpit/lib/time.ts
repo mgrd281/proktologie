@@ -139,8 +139,20 @@ const shortDate = new Intl.DateTimeFormat("de-DE", {
   month: "2-digit",
 });
 
+const longDateEn = new Intl.DateTimeFormat("en-GB", {
+  timeZone: TZ,
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
 export function fmtLongDate(date: Date): string {
   return longDate.format(date);
+}
+/** Langes Datum in der Sprache der Patientin – für Mails und Chat-Antworten. */
+export function fmtLongDateLocale(date: Date, locale: "de" | "en"): string {
+  return (locale === "en" ? longDateEn : longDate).format(date);
 }
 export function fmtShortDate(date: Date): string {
   return shortDate.format(date);

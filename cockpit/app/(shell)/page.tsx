@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireActorOrRedirect } from "@/lib/auth/actor";
 import { listTypes, nextFreeSlot, todayOverview } from "@/lib/booking/repo";
-import { fmtLongDate, fmtShortDate, WEEKDAYS_SHORT_DE } from "@/lib/time";
+import { fmtLongDate, fmtShortDate, timeKey, WEEKDAYS_SHORT_DE } from "@/lib/time";
 import { Card, Eyebrow, PageTitle } from "@/components/ui/Bits";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
@@ -71,8 +71,8 @@ export default async function TodayPage() {
         <KpiTile label="Termine heute" value={ov.counts.total} spark={ov.weekLoad.map((d) => d.count)} sub="Verlauf dieser Woche" />
         <KpiTile label="Unbestätigt" value={ov.counts.open} tone={ov.counts.open > 0 ? "warn" : "ok"} sub={ov.counts.open > 0 ? "Erinnerung ausstehend" : "Alle bestätigt"} />
         <KpiTile label="Wahrgenommen" value={ov.counts.completed} tone="ok" sub={`${ov.counts.noShow} nicht erschienen`} />
-        <KpiTile label="Über die Website" value={ov.webBookingsWeek} tone="neutral" sub="Buchungen in 7 Tagen" />
-        <KpiTile label="Warteliste" value={ov.waitlistOpen} tone={ov.waitlistOpen > 0 ? "warn" : "neutral"} sub={ov.openRequests > 0 ? `${ov.openRequests} offene Anfragen (Phase 2)` : "Angebote laufen automatisch"} />
+        <KpiTile label="Über Website & Chat" value={ov.webBookingsWeek} tone="neutral" sub="Buchungen in 7 Tagen" />
+        <KpiTile label="Warteliste" value={ov.waitlistOpen} tone={ov.waitlistOpen > 0 ? "warn" : "neutral"} sub="Angebote laufen automatisch" />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.6fr_1fr]">
@@ -119,6 +119,45 @@ export default async function TodayPage() {
               })}
             </ul>
             <p className="mt-3 text-[12px] text-text-faint">Aus Sprechzeiten, Ausnahmen und Belegung berechnet – dieselbe Logik, die die Website-Buchung nutzt.</p>
+          </Card>
+
+          {/* Morgen: damit das Team den nächsten Tag vorbereiten kann, ohne den Kalender zu wechseln */}
+          <Card>
+            <div className="flex items-baseline justify-between gap-3">
+              <Eyebrow>Morgen</Eyebrow>
+              <Link href={`/termine?v=tag&d=${ov.tomorrow.date}`} className="flex items-center gap-1 text-[13px] font-medium text-brand hover:underline">
+                Im Kalender <Icon name="arrow-right" size={14} />
+              </Link>
+            </div>
+            {ov.tomorrow.appointments.length === 0 ? (
+              <p className="mt-3 text-[13px] text-text-muted">Keine Termine.</p>
+            ) : (
+              <ol className="mt-3 divide-y divide-line">
+                {ov.tomorrow.appointments.slice(0, 6).map((a) => (
+                  <li key={a.id} className="flex items-baseline justify-between gap-3 py-2 text-[13px]">
+                    <span className="tnum shrink-0 font-medium text-text">{timeKey(new Date(a.startsAt))}</span>
+                    <span className="flex-1 truncate text-text-muted">{a.typeLabel}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+            {ov.tomorrow.appointments.length > 6 && (
+              <p className="mt-2 text-[12px] text-text-faint">und {ov.tomorrow.appointments.length - 6} weitere</p>
+            )}
+          </Card>
+
+          {/* Offene Rückrufbitten – der Posteingang, nicht das Mail-Fach */}
+          <Card>
+            <div className="flex items-baseline justify-between gap-3">
+              <Eyebrow>Offene Anfragen</Eyebrow>
+              <Link href="/anfragen" className="flex items-center gap-1 text-[13px] font-medium text-brand hover:underline">
+                Posteingang <Icon name="arrow-right" size={14} />
+              </Link>
+            </div>
+            <p className="font-display mt-2 text-[32px] leading-none font-medium tnum text-text">{ov.openRequests}</p>
+            <p className="mt-1 text-[12px] text-text-faint">
+              {ov.openRequests === 0 ? "Nichts offen – Rückrufbitten aus Chat und Website erscheinen hier." : "Rückrufe, Rezepte, Überweisungen und Befundkopien."}
+            </p>
           </Card>
         </div>
       </div>
