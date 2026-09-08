@@ -144,6 +144,33 @@ export function ChatWindow({ lang, onLang, onClose, available, checking, hours }
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
   }, [session.messages.length, pending]);
 
+  /**
+   * Der Cursor gehört ins Eingabefeld – das ist das einzige Zeichen, das
+   * ohne Worte sagt „hier können Sie schreiben“. Ohne ihn liest sich das
+   * Fenster als reines Knopfmenü, und der freie Text bleibt ungenutzt.
+   *
+   * Nur ab Tablettbreite: Auf dem Telefon würde der Fokus die Tastatur
+   * aufziehen und das halbe Fenster verdecken, bevor die Patientin
+   * überhaupt gelesen hat, was der Assistent kann.
+   */
+  useEffect(() => {
+    if (emergency || form) return;
+    if (typeof window === "undefined" || !window.matchMedia("(min-width: 640px)").matches) return;
+    const id = window.setTimeout(() => inputRef.current?.focus(), 60);
+    return () => window.clearTimeout(id);
+  }, [emergency, form, pending]);
+
+  /**
+   * Das Feld wächst mit, bis etwa fünf Zeilen. Ein Satz, der beim Tippen
+   * aus dem Blick rutscht, lädt niemanden zum Weiterschreiben ein.
+   */
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
+  }, [draft]);
+
   const talk = useCallback(
     async (payload: { message?: string; action?: Parameters<typeof sendChat>[1]["action"] }, echo?: string) => {
       if (pending) return;
@@ -329,7 +356,7 @@ export function ChatWindow({ lang, onLang, onClose, available, checking, hours }
           )}
 
           {!emergency && !form && (
-            <div className="flex items-end gap-2 border-t border-mist bg-white/70 px-3 py-3">
+            <div className="flex items-end gap-2 border-t border-mist bg-mist/40 px-3 py-3">
               <label htmlFor="site-chat-input" className="sr-only">
                 {copy.composerLabel}
               </label>
@@ -347,14 +374,14 @@ export function ChatWindow({ lang, onLang, onClose, available, checking, hours }
                   }
                 }}
                 placeholder={copy.composerPlaceholder}
-                className="max-h-28 min-h-10 flex-1 resize-none rounded-xl border border-mist bg-white px-3 py-2 text-sm text-ink placeholder:text-ink/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+                className="max-h-32 min-h-11 flex-1 resize-none rounded-xl border-2 border-primary/25 bg-white px-3 py-2.5 text-sm text-ink shadow-sm transition placeholder:text-ink/60 focus:border-primary/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
               />
               <button
                 type="button"
                 onClick={submitDraft}
                 disabled={pending || draft.trim().length === 0}
                 aria-label={copy.send}
-                className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-cream transition hover:bg-primary-deep disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary text-cream transition hover:bg-primary-deep disabled:bg-primary/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
               >
                 <Icon name="send" size={18} />
               </button>
