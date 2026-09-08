@@ -9,7 +9,7 @@
     "start": "next start -p 3100",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node --test lib/**/*.test.mjs",
+    "test": "node --test \"lib/**/*.test.mjs\"",
     "e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists=.env.local --import tsx scripts/migrate.ts",
