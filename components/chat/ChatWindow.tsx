@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { chatCopy, hoursLine, type ChatLang } from "@/content/chat";
 import { site } from "@/content/site";
-import { sendChat, type ChatForm, type ChatQuick } from "@/lib/chat/api";
+import { sendChat, voiceSpeak, voiceToken, type ChatForm, type ChatQuick } from "@/lib/chat/api";
+import { LiveSession, type LiveState } from "@/lib/voice/live";
 import { append, browserStore, clear, load, newSession, save, type SessionStore, type StoredSession } from "@/lib/chat/session";
 import { useLenis } from "@/providers/LenisProvider";
 
@@ -31,6 +32,8 @@ export interface ChatWindowProps {
   onClose: () => void;
   /** Der Chat ist von der Praxis freigeschaltet und erreichbar. */
   available: boolean;
+  /** Das Cockpit hat einen Sprachanbieter – nur dann gibt es ein Mikrofon. */
+  voice: boolean;
   /** Der Zustand wird gerade abgefragt. */
   checking: boolean;
   hours: string;
@@ -41,7 +44,7 @@ const EMERGENCY_NUMBERS = [
   { label: "116 117", href: "tel:116117" },
 ];
 
-export function ChatWindow({ lang, onLang, onClose, available, checking, hours }: ChatWindowProps) {
+export function ChatWindow({ lang, onLang, onClose, available, voice, checking, hours }: ChatWindowProps) {
   const copy = chatCopy[lang];
   const storeRef = useRef<SessionStore | null>(null);
   const [session, setSession] = useState<StoredSession>(() => newSession(lang));
@@ -54,6 +57,13 @@ export function ChatWindow({ lang, onLang, onClose, available, checking, hours }
   const [draft, setDraft] = useState("");
   const logRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [listening, setListening] = useState<LiveState>("idle");
+  const liveRef = useRef<LiveSession | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const talkRef = useRef<((text: string) => void) | null>(null);
+  /** Die laufende Sitzungskennung, damit die Sprachsitzung nicht auf einer alten sitzt. */
+  const sessionIdRef = useRef(session.sessionId);
+  sessionIdRef.current = session.sessionId;
   const { stop, start } = useLenis();
 
   // Verlauf aus dem Browser holen – oder begrüßen.
@@ -201,6 +211,14 @@ export function ChatWindow({ lang, onLang, onClose, available, checking, hours }
       setLinks(a.links ?? []);
       if (a.flags.emergency) setEmergency(true);
       setPending(false);
+      // Wer gesprochen hat, bekommt gesprochen zurück. Beim Notfall wird
+      // nicht vorgelesen: Da soll niemand zuhören, sondern anrufen – die
+      // Nummern stehen als große Schaltflächen da.
+      if (liveRef.current && !a.flags.emergency) {
+        const blob = await voiceSpeak(site.cockpitApiUrl, next.sessionId, a.lang, a.reply);
+        if (blob && liveRef.current) await playOnce(audioRef, blob);
+      }
+      liveRef.current?.answered();
     },
     [pending, session, copy, lang, onLang, langChosen],
   );
@@ -217,6 +235,54 @@ export function ChatWindow({ lang, onLang, onClose, available, checking, hours }
     // Bezeichner, den das Cockpit auch sonst versteht.
     void talk({ action: { kind: "quick", id: q.id } }, q.label);
   };
+
+  // Der Automat antwortet, das Mikrofon hört nur zu. Diese Weiche liegt in
+  // einer Referenz, damit die Sprachsitzung nicht bei jedem Zug neu gebaut
+  // werden muss – ein neu gebautes Mikrofon würde mitten im Satz abreißen.
+  talkRef.current = (text: string) => void talk({ message: text }, text);
+
+  /**
+   * Zuhören an oder aus.
+   *
+   * Das Mikrofon geht ausschließlich hier auf, auf Knopfdruck. Erkannter
+   * Text geht denselben Weg wie getippter – durch den Automaten mit
+   * Notfallpfad und Gesundheitsfilter. Gesprochen wird nur die Antwort.
+   */
+  const toggleVoice = useCallback(() => {
+    const running = liveRef.current;
+    if (running) {
+      void running.stop();
+      liveRef.current = null;
+      return;
+    }
+    const session = new LiveSession({
+      token: () => voiceToken(site.cockpitApiUrl, sessionIdRef.current, lang),
+      microphone: () => navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }),
+      connect: async (secret, stream, on) => {
+        const { connectWebRtc } = await import("@/lib/voice/webrtc");
+        return connectWebRtc(secret, stream, on);
+      },
+      onTranscript: (text) => talkRef.current?.(text),
+      onState: (state) => {
+        setListening(state);
+        if (state === "idle") liveRef.current = null;
+      },
+    });
+    liveRef.current = session;
+    void session.start();
+  }, [lang]);
+
+  // Tab weg, Fenster zu: Ein offenes Mikrofon darf nichts überleben.
+  useEffect(() => {
+    const away = () => {
+      if (document.visibilityState === "hidden") void liveRef.current?.stop("hidden");
+    };
+    document.addEventListener("visibilitychange", away);
+    return () => {
+      document.removeEventListener("visibilitychange", away);
+      void liveRef.current?.stop("unmount");
+    };
+  }, []);
 
   const title = useMemo(() => `${copy.windowTitle} · ${copy.windowSubtitle}`, [copy]);
 
@@ -355,8 +421,41 @@ export function ChatWindow({ lang, onLang, onClose, available, checking, hours }
             </div>
           )}
 
+          {!emergency && voice && listening !== "idle" && (
+            <div role="status" className="border-t border-mist bg-primary/5 px-4 py-2.5">
+              <p className="flex items-center gap-2 text-[13px] font-medium text-primary-deep">
+                <span className={`inline-block size-2 shrink-0 rounded-full bg-primary ${listening === "hearing" ? "animate-pulse" : ""}`} />
+                {listening === "connecting" && copy.voice.connecting}
+                {listening === "listening" && copy.voice.listening}
+                {listening === "hearing" && copy.voice.hearing}
+                {listening === "answering" && copy.voice.answering}
+                {listening === "denied" && copy.voice.denied}
+                {listening === "error" && copy.voice.error}
+              </p>
+              {(listening === "listening" || listening === "hearing") && (
+                <p className="mt-1 text-[11px] leading-snug text-ink/60">{copy.voice.hint}</p>
+              )}
+            </div>
+          )}
+
           {!emergency && !form && (
             <div className="flex items-end gap-2 border-t border-mist bg-mist/40 px-3 py-3">
+              {voice && (
+                <button
+                  type="button"
+                  onClick={toggleVoice}
+                  aria-pressed={listening !== "idle"}
+                  aria-label={listening === "idle" ? copy.voice.start : copy.voice.stop}
+                  title={listening === "idle" ? copy.voice.start : copy.voice.stop}
+                  className={`flex size-11 shrink-0 items-center justify-center rounded-xl transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+                    listening === "idle"
+                      ? "border-2 border-primary/25 bg-white text-primary-deep hover:bg-mist"
+                      : "bg-primary text-cream hover:bg-primary-deep"
+                  }`}
+                >
+                  <Icon name={listening === "idle" ? "mic" : "mic-off"} size={18} />
+                </button>
+              )}
               <label htmlFor="site-chat-input" className="sr-only">
                 {copy.composerLabel}
               </label>
@@ -517,4 +616,27 @@ function ChatFormPanel({
       </button>
     </form>
   );
+}
+
+/**
+ * Einen Antwortsatz abspielen und warten, bis er zu Ende ist. Ein zweiter
+ * Satz darf nicht über den ersten laufen – gleichzeitig zu reden ist die
+ * schnellste Art, unverständlich zu werden.
+ */
+async function playOnce(ref: React.RefObject<HTMLAudioElement | null>, blob: Blob): Promise<void> {
+  const url = URL.createObjectURL(blob);
+  try {
+    const audio = ref.current ?? new Audio();
+    ref.current = audio;
+    audio.pause();
+    audio.src = url;
+    await audio.play().catch(() => {});
+    await new Promise<void>((resolve) => {
+      const done = () => resolve();
+      audio.addEventListener("ended", done, { once: true });
+      audio.addEventListener("error", done, { once: true });
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }

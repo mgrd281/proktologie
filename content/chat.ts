@@ -34,6 +34,18 @@ export interface ChatCopy {
   logLabel: string;
   composerLabel: string;
   composerPlaceholder: string;
+  /** Beschriftungen des Mikrofons. */
+  voice: {
+    start: string;
+    stop: string;
+    connecting: string;
+    listening: string;
+    hearing: string;
+    answering: string;
+    denied: string;
+    error: string;
+    hint: string;
+  };
   send: string;
   typing: string;
   greeting: (hours: string) => string;
@@ -66,6 +78,17 @@ const de: ChatCopy = {
   logLabel: "Gesprächsverlauf",
   composerLabel: "Ihre Nachricht",
   composerPlaceholder: "Frage oder Terminwunsch schreiben …",
+  voice: {
+    start: "Sprechen",
+    stop: "Zuhören beenden",
+    connecting: "Einen Moment, ich schalte das Mikrofon ein …",
+    listening: "Ich höre zu. Sprechen Sie einfach.",
+    hearing: "Ich höre Sie …",
+    answering: "Einen Moment …",
+    denied: "Ohne Mikrofon-Erlaubnis kann ich nicht zuhören. Schreiben geht weiterhin.",
+    error: "Das Zuhören hat nicht geklappt. Bitte schreiben Sie mir – oder rufen Sie an.",
+    hint: "Bitte keine gesundheitlichen Angaben sprechen. Das Gesprochene wird zum Erkennen an unseren Sprachanbieter übertragen und nicht gespeichert.",
+  },
   send: "Senden",
   typing: "Der Assistent schreibt …",
   greeting: (hours) =>
@@ -104,6 +127,17 @@ const en: ChatCopy = {
   logLabel: "Conversation",
   composerLabel: "Your message",
   composerPlaceholder: "Ask a question or name a time …",
+  voice: {
+    start: "Speak",
+    stop: "Stop listening",
+    connecting: "One moment, turning on the microphone …",
+    listening: "I am listening. Just speak.",
+    hearing: "I can hear you …",
+    answering: "One moment …",
+    denied: "Without microphone permission I cannot listen. You can still type.",
+    error: "Listening did not work. Please write to me – or give us a call.",
+    hint: "Please do not speak any health details. What you say is sent to our speech provider for recognition and is not stored.",
+  },
   send: "Send",
   typing: "The assistant is typing …",
   greeting: (hours) =>

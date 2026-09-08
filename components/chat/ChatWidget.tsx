@@ -30,6 +30,8 @@ export function ChatWidget() {
   const [open, setOpen] = useState(false);
   const [lang, setLang] = useState<ChatLang>("de");
   const [availability, setAvailability] = useState<Availability>("unknown");
+  /** Mikrofon nur, wenn das Cockpit einen Sprachanbieter hat. */
+  const [voice, setVoice] = useState(false);
   const launcher = useRef<HTMLButtonElement>(null);
   const asked = useRef(false);
   const copy = chatCopy[lang];
@@ -51,7 +53,10 @@ export function ChatWidget() {
       return;
     }
     setAvailability("checking");
-    void fetchCockpitStatus(site.cockpitApiUrl).then((status) => setAvailability(status?.chatEnabled ? "on" : "off"));
+    void fetchCockpitStatus(site.cockpitApiUrl).then((status) => {
+      setAvailability(status?.chatEnabled ? "on" : "off");
+      setVoice(status?.voice === true);
+    });
   }, [open]);
 
   const close = useCallback(() => {
@@ -80,6 +85,7 @@ export function ChatWidget() {
           onLang={setLang}
           onClose={close}
           available={availability === "on"}
+          voice={voice}
           checking={availability === "checking" || availability === "unknown"}
           hours={hoursLine(lang)}
         />
