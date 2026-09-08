@@ -10,79 +10,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-process.env.PGLITE_DIR = ":memory:";
-process.env.DATA_KEY_V1 = process.env.DATA_KEY_V1 ?? Buffer.alloc(32, 5).toString("base64");
-process.env.INDEX_KEY = process.env.INDEX_KEY ?? Buffer.alloc(32, 6).toString("base64");
-delete process.env.DATABASE_URL;
+import { DIENSTAG, HOURS_DE, KONTAKT, click, form, makeDeps, msg } from "./testkit.mjs";
 
 const o = await import("./orchestrator.ts");
-
-/** Montag, 13. Juli 2026, 08:00 Berliner Zeit. */
-const NOW = new Date("2026-07-13T06:00:00Z");
-const DIENSTAG = "2026-07-14";
-const SESSION = "11111111-2222-4333-8444-555555555555";
-const SLOTS = ["07:00", "07:30", "08:00", "08:30", "09:00"];
-const HOURS_DE = "Mo, Mi, Fr 07:00–12:00 · Di, Do 07:00–12:00, 14:00–18:00 Uhr";
-const HOURS_EN = "Mon, Tue, Wed 07:00–12:00";
-
-/** Dieselben sieben Terminarten wie in der Datenbank (0001_constraints_and_seed.sql). */
-const TYPES = [
-  { id: "unklar", label: "Beschwerden / unklar", durationMin: 20 },
-  { id: "erstuntersuchung", label: "Proktologische Erstuntersuchung", durationMin: 30 },
-  { id: "kontrolle", label: "Kontrolltermin", durationMin: 15 },
-  { id: "haemorrhoiden", label: "Hämorrhoiden", durationMin: 20 },
-  { id: "analfissur", label: "Analfissur", durationMin: 20 },
-  { id: "analfistel", label: "Analfistel", durationMin: 20 },
-  { id: "nachsorge", label: "Nachsorge", durationMin: 15 },
-];
-
-function makeDeps(over = {}) {
-  const calls = { classify: [], phrase: [], book: [], callback: [], audit: [], availability: [] };
-  const deps = {
-    now: () => NOW,
-    types: async () => TYPES,
-    availability: async (args, ctx) => {
-      calls.availability.push(args);
-      if (!args.datum) return { kind: "next_days", days: [{ date: DIENSTAG, slots: SLOTS.slice(0, 3) }] };
-      if (args.uhrzeit) {
-        return SLOTS.includes(args.uhrzeit)
-          ? { kind: "time_free", date: args.datum, time: args.uhrzeit }
-          : { kind: "time_taken", date: args.datum, time: args.uhrzeit, alternatives: SLOTS.slice(0, 3) };
-      }
-      void ctx;
-      return { kind: "day_slots", date: args.datum, slots: SLOTS };
-    },
-    nextFree: async () => ({ kind: "next_days", days: [{ date: DIENSTAG, slots: SLOTS.slice(0, 3) }] }),
-    info: async (lang) => ({ hoursText: lang === "de" ? HOURS_DE : HOURS_EN, banner: null }),
-    classify: async (call) => {
-      calls.classify.push(call);
-      return null;
-    },
-    phrase: async (call) => {
-      calls.phrase.push(call);
-      return null;
-    },
-    book: async (input) => {
-      calls.book.push(input);
-      return { ok: true, ref: "PE-4F7K", typeLabel: "Kontrolltermin", mail: "sent" };
-    },
-    callback: async (input) => {
-      calls.callback.push(input);
-      return { ok: true, ref: "AN-7T2M" };
-    },
-    bookingsToday: async () => true,
-    isBlocked: () => false,
-    audit: (event, data) => calls.audit.push([event, data]),
-    ...over,
-  };
-  return { deps, calls };
-}
-
-const msg = (state, message) => ({ v: 1, sessionId: SESSION, state, message });
-const click = (state, id) => ({ v: 1, sessionId: SESSION, state, action: { kind: "quick", id } });
-const form = (state, formId, values) => ({ v: 1, sessionId: SESSION, state, action: { kind: "form", formId, values } });
-
-const KONTAKT = { firstName: "Erika", lastName: "Musterfrau", email: "erika@example.invalid", phone: "040 123456", consent: "true" };
 
 /** Der volle Weg bis zur Bestätigungsfrage – gibt den Zustand zurück. */
 async function bisZurBestaetigung(deps) {
@@ -136,7 +66,9 @@ test("„vielleicht“ bucht nicht – es wird einmal nachgefragt", async () => 
 
   const back = await o.runTurn(msg(again.state, "vielleicht"), deps);
   assert.equal(calls.book.length, 0);
-  assert.equal(back.state.stage, "date");
+  assert.equal(back.state.stage, "confirm", "der Entwurf bleibt – gefragt wird, was sich ändern soll");
+  assert.match(back.reply, /ändern/);
+  assert.deepEqual(back.quick?.map((q) => q.id), ["changeDate", "changeTime", "changeType", "changeContact"]);
 });
 
 test("Belegter Platz: Alternativen statt zweiter Buchung", async () => {
@@ -220,20 +152,38 @@ test("Medizinische Frage: der vorgegebene Satz, kein Modellaufruf", async () => 
 
 test("Gesundheitsangaben: Hinweis, kein Modellaufruf, keine Weitergabe", async () => {
   const { deps, calls } = makeDeps();
-  const r = await o.runTurn(msg(null, "Ich blute seit drei Tagen"), deps);
+  const r = await o.runTurn(msg(null, "Es juckt seit drei Tagen"), deps);
   assert.match(r.reply, /keine gesundheitlichen Details/);
   assert.match(r.reply, /nicht weitergegeben/);
   assert.equal(calls.classify.length, 0);
   assert.equal(calls.phrase.length, 0);
 });
 
-test("Terminart im Freitext genannt: Hinweis plus Auswahl", async () => {
+test("Terminart im Freitext genannt: keine Ermahnung, die Terminart gilt", async () => {
   const { deps, calls } = makeDeps();
   const r = await o.runTurn(msg(null, "Ich glaube, ich habe Hämorrhoiden"), deps);
-  assert.match(r.reply, /keine gesundheitlichen Details/);
-  assert.equal(r.state.stage, "type");
-  assert.deepEqual(r.quick?.map((q) => q.id), TYPES.map((x) => `type:${x.id}`));
+  assert.doesNotMatch(r.reply, /gesundheitlichen Details/);
+  assert.equal(r.state.stage, "date");
+  assert.equal(r.state.draft.typeId, "haemorrhoiden");
   assert.equal(calls.classify.length, 0);
+});
+
+test("Terminart mit Tag im Freitext: Tag bleibt erhalten, Hinweis nur bei weiteren Angaben", async () => {
+  const { deps, calls } = makeDeps();
+  const r = await o.runTurn(msg(null, "Ich brauche einen Termin wegen Hämorrhoiden am Dienstag"), deps);
+  assert.equal(r.state.draft.typeId, "haemorrhoiden");
+  assert.equal(r.state.draft.date, DIENSTAG);
+  assert.equal(r.state.stage, "time");
+  assert.doesNotMatch(r.reply, /gesundheitlichen Details/);
+  assert.equal(calls.availability.length, 1);
+
+  // Mit echter Gesundheitsangabe: Wahl und Tag bleiben, der kurze Hinweis kommt dazu
+  const { deps: d2, calls: c2 } = makeDeps();
+  const r2 = await o.runTurn(msg(null, "Termin wegen Hämorrhoiden am Dienstag, es juckt seit Tagen"), d2);
+  assert.equal(r2.state.draft.typeId, "haemorrhoiden");
+  assert.equal(r2.state.draft.date, DIENSTAG);
+  assert.match(r2.reply, /^Bitte schreiben Sie hier keine gesundheitlichen Details/);
+  assert.equal(c2.classify.length, 0);
 });
 
 test("Gesundheitsangaben im Rückruf-Formular werden nicht gespeichert", async () => {
@@ -436,4 +386,140 @@ test("Jede Antwort bleibt kurz: höchstens drei Sätze", async () => {
     const saetze = a.reply.split(/(?<=[.!?])\s+/).filter(Boolean);
     assert.ok(saetze.length <= 3, `zu lang: ${a.reply}`);
   }
+});
+
+// ------------------------------------------------- Stufe 2: Korrekturen
+
+test("Korrektur in der Bestätigung bucht nicht, sondern prüft die neue Zeit – Kontakt bleibt", async () => {
+  const { deps, calls } = makeDeps();
+  const summary = await bisZurBestaetigung(deps);
+  const r = await o.runTurn(msg(summary.state, "ja aber um 8 Uhr"), deps);
+  assert.equal(calls.book.length, 0, "eine Korrektur ist keine Zusage");
+  assert.equal(r.state.stage, "confirm");
+  assert.equal(r.state.draft.time, "08:00");
+  assert.equal(r.state.draft.contact?.email, "erika@example.invalid", "niemand tippt seinen Namen zweimal");
+  assert.match(r.reply, /08:00 Uhr/);
+  assert.deepEqual(r.quick?.map((q) => q.id), ["yes", "no"]);
+
+  const done = await o.runTurn(msg(r.state, "ja, bitte"), deps);
+  assert.equal(calls.book.length, 1);
+  assert.equal(calls.book[0].time, "08:00");
+  assert.equal(done.state.stage, "done");
+});
+
+test("„ja, aber …“ ohne erkennbare Korrektur fragt, was sich ändern soll", async () => {
+  const { deps, calls } = makeDeps();
+  const summary = await bisZurBestaetigung(deps);
+  const r = await o.runTurn(msg(summary.state, "ja aber lieber etwas später"), deps);
+  assert.equal(calls.book.length, 0);
+  assert.equal(r.state.stage, "confirm");
+  assert.match(r.reply, /ändern/);
+  assert.deepEqual(r.quick?.map((q) => q.id), ["changeDate", "changeTime", "changeType", "changeContact"]);
+  // „Andere Uhrzeit“ zeigt die Zeiten des gewählten Tages erneut
+  const t2 = await o.runTurn(click(r.state, "changeTime"), deps);
+  assert.equal(t2.state.stage, "time");
+  assert.equal(t2.state.draft.date, DIENSTAG);
+});
+
+test("Nach der Buchung: Schaltflächen statt Sackgasse, zweiter Termin ohne Formular", async () => {
+  const { deps, calls } = makeDeps();
+  const summary = await bisZurBestaetigung(deps);
+  const done = await o.runTurn(msg(summary.state, "ja"), deps);
+  assert.deepEqual(done.quick?.map((q) => q.id), ["again", "myAppointment"]);
+  assert.equal(done.state.draft.date, null, "der gebuchte Platz wird nicht erneut geprüft");
+  assert.equal(done.state.draft.time, null);
+  assert.equal(done.state.draft.contact?.firstName, "Erika");
+
+  let r = await o.runTurn(click(done.state, "again"), deps);
+  assert.equal(r.state.stage, "type");
+  r = await o.runTurn(click(r.state, "type:nachsorge"), deps);
+  r = await o.runTurn(msg(r.state, "Dienstag um 8 Uhr"), deps);
+  assert.equal(r.state.stage, "confirm", "Kontakt bekannt: direkt die Zusammenfassung");
+  assert.equal(r.form, undefined);
+  assert.match(r.reply, /Erika Musterfrau/);
+  await o.runTurn(msg(r.state, "ja"), deps);
+  assert.equal(calls.book.length, 2);
+  assert.equal(calls.book[1].typeId, "nachsorge");
+  assert.equal(calls.book[1].time, "08:00");
+});
+
+test("„Ist ein Notfalltermin möglich?“ ist kein Notfall, sondern die Akut-Auskunft", async () => {
+  const { deps, calls } = makeDeps();
+  const r = await o.runTurn(msg(null, "Ist ein Notfalltermin möglich?"), deps);
+  assert.equal(r.flags.emergency, undefined);
+  assert.match(r.reply, /kurzfristig/);
+  assert.match(r.reply, /040 490 80 21/);
+  assert.equal(calls.classify.length, 0);
+  // „kein Notfall, aber dringend“ ebenso
+  const r2 = await o.runTurn(msg(null, "Es ist kein Notfall, aber ich bräuchte dringend einen Termin"), deps);
+  assert.equal(r2.flags.emergency, undefined);
+  assert.match(r2.reply, /^Bei akuten Beschwerden/);
+  assert.equal(r2.state.stage, "type", "und danach geht es in die Buchung");
+  // Das nackte Wort bleibt ein Notfall
+  const r3 = await o.runTurn(msg(null, "Das ist ein Notfall"), deps);
+  assert.equal(r3.flags.emergency, true);
+});
+
+test("Starke Beschwerden ohne Frage: Anruf-Hinweis statt Ermahnung, kein Modell", async () => {
+  const { deps, calls } = makeDeps();
+  const r = await o.runTurn(msg(null, "Ich habe seit gestern starke Schmerzen"), deps);
+  assert.match(r.reply, /^Bei akuten Beschwerden rufen Sie bitte zuerst an/);
+  assert.doesNotMatch(r.reply, /gesundheitlichen Details/);
+  assert.equal(calls.classify.length, 0);
+  assert.equal(calls.phrase.length, 0);
+});
+
+test("„Guten Morgen, ich hätte gern einen Termin“ fragt nach der Terminart, nicht nach morgen", async () => {
+  const { deps, calls } = makeDeps();
+  const r = await o.runTurn(msg(null, "Guten Morgen, ich hätte gern einen Termin"), deps);
+  assert.equal(r.state.stage, "type");
+  assert.equal(r.state.draft.date, null);
+  assert.equal(calls.availability.length, 0);
+});
+
+test("Terminverwaltung kapert keine Buchung: absagen, verschieben, „wann ist mein Termin“", async () => {
+  const { deps, calls } = makeDeps();
+  for (const s of ["Ich möchte meinen Termin absagen", "Termin verschieben", "Wann ist mein Termin?", "I need to cancel my appointment"]) {
+    const r = await o.runTurn(msg(null, s), deps);
+    assert.notEqual(r.state.stage, "type", `Buchung gestartet: ${s}`);
+    assert.match(r.reply, /Bestätigungs-E-Mail|confirmation e-mail/, s);
+    assert.ok(r.quick?.some((q) => q.id === "callback"), s);
+  }
+  assert.equal(calls.classify.length, 0);
+});
+
+test("Fragen mit „Termin“ werden aus dem Wissen beantwortet, nicht gebucht", async () => {
+  const { deps } = makeDeps();
+  const r = await o.runTurn(msg(null, "Wie kann ich einen Termin absagen?"), deps);
+  assert.match(r.reply, /Bestätigungs-E-Mail/);
+  assert.notEqual(r.state.stage, "type");
+});
+
+test("Fremdsprache: fester Satz in der Sprache, kein Modellaufruf, Schaltflächen bleiben", async () => {
+  const { deps, calls } = makeDeps();
+  const r = await o.runTurn(msg(null, "Merhaba, randevu almak istiyorum"), deps);
+  assert.match(r.reply, /Almanca veya İngilizce/);
+  assert.equal(r.flags.foreign, "tr");
+  assert.equal(r.lang, "de");
+  assert.deepEqual(r.quick?.map((q) => q.id), ["book", "hours"]);
+  assert.equal(r.quick?.[0].label, "Randevu al");
+  assert.equal(calls.classify.length, 0);
+  assert.equal(calls.phrase.length, 0);
+
+  // Notfall auf Türkisch → Notfallantwort auf Türkisch
+  const e = await o.runTurn(msg(null, "Göğsümde şiddetli ağrı var, nefes alamıyorum"), deps);
+  assert.equal(e.flags.emergency, true);
+  assert.match(e.reply, /112/);
+  assert.match(e.reply, /acil/i);
+  assert.equal(calls.classify.length, 0);
+});
+
+test("Explizite Sprache gewinnt; Erkennung meldet sich nur ohne Vorgabe", async () => {
+  const { deps } = makeDeps();
+  const r = await o.runTurn({ ...msg(null, "Wann haben Sie geöffnet?"), lang: "en" }, deps);
+  assert.equal(r.lang, "en");
+  assert.equal(r.flags.langDetected, undefined);
+  const r2 = await o.runTurn(msg(null, "When are you open?"), deps);
+  assert.equal(r2.lang, "en");
+  assert.equal(r2.flags.langDetected, true);
 });

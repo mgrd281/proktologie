@@ -16,17 +16,31 @@
  * Hinweis „keine Gesundheitsdaten in den Chat“ in der ersten Nachricht die
  * eigentliche Schutzmaßnahme, und deshalb ist der Filter im Zweifel streng.
  *
+ * Zwei Lehren aus der Praxis, die diese Datei geformt haben:
+ *  - „Ist ein Notfalltermin möglich?“ ist kein Notfall, sondern eine Frage
+ *    nach kurzfristigen Terminen. „Kein Notfall, aber dringend“ auch nicht.
+ *    Beides sperrte früher den Chat. Solche Wendungen werden jetzt vor der
+ *    Prüfung ausgeschnitten.
+ *  - „Hämorrhoiden“ ist eine buchbare Terminart der Praxis. Wer sie nennt,
+ *    um den Termin zu wählen, gibt keine Gesundheitsangabe preis, sondern
+ *    drückt einen Knopf mit Worten. Der Aufrufer kann solche Begriffe
+ *    ausnehmen (`ignore`).
+ *
  * Reine Funktionen, kein DOM, keine Datenbank – mit `node --test` prüfbar.
  */
 
-/** Buchstabenbewusste Wortgrenzen: „Blutdruck“ trifft, „Blutdruckmessgerät“ auch. */
-function re(words: string[]): RegExp {
-  return new RegExp(`(?<!\\p{L})(?:${words.join("|")})`, "iu");
+/** Linke Wortgrenze: Stämme treffen Zusammensetzungen („Blutung“ ⊂ „Blutungen“). */
+function stemRe(words: string[], flags = "iu"): RegExp {
+  return new RegExp(`(?<!\\p{L})(?:${words.join("|")})`, flags);
 }
+
+// ---------------------------------------------------------------- Notfall
 
 /**
  * Lebensbedrohliche Lagen. Bewusst großzügig: Ein Fehlalarm kostet eine
- * Zeile Text, ein übersehener Notfall kostet mehr.
+ * Zeile Text, ein übersehener Notfall kostet mehr. Vollwörter, die auch in
+ * harmlosen Zusammensetzungen stecken (Notfalltermin, emergencies), tragen
+ * eine rechte Grenze.
  */
 const EMERGENCY_DE = [
   "brustschmerz(?:en)?",
@@ -71,7 +85,7 @@ const EMERGENCY_DE = [
   "mich verletzen",
   "überdosis",
   "vergiftung",
-  "notfall",
+  "notfall(?!\\p{L})",
 ];
 
 const EMERGENCY_EN = [
@@ -94,7 +108,7 @@ const EMERGENCY_EN = [
   "heavy bleeding",
   "bleeding heavily",
   "won'?t stop bleeding",
-  "stroke",
+  "stroke(?!\\p{L})",
   "face droop",
   "slurred speech",
   "numb (?:arm|face|side)",
@@ -105,28 +119,64 @@ const EMERGENCY_EN = [
   "hurt myself",
   "self[- ]harm",
   "overdose",
-  "emergency",
+  "emergency(?!\\p{L})",
 ];
 
-const EMERGENCY_RE = re([...EMERGENCY_DE, ...EMERGENCY_EN]);
+const EMERGENCY_RE = stemRe([...EMERGENCY_DE, ...EMERGENCY_EN]);
+
+/**
+ * Wendungen, die das Wort „Notfall“ enthalten, aber eine Frage nach
+ * kurzfristigen Terminen oder Nummern sind. Sie werden vor der Prüfung
+ * aus dem Text geschnitten – ebenso ausdrückliche Verneinungen.
+ */
+const EMERGENCY_CARVEOUT_RE =
+  /(?<!\p{L})(?:notfall(?:termin|sprechstunde|nummer|praxis|dienst|ambulanz|kontingent)\p{L}*|emergency\s+(?:number|appointment|contact|line|slot|hours|room)|kein(?:e[nrs]?)?\s+(?:akuter\s+)?notfall\p{L}*|nicht\s+(?:lebensbedrohlich|dringend)|no\s+emergency|not\s+an\s+emergency)/giu;
 
 export interface EmergencyHit {
   matched: string;
 }
 
 /** Notfall? Dann sofort und ohne weitere Verarbeitung. */
+const BARE_EMERGENCY_WORD_RE = /(?<!\p{L})(?:notfall|emergency)(?!\p{L})/giu;
+const APPOINTMENT_WISH_RE = /(termin|appointment)/iu;
+
 export function detectEmergency(text: string): EmergencyHit | null {
-  const m = EMERGENCY_RE.exec(text);
-  return m ? { matched: m[0] } : null;
+  const cleaned = text.replace(EMERGENCY_CARVEOUT_RE, " ");
+  const m = EMERGENCY_RE.exec(cleaned);
+  if (!m) return null;
+  // „Notfall: brauche schnell einen Termin“ – das nackte Wort neben einem
+  // Terminwunsch ist eine Bitte um einen kurzfristigen Termin. Steht
+  // daneben ein echtes Notfallzeichen (Atemnot, bewusstlos …), bleibt es
+  // ein Notfall.
+  if (APPOINTMENT_WISH_RE.test(text)) {
+    const rest = cleaned.replace(BARE_EMERGENCY_WORD_RE, " ");
+    if (!EMERGENCY_RE.test(rest)) return null;
+  }
+  return { matched: m[0] };
 }
 
 /**
- * Gesundheitsbezug. Enthält bewusst auch die Namen der Terminarten
- * („Hämorrhoiden“): Wer sie im Freitext nennt, bekommt den Hinweis und die
- * Schaltflächen – die Terminart wählt man mit einem Klick, nicht mit einer
- * Schilderung.
+ * Akut, aber kein Notfall: Die Praxis hält kurzfristige Termine bereit und
+ * will dafür angerufen werden. Diese Sätze bekommen den Akut-Hinweis statt
+ * der Datenschutz-Ermahnung – und statt der 112.
  */
-const HEALTH_TERMS = [
+const ACUTE_RE =
+  /(?<!\p{L})(?:notfall|notfalltermin|notfallsprechstunde|kurzfristig|dringend|akut|sofort|schnell(?:stens|stmöglich|stmoeglich)?\s+(?:einen\s+|ein\s+)?termin|so schnell wie möglich|so schnell wie moeglich|heute noch|noch heute|urgent|as soon as|right away|quickly|emergency\s+(?:appointment|slot)|starke\s+\p{L}*schmerz|sehr\s+(?:starke|schlimme)|unerträglich|unertraeglich|severe pain|strong pain|a lot of pain|terrible pain|in pain)/iu;
+/** Blutung ist immer akut – aber nur als Gesundheitsangabe gezählt, nicht als bloßes Wort. */
+const ACUTE_DURATION_RE = /(?<!\p{L})(?:blut im stuhl|blood in (?:my |the )?stool|blutung|bleeding|blutet|blute)(?!\p{L})/iu;
+
+export function isAcuteConcern(text: string, healthMentioned = false): boolean {
+  return ACUTE_RE.test(text) || (healthMentioned && ACUTE_DURATION_RE.test(text));
+}
+
+// ------------------------------------------------------ Gesundheitsangaben
+
+/**
+ * Stämme mit linker Wortgrenze: „schmerz“ trifft „Schmerzen“, „blut“ trifft
+ * „Blutung“. Vollwörter (mit rechter Grenze) stehen getrennt, damit
+ * „Analyse“ oder „automatisch“ keinen Treffer erzeugen.
+ */
+const HEALTH_STEMS = [
   // Deutsch
   "schmerz",
   "wehtut",
@@ -145,8 +195,7 @@ const HEALTH_TERMS = [
   "verstopfung",
   "stuhl",
   "darm",
-  "after",
-  "anal",
+  "analbereich",
   "rektum",
   "knoten",
   "schwellung",
@@ -173,8 +222,12 @@ const HEALTH_TERMS = [
   "schwanger",
   "symptom",
   "beschwerden",
+  "operation",
+  "operiert",
+  "eingriff",
   // Englisch
-  "pain",
+  "surger",
+  "pain(?!t)",
   "hurts",
   "bleed",
   "itch",
@@ -189,7 +242,6 @@ const HEALTH_TERMS = [
   "bowel",
   "anus",
   "rectum",
-  "lump",
   "swelling",
   "discharge",
   "fever",
@@ -205,7 +257,13 @@ const HEALTH_TERMS = [
   "pregnan",
 ];
 
-const HEALTH_RE = new RegExp(`(?<!\\p{L})(?:${HEALTH_TERMS.join("|")})`, "giu");
+/** Vollwörter: nur als ganzes Wort ein Treffer. */
+const HEALTH_WORDS = ["anal", "lump"];
+
+const HEALTH_RE = new RegExp(
+  `(?<!\\p{L})(?:${HEALTH_STEMS.join("|")}|(?:${HEALTH_WORDS.join("|")})(?!\\p{L}))`,
+  "giu",
+);
 
 /** „Ich habe seit drei Tagen …“ – auch ohne Fachwort ein Gesundheitsbericht. */
 const HEALTH_PATTERNS = [
@@ -219,7 +277,7 @@ const INSURANCE_RE = /(?<![A-Z0-9])[A-Z]\d{9}(?![0-9])/g;
 
 /** Fragen nach Bedeutung oder Behandlung – die lehnt der Assistent ab. */
 const MEDICAL_QUESTION_RE =
-  /(was ist|ist das|ist es|sind das|normal|schlimm|gefährlich|gefaehrlich|bedenklich|was soll ich|was kann ich|was hilft|hilft mir|muss ich mir sorgen|what is|is (?:it|this|that)|should i|do i need|dangerous|serious|what helps|how do i treat)/iu;
+  /(was ist|ist das|ist es|sind das|normal|schlimm|gefährlich|gefaehrlich|bedenklich|was soll ich|was kann ich|was hilft|hilft (?:mir|das|es|gegen)|was tun|was mache ich|muss ich mir sorgen|(?:kann|darf|soll|sollte) ich (?:\p{L}+\s+){0,5}(?:nehmen|einnehmen|benutzen|anwenden|auftragen)|empfehl|welche[srn]? (?:salbe|creme|medikament|tablette|mittel|schmerzmittel|zäpfchen|zaepfchen)|what is|is (?:it|this|that)|should i|do i need|dangerous|serious|what helps|how (?:do|can) i treat|what (?:can|should) i (?:do|take|use)|can i take|recommend|which (?:ointment|cream|medication|painkiller|tablet))/iu;
 
 export interface HealthHit {
   /** Gefundene Begriffe – nur zur Diagnose im Test, nie zur Anzeige. */
@@ -228,14 +286,41 @@ export interface HealthHit {
   medicalQuestion: boolean;
 }
 
-export function detectHealthData(text: string): HealthHit | null {
-  const terms = [...new Set(Array.from(text.matchAll(HEALTH_RE), (m) => m[0].toLowerCase()))];
-  const pattern = HEALTH_PATTERNS.some((p) => p.test(text));
-  const insurance = INSURANCE_RE.test(text);
-  INSURANCE_RE.lastIndex = 0;
-  if (!terms.length && !pattern && !insurance) return null;
-  return { terms, medicalQuestion: (terms.length > 0 || pattern) && MEDICAL_QUESTION_RE.test(text) };
+export interface HealthOptions {
+  /**
+   * Begriffe, die keine Gesundheitsangabe sind, weil sie eine buchbare
+   * Terminart oder eine angebotene Leistung benennen („Hämorrhoiden“,
+   * „Analfissur“). Sie werden vor der Prüfung aus dem Text entfernt.
+   */
+  ignore?: string[];
 }
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function detectHealthData(text: string, options: HealthOptions = {}): HealthHit | null {
+  let subject = text;
+  let ignored = false;
+  if (options.ignore?.length) {
+    const ignoreRe = new RegExp(`(?<!\\p{L})(?:${options.ignore.map((w) => escapeRe(w.toLowerCase())).join("|")})\\p{L}*`, "giu");
+    subject = subject.replace(ignoreRe, " ");
+    ignored = subject !== text;
+  }
+  const terms = [...new Set(Array.from(subject.matchAll(HEALTH_RE), (m) => m[0].toLowerCase()))];
+  const pattern = HEALTH_PATTERNS.some((p) => p.test(subject));
+  const insurance = INSURANCE_RE.test(subject);
+  INSURANCE_RE.lastIndex = 0;
+  if (!terms.length && !pattern && !insurance) {
+    // „Was hilft gegen Hämorrhoiden?“: Die Terminart darf genannt werden,
+    // eine Frage nach Behandlung oder Bedeutung bleibt aber medizinisch.
+    if (ignored && MEDICAL_QUESTION_RE.test(text)) return { terms: [], medicalQuestion: true };
+    return null;
+  }
+  return { terms, medicalQuestion: (terms.length > 0 || pattern) && MEDICAL_QUESTION_RE.test(subject) };
+}
+
+// ------------------------------------------------------------ Maskierung
 
 const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
 // Mindestens acht Ziffern, damit „14:30“ oder „ab 15 Uhr“ nicht getroffen werden

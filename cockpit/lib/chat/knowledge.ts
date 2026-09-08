@@ -51,13 +51,32 @@ export function formatHours(rows: HoursRow[], lang: Lang): string {
   return lang === "de" ? `${parts.join(" · ")} Uhr` : parts.join(" · ");
 }
 
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Trifft ein Stichwort? Kurze Stichwörter (bis vier Zeichen) nur als
+ * ganzes Wort – sonst wäre „weg“ in „wegen“ und „auto“ in „automatisch“
+ * ein Treffer. Längere gelten als Wortanfang, damit „parkpl“ auch
+ * „Parkplätze“ und „absag“ auch „absagen“ findet. Mehrwortausdrücke
+ * werden am Wortanfang gesucht.
+ */
+export function keywordHits(text: string, keyword: string): boolean {
+  const kw = keyword.toLowerCase().trim();
+  if (!kw) return false;
+  const body = escapeRe(kw);
+  const re = kw.length <= 4 && !kw.includes(" ") ? new RegExp(`(?<!\\p{L})${body}(?!\\p{L})`, "iu") : new RegExp(`(?<!\\p{L})${body}`, "iu");
+  return re.test(text);
+}
+
 /** Welche Themen berührt die Frage? Reihenfolge = Reihenfolge der Fakten. */
 export function findTopics(text: string, lang: Lang): Topic[] {
   const t = text.toLowerCase();
   const found: Topic[] = [];
   for (const key of Object.keys(PRAXIS_WISSEN) as Topic[]) {
     const words = PRAXIS_WISSEN[key].keywords[lang];
-    if (words.some((w) => t.includes(w))) found.push(key);
+    if (words.some((w) => keywordHits(t, w))) found.push(key);
   }
   return found;
 }

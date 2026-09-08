@@ -22,14 +22,24 @@ export interface Texts {
   emergency: string;
   medicalRefusal: string;
   healthHint: string;
+  /** Kurzform ohne Terminfrage – wenn der Ablauf ohnehin weitergeht. */
+  healthHintShort: string;
+  /** Akut, aber kein Notfall: kurzfristige Termine, bitte anrufen. */
+  acute: string;
 
   askType: string;
+  /** Vor der Terminart, wenn sie aus freiem Text erkannt wurde: „Notiert: Hämorrhoiden.“ */
+  typeNoted: string;
   askDate: string;
   askTime: string;
   askContact: string;
   confirmQuestion: string;
   confirmAgain: string;
   changed: string;
+  /** „Ja, aber …“ ohne erkennbare Korrektur. */
+  whatToChange: string;
+  /** Kontaktdaten sind schon bekannt – Zusammenfassung ohne Formular. */
+  contactReused: string;
 
   bookedMailSent: string;
   bookedMailFailed: string;
@@ -49,7 +59,23 @@ export interface Texts {
   rateLimited: string;
   disabled: string;
 
-  quick: Record<"book" | "hours" | "directions" | "yes" | "no" | "callback" | "nextfree" | "other", string>;
+  quick: Record<
+    | "book"
+    | "hours"
+    | "directions"
+    | "yes"
+    | "no"
+    | "callback"
+    | "nextfree"
+    | "other"
+    | "again"
+    | "myAppointment"
+    | "changeDate"
+    | "changeTime"
+    | "changeType"
+    | "changeContact",
+    string
+  >;
   form: {
     contactTitle: string;
     callbackTitle: string;
@@ -86,14 +112,20 @@ const de: Texts = {
   medicalRefusal: "Dazu kann ich nichts sagen, das bespricht Dr. Kunstreich mit Ihnen persönlich. Soll ich Ihnen einen Termin suchen?",
   healthHint:
     "Bitte schreiben Sie hier keine gesundheitlichen Details – die besprechen Sie vertraulich in der Praxis. Ihre Nachricht habe ich nicht weitergegeben. Soll ich Ihnen einen Termin suchen?",
+  healthHintShort:
+    "Bitte schreiben Sie hier keine gesundheitlichen Details – die besprechen Sie vertraulich in der Praxis. Ihre Nachricht habe ich nicht weitergegeben.",
+  acute: `Bei akuten Beschwerden rufen Sie bitte zuerst an: ${P} – die Praxis hält kurzfristige Termine bereit.`,
 
   askType: "Gern. Worum geht es bei dem Termin?",
+  typeNoted: "Notiert:",
   askDate: "Für welchen Tag darf ich nachsehen?",
   askTime: "Welche Uhrzeit passt Ihnen?",
   askContact: "Bitte tragen Sie noch Ihre Kontaktdaten ein – ohne gesundheitliche Angaben.",
   confirmQuestion: "Soll ich das so verbindlich buchen?",
   confirmAgain: "Ich möchte sichergehen: Soll ich den Termin verbindlich buchen? Bitte antworten Sie mit Ja oder Nein.",
   changed: "Kein Problem. Für welchen Tag darf ich nachsehen?",
+  whatToChange: "Gern – was möchten Sie ändern?",
+  contactReused: "Ihre Kontaktdaten habe ich noch.",
 
   bookedMailSent: "Die Bestätigung mit Kalendereintrag und Absage-Link ist per E-Mail unterwegs.",
   bookedMailFailed: `Die Bestätigungs-E-Mail konnte gerade nicht verschickt werden; wir versuchen es automatisch erneut. Bei Fragen: ${P}.`,
@@ -122,6 +154,12 @@ const de: Texts = {
     callback: "Rückruf notieren",
     nextfree: "Nächster freier Termin",
     other: "Andere Uhrzeit",
+    again: "Noch ein Termin",
+    myAppointment: "Mein Termin",
+    changeDate: "Anderer Tag",
+    changeTime: "Andere Uhrzeit",
+    changeType: "Andere Terminart",
+    changeContact: "Andere Kontaktdaten",
   },
   form: {
     contactTitle: "Ihre Kontaktdaten",
@@ -164,14 +202,20 @@ const en: Texts = {
   medicalRefusal: "I cannot say anything about that; Dr. Kunstreich will discuss it with you in person. Shall I look for an appointment for you?",
   healthHint:
     "Please do not write any health details here – you can discuss those confidentially at the practice. I have not passed your message on. Shall I look for an appointment for you?",
+  healthHintShort:
+    "Please do not write any health details here – you can discuss those confidentially at the practice. I have not passed your message on.",
+  acute: `For acute problems please call us first: ${P} – the practice keeps short-notice appointments available.`,
 
   askType: "Certainly. What is the appointment about?",
+  typeNoted: "Noted:",
   askDate: "Which day shall I check?",
   askTime: "Which time suits you?",
   askContact: "Please add your contact details – without any health information.",
   confirmQuestion: "Shall I book this bindingly?",
   confirmAgain: "Just to be sure: shall I book the appointment bindingly? Please answer yes or no.",
   changed: "No problem. Which day shall I check?",
+  whatToChange: "Certainly – what would you like to change?",
+  contactReused: "I still have your contact details.",
 
   bookedMailSent: "The confirmation with a calendar entry and a cancellation link is on its way by e-mail.",
   bookedMailFailed: `The confirmation e-mail could not be sent just now; we will retry automatically. If you have questions: ${P}.`,
@@ -200,6 +244,12 @@ const en: Texts = {
     callback: "Request a callback",
     nextfree: "Next available appointment",
     other: "Another time",
+    again: "Another appointment",
+    myAppointment: "My appointment",
+    changeDate: "Another day",
+    changeTime: "Another time",
+    changeType: "Another type",
+    changeContact: "Other contact details",
   },
   form: {
     contactTitle: "Your contact details",

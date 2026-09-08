@@ -103,6 +103,8 @@ const bookingSchema = z.object({
   phone: z.string().trim().min(5, "Telefonnummer fehlt").max(40),
   consent: z.literal(true, { message: "Einwilligung fehlt" }),
   formToken: z.string().min(10),
+  /** Sprache der Patienten-Mails; die Website schickt bislang keine (→ Deutsch). */
+  locale: z.enum(["de", "en"]).optional(),
   /** Honigtopf – muss leer bleiben */
   hp: z.string().max(0).optional().or(z.literal("")),
 });
@@ -161,7 +163,10 @@ export async function bookPublicSlot(v: BookSlotInput, ctx: BookSlotContext): Pr
 
   const future = await repo.countFutureActiveByEmail(v.email, now);
   if (future >= settings.maxFuturePerEmail) {
-    throw new PublicError(409, "too_many", `Für diese E-Mail-Adresse bestehen bereits ${future} offene Termine. Bitte nutzen Sie den Verwaltungslink aus Ihrer Bestätigung oder rufen Sie uns an.`);
+    // Bewusst ohne Zahl: Der Aufrufer kennt nur die eingegebene Adresse,
+    // nicht unbedingt deren Inhaber – wie viele Termine dort offen sind,
+    // geht ihn nichts an.
+    throw new PublicError(409, "too_many", "Für diese E-Mail-Adresse sind bereits mehrere Termine offen. Bitte nutzen Sie den Verwaltungslink aus Ihrer Bestätigung oder rufen Sie uns an.");
   }
 
   const token = repo.newManageToken();
@@ -307,6 +312,7 @@ const waitlistSchema = z.object({
   note: z.string().trim().max(300).optional().nullable(),
   consent: z.literal(true),
   formToken: z.string().min(10),
+  locale: z.enum(["de", "en"]).optional(),
   hp: z.string().max(0).optional().or(z.literal("")),
 });
 
@@ -329,6 +335,7 @@ export async function joinWaitlist(raw: unknown, ip: string, now = new Date()): 
     note: v.note ?? null,
     source: "web",
     manageToken: token,
+    locale: v.locale ?? "de",
   });
   await enqueue({ kind: "mail.waitlist_joined", payload: { waitlistId: w.id }, dedupeKey: `mail.waitlist_joined:${w.id}` });
   return { ref: w.ref };

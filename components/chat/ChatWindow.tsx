@@ -5,7 +5,7 @@ import { Icon } from "@/components/ui/Icon";
 import { chatCopy, hoursLine, type ChatLang } from "@/content/chat";
 import { site } from "@/content/site";
 import { sendChat, type ChatForm, type ChatQuick } from "@/lib/chat/api";
-import { append, browserStore, load, newSession, save, type SessionStore, type StoredSession } from "@/lib/chat/session";
+import { append, browserStore, clear, load, newSession, save, type SessionStore, type StoredSession } from "@/lib/chat/session";
 import { useLenis } from "@/providers/LenisProvider";
 
 /**
@@ -49,6 +49,7 @@ export function ChatWindow({ lang, onLang, onClose, available, checking, hours }
   const [form, setForm] = useState<ChatForm | null>(null);
   const [links, setLinks] = useState<Array<{ label: string; href: string }>>([]);
   const [emergency, setEmergency] = useState(false);
+  const [langChosen, setLangChosen] = useState(false);
   const [pending, setPending] = useState(false);
   const [draft, setDraft] = useState("");
   const logRef = useRef<HTMLDivElement>(null);
@@ -65,6 +66,7 @@ export function ChatWindow({ lang, onLang, onClose, available, checking, hours }
       onLang(restored.lang);
       setForm(restored.form ?? null);
       setEmergency(restored.emergency === true);
+      setLangChosen(restored.langChosen === true);
       // Ohne gespeicherte Auswahl bleiben die drei Einstiege – besser als
       // ein Fenster ohne jeden Weg.
       setQuick(restored.quick?.length ? restored.quick : restored.form || restored.emergency ? [] : chatCopy[restored.lang].quickStart);
@@ -79,8 +81,45 @@ export function ChatWindow({ lang, onLang, onClose, available, checking, hours }
 
   // Jede Änderung sofort sichern; der Tab kann jederzeit geschlossen werden.
   useEffect(() => {
-    if (session.messages.length > 0) save(storeRef.current, { ...session, lang, open: true, quick, form, emergency });
-  }, [session, lang, quick, form, emergency]);
+    if (session.messages.length > 0) save(storeRef.current, { ...session, lang, open: true, quick, form, emergency, langChosen });
+  }, [session, lang, quick, form, emergency, langChosen]);
+
+  /**
+   * Neues Gespräch: Verlauf und Zustand weg, neue Sitzungskennung, frische
+   * Begrüßung. Das ist auch der Weg aus dem Notfallmodus – die Sperre bleibt
+   * bis dahin bestehen, aber sie ist verlassbar.
+   */
+  const restart = useCallback(() => {
+    clear(storeRef.current);
+    const fresh = newSession(lang);
+    setSession(append(fresh, "assistant", chatCopy[lang].greeting(hoursLine(lang)), Date.now()));
+    setQuick(chatCopy[lang].quickStart);
+    setForm(null);
+    setLinks([]);
+    setEmergency(false);
+    setPending(false);
+    setDraft("");
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }, [lang]);
+
+  /**
+   * Sprachwechsel durch die Patientin: ab jetzt gilt diese Sprache, sie geht
+   * mit jeder Nachricht mit, und die Erkennung überstimmt sie nicht mehr.
+   * Steht nur die Begrüßung im Verlauf, wird sie ersetzt; sonst kommt eine
+   * kurze Begrüßung in der neuen Sprache dazu.
+   */
+  const switchLang = useCallback(() => {
+    const next: ChatLang = lang === "de" ? "en" : "de";
+    const greeting = chatCopy[next].greeting(hoursLine(next));
+    setLangChosen(true);
+    onLang(next);
+    setSession((s) => {
+      const onlyGreeting = s.messages.length === 1 && s.messages[0]?.role === "assistant";
+      const base = onlyGreeting ? { ...s, messages: [] } : s;
+      return { ...append(base, "assistant", greeting, Date.now()), lang: next };
+    });
+    setQuick((q) => (q.length === 0 || q.every((x) => chatCopy[lang].quickStart.some((s) => s.id === x.id)) ? chatCopy[next].quickStart : q));
+  }, [lang, onLang]);
 
   // Auf dem Telefon füllt das Fenster den Schirm – dann darf die Seite
   // dahinter nicht mitscrollen.
@@ -117,7 +156,7 @@ export function ChatWindow({ lang, onLang, onClose, available, checking, hours }
         next = append(next, "user", echo, Date.now());
         setSession(next);
       }
-      const result = await sendChat(site.cockpitApiUrl, { sessionId: next.sessionId, state: next.state, ...payload });
+      const result = await sendChat(site.cockpitApiUrl, { sessionId: next.sessionId, state: next.state, ...(langChosen ? { lang } : {}), ...payload });
       if (!result.ok) {
         setSession(append(next, "assistant", copy.errors[result.error], Date.now()));
         setQuick(copy.quickStart);
@@ -125,15 +164,18 @@ export function ChatWindow({ lang, onLang, onClose, available, checking, hours }
         return;
       }
       const a = result.answer;
-      setSession({ ...append(next, "assistant", a.reply, Date.now()), state: a.state, lang: a.lang });
-      if (a.lang !== lang) onLang(a.lang);
+      // Die Sprache der Oberfläche folgt dem Server nur, wenn er sie aus dem
+      // Text erkannt hat – nie gegen eine ausdrückliche Wahl.
+      const follow = a.flags.langDetected === true && !langChosen && a.lang !== lang;
+      setSession({ ...append(next, "assistant", a.reply, Date.now()), state: a.state, lang: follow ? a.lang : lang });
+      if (follow) onLang(a.lang);
       setQuick(a.quick ?? []);
       setForm(a.form ?? null);
       setLinks(a.links ?? []);
       if (a.flags.emergency) setEmergency(true);
       setPending(false);
     },
-    [pending, session, copy, lang, onLang],
+    [pending, session, copy, lang, onLang, langChosen],
   );
 
   const submitDraft = () => {
@@ -151,12 +193,15 @@ export function ChatWindow({ lang, onLang, onClose, available, checking, hours }
 
   const title = useMemo(() => `${copy.windowTitle} · ${copy.windowSubtitle}`, [copy]);
 
+  // z-[60]: über dem festen Seitenkopf (z-50). Sonst deckt der Kopf auf
+  // niedrigen Bildschirmen die obere Leiste des Fensters ab, und
+  // „English“, „Neues Gespräch“ und „Schließen“ sind nicht anklickbar.
   return (
     <div
       id="site-chat-window"
       role="dialog"
       aria-label={title}
-      className="fixed inset-x-0 bottom-0 z-40 flex max-h-[85dvh] flex-col overflow-hidden rounded-t-2xl border border-mist bg-cream shadow-2xl sm:inset-x-auto sm:bottom-24 sm:right-6 sm:h-[min(640px,80dvh)] sm:w-[400px] sm:rounded-2xl"
+      className="fixed inset-x-0 bottom-0 z-[60] flex max-h-[85dvh] flex-col overflow-hidden rounded-t-2xl border border-mist bg-cream shadow-2xl sm:inset-x-auto sm:bottom-24 sm:right-6 sm:h-[min(640px,80dvh)] sm:w-[400px] sm:rounded-2xl"
     >
       <header className="flex items-center justify-between gap-3 border-b border-mist bg-white/70 px-4 py-3">
         <div className="min-w-0">
@@ -166,8 +211,18 @@ export function ChatWindow({ lang, onLang, onClose, available, checking, hours }
         <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
-            onClick={() => onLang(lang === "de" ? "en" : "de")}
-            className="rounded-lg px-2 py-1 text-xs font-medium text-primary-deep hover:bg-mist focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            onClick={restart}
+            disabled={pending}
+            className="rounded-lg px-2 py-1 text-xs font-medium text-primary-deep hover:bg-mist disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            {copy.restart}
+          </button>
+          <button
+            type="button"
+            onClick={switchLang}
+            disabled={pending}
+            lang={lang === "de" ? "en" : "de"}
+            className="rounded-lg px-2 py-1 text-xs font-medium text-primary-deep hover:bg-mist disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             {copy.langSwitch}
           </button>
@@ -236,6 +291,13 @@ export function ChatWindow({ lang, onLang, onClose, available, checking, hours }
                   </a>
                 ))}
               </div>
+              <button
+                type="button"
+                onClick={restart}
+                className="mt-3 w-full rounded-xl border border-primary/40 px-3 py-2 text-xs font-medium text-primary-deep hover:bg-mist focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              >
+                {copy.restart}
+              </button>
             </div>
           )}
 

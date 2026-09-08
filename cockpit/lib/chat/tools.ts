@@ -31,8 +31,12 @@ export type SlotAnswer =
 /** Wie viele Zeiten der Assistent höchstens auf einmal anbietet. */
 const MAX_SLOTS = 5;
 const MAX_ALTERNATIVES = 3;
-/** So weit schaut „wann haben Sie am ehesten etwas frei?“ voraus. */
-const HORIZON_DAYS = 28;
+/**
+ * Rückfall, falls eine Terminart keinen eigenen Horizont hat. Die Buchung
+ * erlaubt bis zu `maxAheadDays` je Terminart (Standard 56) – der Chat darf
+ * nicht weniger anbieten als die Terminkarte der Website.
+ */
+const DEFAULT_HORIZON_DAYS = 56;
 
 async function liveOrReason(): Promise<{ ok: true } | { ok: false; answer: SlotAnswer }> {
   const s = await repo.getSettings();
@@ -42,10 +46,12 @@ async function liveOrReason(): Promise<{ ok: true } | { ok: false; answer: SlotA
 }
 
 /** Öffentlich buchbare Terminarten – dieselbe Auswahl wie auf der Website. */
-export async function publicTypeList(): Promise<Array<{ id: string; label: string; durationMin: number }>> {
+export async function publicTypeList(): Promise<Array<{ id: string; label: string; durationMin: number; maxAheadDays: number }>> {
   try {
     const types = await repo.listTypes();
-    return types.filter((t) => t.visibility === "public").map((t) => ({ id: t.id, label: t.label, durationMin: t.durationMin }));
+    return types
+      .filter((t) => t.visibility === "public")
+      .map((t) => ({ id: t.id, label: t.label, durationMin: t.durationMin, maxAheadDays: t.maxAheadDays ?? DEFAULT_HORIZON_DAYS }));
   } catch {
     return [];
   }
@@ -112,7 +118,9 @@ async function naechsteTage(art: string, ctx: ToolContext, ab?: string): Promise
     const live = await liveOrReason();
     if (!live.ok) return live.answer;
     const from = ab ? addDays(ab, 1) : dateKey(ctx.now);
-    const to = addDays(from, HORIZON_DAYS);
+    const horizon = (await publicTypeList()).find((t) => t.id === art)?.maxAheadDays ?? DEFAULT_HORIZON_DAYS;
+    const to = addDays(dateKey(ctx.now), horizon);
+    if (from > to) return { kind: "next_days", days: [] };
     const range = await repo.availabilityRange(art, from, to, ctx.now);
     const days = range.filter((d) => d.slots.length > 0).slice(0, 3).map((d) => ({ date: d.date, slots: d.slots.slice(0, MAX_SLOTS) }));
     return { kind: "next_days", days };
@@ -191,13 +199,31 @@ export function renderSlotAnswer(a: SlotAnswer, lang: Lang, typeLabel: string, p
 
 const TYPE_SYNONYMS: Array<{ id: string; words: string[] }> = [
   { id: "kontrolle", words: ["kontrolle", "kontrolltermin", "nachkontrolle", "check-up", "checkup", "check up", "follow-up appointment"] },
-  { id: "erstuntersuchung", words: ["erstuntersuchung", "erstvorstellung", "erster termin", "neu", "neupatient", "first", "initial", "new patient"] },
+  {
+    id: "erstuntersuchung",
+    words: ["erstuntersuchung", "erstvorstellung", "erster termin", "neu", "neupatient", "noch nie", "ersten mal", "erste mal", "erstmals", "first", "initial", "new patient", "never been", "new here"],
+  },
   { id: "nachsorge", words: ["nachsorge", "nachbehandlung", "aftercare", "follow-up", "follow up"] },
   { id: "unklar", words: ["unklar", "weiß nicht", "weiss nicht", "keine ahnung", "beratung", "not sure", "don't know", "dont know", "unclear"] },
   { id: "haemorrhoiden", words: ["hämorrhoid", "haemorrhoid", "hemorrhoid"] },
   { id: "analfissur", words: ["fissur", "fissure"] },
   { id: "analfistel", words: ["fistel", "fistula"] },
 ];
+
+/**
+ * Alle Wörter, mit denen Patientinnen eine buchbare Terminart benennen –
+ * Bezeichnungen und Synonyme. Der Gesundheitsfilter nimmt sie aus, denn wer
+ * „Hämorrhoiden“ schreibt, um den Termin zu wählen, drückt einen Knopf mit
+ * Worten und gibt keine Gesundheitsangabe preis.
+ */
+export function typeTerms(types: Array<{ id: string; label: string }>): string[] {
+  const out = new Set<string>();
+  for (const type of types) {
+    out.add(type.label);
+    for (const syn of TYPE_SYNONYMS) if (syn.id === type.id) for (const w of syn.words) out.add(w);
+  }
+  return [...out];
+}
 
 /** Terminart aus dem Text lesen – erst Bezeichnung, dann Synonyme. */
 export function matchType(text: string, types: Array<{ id: string; label: string }>, lang: Lang): string | null {
@@ -229,7 +255,8 @@ export function parseDateWords(text: string, now: Date, lang: Lang): string | nu
   const heute = dateKey(now);
 
   if (/(?<!\p{L})(heute|today)(?!\p{L})/u.test(t)) return heute;
-  if (/(?<!\p{L})(morgen|tomorrow)(?!\p{L})/u.test(t) && !/übermorgen|uebermorgen/.test(t)) return addDays(heute, 1);
+  // „Guten Morgen“ ist ein Gruß, „morgens“ ein Tagesteil – nur das nackte „morgen“ ist ein Datum
+  if (/(?<!\p{L})(?<!guten\s)(?<!guten )(morgen|tomorrow)(?!\p{L})/u.test(t) && !/übermorgen|uebermorgen/.test(t)) return addDays(heute, 1);
   if (/(?<!\p{L})(übermorgen|uebermorgen|day after tomorrow)(?!\p{L})/u.test(t)) return addDays(heute, 2);
 
   // ISO zuerst – eindeutig
@@ -250,17 +277,25 @@ export function parseDateWords(text: string, now: Date, lang: Lang): string | nu
     }
   }
 
-  // Wochentag → nächstes Vorkommen (heute zählt nicht mit)
+  // Wochentag → nächstes Vorkommen (heute zählt nicht mit).
+  // Kurzformen („Mo“, „Di“, „so“, „do“) sind im Fließtext gewöhnliche
+  // Wörter – „so früh wie möglich“, „do i need“. Sie zählen nur mit Anlass:
+  // nach „am/jeden/nächsten/…“, mit Punkt, oder als ganze Nachricht.
   for (const [word, weekday] of Object.entries(WEEKDAY_WORDS)) {
-    if (word.length <= 3 && !new RegExp(`(?<!\\p{L})${word}(?!\\p{L})`, "u").test(t)) continue;
-    if (word.length > 3 && !t.includes(word)) continue;
+    if (word.length <= 3) {
+      const english = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"].includes(word);
+      if (english && lang !== "en") continue;
+      const cue = new RegExp(`(?:^|(?<=\\b(?:am|jeden|nächsten|naechsten|diesen|kommenden|on|next|this)\\s))${word}(?:\\.|(?=\\s*$))`, "u");
+      if (!cue.test(t.trim())) continue;
+    } else if (!t.includes(word)) {
+      continue;
+    }
     for (let i = 1; i <= 7; i++) {
       const d = addDays(heute, i);
       const dow = ((new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7) + 1;
       if (dow === weekday) return d;
     }
   }
-  void lang;
   return null;
 }
 

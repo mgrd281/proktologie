@@ -596,14 +596,20 @@ export async function markReminded(id: string) {
 
 // ---------- Warteliste ----------
 
+/** Der verschlüsselte Personenteil der Warteliste trägt zusätzlich die
+ *  Sprache – so bleibt das Schema unverändert und nichts steht im Klartext. */
 interface WaitlistPii extends Pii {
   email?: string;
+  locale?: Locale;
 }
 
 function toWaitlistView(r: typeof t.waitlist.$inferSelect, type: { label: string; color: TypeColor } | null): WaitlistView {
   let pii: Pii;
+  let locale: Locale = "de";
   try {
-    pii = decryptJson<WaitlistPii>(r.piiEnc, `wl:${r.id}`);
+    const { locale: l, ...rest } = decryptJson<WaitlistPii>(r.piiEnc, `wl:${r.id}`);
+    pii = rest;
+    if (l === "en") locale = "en";
   } catch {
     pii = { firstName: "—", lastName: "(nicht lesbar)" };
   }
@@ -619,6 +625,7 @@ function toWaitlistView(r: typeof t.waitlist.$inferSelect, type: { label: string
     note: r.noteEnc ? safeDecrypt(r.noteEnc, `wlnote:${r.id}`) : null,
     status: r.status,
     source: r.source,
+    locale,
     offeredAppointmentId: r.offeredAppointmentId,
     offeredAt: r.offeredAt?.toISOString() ?? null,
     offerExpiresAt: r.offerExpiresAt?.toISOString() ?? null,
@@ -670,6 +677,8 @@ export interface CreateWaitlistInput {
   manageToken?: string;
   isDemo?: boolean;
   actorId?: string | null;
+  /** Sprache der Mails an diese Person (Standard: Deutsch). */
+  locale?: Locale;
 }
 
 export async function createWaitlistEntry(input: CreateWaitlistInput): Promise<WaitlistView> {
@@ -677,11 +686,12 @@ export async function createWaitlistEntry(input: CreateWaitlistInput): Promise<W
   if (!type) throw new Error("Unbekannte Terminart");
   const db = await getDb();
   const id = randomUUID();
-  const pii: Pii = {
+  const pii: WaitlistPii = {
     firstName: input.pii.firstName.trim(),
     lastName: input.pii.lastName.trim(),
     email: input.pii.email?.trim() || undefined,
     phone: input.pii.phone?.trim() || undefined,
+    locale: input.locale === "en" ? "en" : undefined,
   };
   const values = {
     id,
