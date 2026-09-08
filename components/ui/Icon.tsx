@@ -26,7 +26,9 @@ export type IconName =
   | "mouse"
   | "check"
   | "chat"
-  | "send";
+  | "send"
+  | "mic"
+  | "mic-off";
 
 const paths: Record<IconName, ReactPath> = {
   leaf: (
@@ -68,6 +70,10 @@ const paths: Record<IconName, ReactPath> = {
   // Sprechblase mit abgesetzter Spitze – der Einstieg in den Chat
   chat: <path d="M20 4H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3v4l4.5-4H20a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1Z" />,
   send: <path d="M4 12l16-8-5.5 16-3-6.5L4 12Z" />,
+  // Mikrofon: Kapsel im Bügel, mit Fuß – die übliche Form, damit niemand raten muss
+  mic: <path d="M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Zm-6 8a6 6 0 0 0 12 0M12 17v4m-3 0h6" />,
+  // Dasselbe, durchgestrichen: Das Mikrofon ist aus oder nicht erlaubt
+  "mic-off": <path d="M9 9v2a3 3 0 0 0 4.6 2.5M15 10.5V6a3 3 0 0 0-5.6-1.5M6 11a6 6 0 0 0 9.3 5M18 11v-.5M12 17v4m-3 0h6M4 4l16 16" />,
 };
 
 type ReactPath = ReactElement;
