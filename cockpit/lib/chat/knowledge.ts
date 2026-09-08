@@ -74,8 +74,12 @@ export function keywordHits(text: string, keyword: string): boolean {
 export function findTopics(text: string, lang: Lang): Topic[] {
   const t = text.toLowerCase();
   const found: Topic[] = [];
-  for (const key of Object.keys(PRAXIS_WISSEN) as Topic[]) {
-    const words = PRAXIS_WISSEN[key].keywords[lang];
+  // Die Stichwörter beider Sprachen zählen: Wer die Oberfläche auf Englisch
+  // gestellt hat und trotzdem „Wann haben Sie geöffnet?“ tippt, bekommt die
+  // Sprechzeiten – auf Englisch, denn `lang` bestimmt nur die Antwort.
+  const own = PRAXIS_WISSEN;
+  for (const key of Object.keys(own) as Topic[]) {
+    const words = lang === "de" ? [...own[key].keywords.de, ...own[key].keywords.en] : [...own[key].keywords.en, ...own[key].keywords.de];
     if (words.some((w) => keywordHits(t, w))) found.push(key);
   }
   return found;

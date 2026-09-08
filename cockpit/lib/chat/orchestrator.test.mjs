@@ -523,3 +523,11 @@ test("Explizite Sprache gewinnt; Erkennung meldet sich nur ohne Vorgabe", async 
   assert.equal(r2.lang, "en");
   assert.equal(r2.flags.langDetected, true);
 });
+
+test("Gewählte Sprache Englisch, deutsche Frage: die Sprechzeiten kommen trotzdem – auf Englisch", async () => {
+  const { deps, calls } = makeDeps();
+  const r = await o.runTurn({ ...msg(null, "Wann haben Sie geöffnet?"), lang: "en" }, deps);
+  assert.equal(r.lang, "en");
+  assert.match(r.reply, /^Opening hours: /);
+  assert.equal(calls.classify.length, 0);
+});
