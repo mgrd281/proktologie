@@ -485,6 +485,11 @@ der Assistent sagt das und bietet einen Werktag an.
 Demo & Betrieb*: die Themen der letzten 30 Tage nach Häufigkeit. Gezählt
 wird ausschließlich der Themenschlüssel, nie der Satz der Patientin.
 
+*Und die Grenze bleibt, wo sie war:* Ein Satz mit einem Fachwort wird
+beantwortet, erreicht aber trotzdem kein Modell – die Antwort ist dann der
+gepflegte Faktentext, unformuliert. Das gilt jetzt auch dort, wo der Satz
+nur eine Terminart nennt.
+
 ### Anfragen-Posteingang
 
 Alles, was kein Termin ist: Rückrufbitten aus dem Chat, Folgerezepte,

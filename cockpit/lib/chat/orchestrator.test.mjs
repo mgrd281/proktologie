@@ -612,6 +612,15 @@ test("Eine Leistungsfrage ist keine Gesundheitsangabe", async () => {
   assert.match(s.reply, /keine gesundheitlichen Details|Bitte schreiben Sie hier keine/);
 });
 
+test("Eine Leistungsfrage wird beantwortet, erreicht aber kein Modell", async () => {
+  const { deps, calls } = makeDeps();
+  const r = await o.runTurn(msg(null, "Machen Sie eine komplette Darmspiegelung?"), deps);
+  assert.match(r.reply, /Darmspiegelung kooperieren wir/);
+  assert.equal(calls.classify.length, 0, "keine Einordnung");
+  assert.equal(calls.phrase.length, 0, "und kein Umformulieren – der Satz nennt ein Verfahren");
+  assert.equal(r.flags.llm, "none");
+});
+
 test("Frage und Terminwunsch in einem Satz: beides wird beantwortet", async () => {
   const { deps } = makeDeps();
   const r = await o.runTurn(msg(null, "Ich hätte gern einen Termin, und wie komme ich zu Ihnen?"), deps);

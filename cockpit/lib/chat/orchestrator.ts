@@ -692,6 +692,12 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
   // 2. Ab hier darf ein Modell mitreden – aber nur maskiert.
   const masked = maskPii(text);
   if (masked.masked.length) deps.audit("chat.masked", { kinds: masked.masked });
+  // „Machen Sie eine Darmspiegelung?“ darf beantwortet werden – aber der
+  // Satz selbst geht trotzdem nicht zum Modell. Er nennt ein Verfahren, und
+  // die kostenlosen Anbieter haben keinen Auftragsverarbeitungsvertrag.
+  // Die Antwort ist dann der gepflegte Faktentext, unformuliert.
+  const askText = detectHealthData(text) === null ? masked.text : null;
+  if (askText === null) deps.audit("chat.health_filtered", { medicalQuestion: false, kept: "leistungsfrage" });
 
   // 3. Wünsche, die in jedem Schritt gelten
   if (HANDOVER_RE.test(text) || HANDOVER_RE.test(norm)) {
@@ -788,11 +794,11 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
       // die Antwort, dann der Termin. Eine der beiden Absichten fallen zu
       // lassen wäre in beide Richtungen falsch.
       if (BOOKING_WISH_RE.test(text) || BOOKING_WISH_RE.test(norm)) {
-        const info = await answerTopics(topics, { ...state, failures: 0 }, deps, masked.text);
+        const info = await answerTopics(topics, { ...state, failures: 0 }, deps, askText);
         const res = await startBooking({ ...state, failures: 0 }, deps, now, text, when);
         return { ...res, reply: `${info.reply} ${res.reply}` };
       }
-      return answerTopics(topics, { ...state, failures: 0 }, deps, masked.text);
+      return answerTopics(topics, { ...state, failures: 0 }, deps, askText);
     }
   }
   if (wantsBooking) {
@@ -802,10 +808,17 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
 
   // 7. Frage zur Praxis – aus gepflegten Fakten, notfalls vom Modell formuliert
   const topics = topicsFor(text, norm, lang);
-  if (topics.length) return answerTopics(topics, { ...state, failures: 0 }, deps, masked.text);
+  if (topics.length) return answerTopics(topics, { ...state, failures: 0 }, deps, askText);
 
-  // 8. Erst jetzt das Modell fragen – und nur als Hinweis
-  return classifyAndRoute(text, masked.text, state, deps, now, isQuestion);
+  // 8. Erst jetzt das Modell fragen – und nur als Hinweis. Enthält der Satz
+  //    ein Fachwort, wird auch hier nicht gefragt: Dann ist die ehrliche
+  //    Antwort „das weiß ich nicht“ besser als eine Einordnung, für die der
+  //    Satz das Haus verlassen müsste.
+  if (askText === null) {
+    deps.audit("chat.unknown_topic", { topic: "frage" });
+    return say({ ...state, failures: 0 }, T.unknownTopic, { quick: quick(lang, ["callback", "book"]), links: practiceLink(lang) });
+  }
+  return classifyAndRoute(text, askText, state, deps, now, isQuestion);
 }
 
 /**
