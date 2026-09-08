@@ -15,7 +15,7 @@ const KNOWN = /(termin|buchen|öffnungszeit|sprechzeit|anfahrt|adresse|absagen|v
 const YES_NO = /^(ja|nein|yes|no)\b/iu;
 const addressing = (over = {}) => ({
   hasIntent: (t) => KNOWN.test(t) || YES_NO.test(t),
-  awaitingConfirmation: false,
+  stage: "idle",
   lang: "de",
   ...over,
 });
@@ -131,7 +131,7 @@ test("Ein Satz mit Absicht geht durch, egal wie kurz", () => {
 // -------------------------------- 3. Keine Buchung aus einem fremden Ja
 
 test("Bloßes „ja“ auf die Bestätigungsfrage bucht nicht, sondern fragt einmal zurück", () => {
-  const addr = addressing({ awaitingConfirmation: true });
+  const addr = addressing({ stage: "confirm" });
   const { state, actions } = run([{ kind: "final", at: 100, text: "ja" }], addr);
   assert.deepEqual(dos(actions), ["say"]);
   assert.equal(actions[0].reason, "reconfirm");
@@ -141,13 +141,13 @@ test("Bloßes „ja“ auf die Bestätigungsfrage bucht nicht, sondern fragt ein
 });
 
 test("Eine klare Zusage bucht sofort", () => {
-  const addr = addressing({ awaitingConfirmation: true });
+  const addr = addressing({ stage: "confirm" });
   const { actions } = run([{ kind: "final", at: 100, text: "Ja, bitte buchen" }], addr);
   assert.deepEqual(dos(actions), ["send"]);
 });
 
 test("Nach der Rückfrage zählt auch ein knappes Ja", () => {
-  const addr = addressing({ awaitingConfirmation: true });
+  const addr = addressing({ stage: "confirm" });
   let state = initialState(0);
   let r = step(state, { kind: "final", at: 100, text: "ja" }, addr);
   assert.equal(r.actions[0].do, "say");
@@ -156,7 +156,7 @@ test("Nach der Rückfrage zählt auch ein knappes Ja", () => {
 });
 
 test("Außerhalb der Bestätigungsfrage bleibt ein „ja“ ein ganz normales Ja", () => {
-  const { actions } = run([{ kind: "final", at: 100, text: "ja" }], addressing({ awaitingConfirmation: false }));
+  const { actions } = run([{ kind: "final", at: 100, text: "ja" }], addressing({ stage: "idle" }));
   assert.deepEqual(dos(actions), ["send"]);
 });
 
@@ -185,7 +185,7 @@ test("Ein endloses Gespräch endet beim Empfang statt in der Schleife", () => {
 });
 
 test("Englisch: Rückfrage und Nachfrage kommen auf Englisch", () => {
-  const addr = addressing({ awaitingConfirmation: true, lang: "en" });
+  const addr = addressing({ stage: "confirm", lang: "en" });
   const { actions } = run([{ kind: "final", at: 100, text: "yes" }], addr);
   assert.match(actions[0].text, /shall I book/);
 });
@@ -195,4 +195,26 @@ test("Der Zustand bleibt eine reine Kopie – nichts wird im Vorbei geändert", 
   const snapshot = JSON.stringify(before);
   step(before, { kind: "final", at: 100, text: "Termin am Dienstag" }, addressing());
   assert.equal(JSON.stringify(before), snapshot, "der übergebene Zustand bleibt unberührt");
+});
+
+test("Es gibt nur eine Stelle, an der über Nebengespräche entschieden wird", async () => {
+  const { judge } = await import("./addressee.ts");
+  const addr = addressing({ stage: "date" });
+  // Was addressee.ts als „aside" beurteilt, darf turn.ts niemals senden.
+  for (const text of ["sag mal, wo ist der Kalender", "guck mal schnell", "Schatz, kommst du"]) {
+    const urteil = judge({ text }, { stage: "date", hasIntent: addr.hasIntent(text), isEmergency: false, lang: "de" });
+    assert.equal(urteil.verdict, "aside", text);
+    const { actions } = run([{ kind: "final", at: 100, text }], addr);
+    assert.ok(!dos(actions).includes("send"), `turn.ts hat trotzdem gesendet: ${text}`);
+  }
+});
+
+test("Ein Notfall geht immer durch – auch leise, kurz und mitten in der Ausgabe", () => {
+  const addr = addressing({ stage: "date", isEmergency: (t) => /brustschmerz|luft|bewusstlos/i.test(t) });
+  const { actions } = run([
+    { kind: "speech_out_started", at: 0, text: "Am Dienstag ist frei" },
+    { kind: "speech_started", at: 100 },
+    { kind: "final", at: 300, text: "ich krieg keine Luft", durationMs: 200, relativeDb: -20 },
+  ], addr);
+  assert.deepEqual(dos(actions), ["stop_output", "send"]);
 });

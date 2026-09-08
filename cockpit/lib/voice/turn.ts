@@ -27,7 +27,10 @@
  * Ausführen:  node --test lib/voice/turn.test.mjs
  */
 
+import { DEFAULT_ADDRESSEE, isBindingYes, judge, type AddresseeConfig, type Stage, type Verdict } from "./addressee.ts";
+
 export type Lang = "de" | "en";
+export type { Stage, Verdict };
 
 /** Was der Assistent gerade tut. */
 export type Phase =
@@ -51,10 +54,19 @@ export type VoiceEvent =
   | { kind: "speech_started"; at: number }
   | { kind: "speech_stopped"; at: number }
   | { kind: "partial"; at: number; text: string }
-  | { kind: "final"; at: number; text: string; confidence?: number }
+  | {
+      kind: "final";
+      at: number;
+      text: string;
+      confidence?: number;
+      /** Länge der Äußerung, falls der Kanal sie misst. */
+      durationMs?: number;
+      /** Lautstärke relativ zum Sprechpegel dieser Sitzung. */
+      relativeDb?: number;
+    }
   /** Der Anbieter meldet ein inhaltliches Ende der Äußerung. */
   | { kind: "turn_end"; at: number }
-  | { kind: "speech_out_started"; at: number }
+  | { kind: "speech_out_started"; at: number; text?: string }
   | { kind: "speech_out_finished"; at: number }
   | { kind: "tick"; at: number };
 
@@ -90,15 +102,8 @@ export interface TurnConfig {
   unmatchedBeforePrompt: number;
   /** Unter dieser Sicherheit wird nichts weitergegeben. */
   minConfidence: number;
-  /**
-   * Äußerungen bis zu dieser Länge ohne erkennbare Absicht gelten als
-   * nicht an uns gerichtet. Der Wert ist eine Abwägung: höher gesetzt
-   * fängt er mehr Nebenrede ab, lässt aber eine echte, ungewöhnlich
-   * formulierte Frage einmal ins Leere laufen – aufgefangen von der
-   * Nachfrage nach `unmatchedBeforePrompt`. Am Telefon wiegt eine
-   * unpassende Antwort in den Raum schwerer als ein Takt Stille.
-   */
-  shortWords: number;
+  /** Schwellen für „galt das mir?" – siehe addressee.ts. */
+  addressee: AddresseeConfig;
   /** In der Bestätigungsphase ein bloßes „ja" nicht als Buchung werten. */
   requireStrongConfirm: boolean;
   /** Nach so vielen Zügen wird an den Empfang übergeben. */
@@ -110,7 +115,7 @@ export const DEFAULT_CONFIG: TurnConfig = {
   silenceHandoverMs: 20_000,
   unmatchedBeforePrompt: 2,
   minConfidence: 0.5,
-  shortWords: 6,
+  addressee: DEFAULT_ADDRESSEE,
   requireStrongConfirm: true,
   maxTurns: 40,
 };
@@ -129,6 +134,8 @@ export interface TurnState {
   reconfirmAsked: boolean;
   /** Wartet der Patient uns ausdrücklich ab („Moment")? */
   waiting: boolean;
+  /** Was der Assistent gerade sagt – Grundlage der Echo-Erkennung. */
+  saying: string;
   turns: number;
 }
 
@@ -141,6 +148,7 @@ export function initialState(now = 0): TurnState {
     unmatched: 0,
     reconfirmAsked: false,
     waiting: false,
+    saying: "",
     turns: 0,
   };
 }
@@ -153,14 +161,6 @@ const WAIT_RE =
 
 /** Reine Füllwörter und Geräusche – daraus lässt sich nichts ableiten. */
 const FILLER_RE = /^(?:[\s.,!?-]|ähm?|öhm?|hm+|mhm+|äh|eh|oh|ach|also|ja ja|uhm?|um|uh|er|hmm)+$/iu;
-
-/**
- * Wendungen, die typischerweise jemandem im Raum gelten. Bewusst kurz
- * gehalten: Eine lange Liste erzeugt Fehlalarme, und der eigentliche
- * Schutz ist ohnehin die Regel „passt zu nichts und ist kurz → schweigen".
- */
-const SIDE_TALK_RE =
-  /(?<!\p{L})(?:sag (?:mal|ihm|ihr) |guck mal|schau mal|hol (?:mir|mal) |gib mir mal|mach mal|wo hast du|hast du (?:mal )?(?:den|die|das) |bring mir|komm mal|lass mich|nicht jetzt|halt kurz)/iu;
 
 /**
  * Eine eindeutige Zusage. „Ja" allein reicht am Telefon nicht: Es könnte
@@ -182,8 +182,12 @@ const BARE_YES_RE = /^(?:ja|jawohl|jo|jup|ok|okay|genau|passt|richtig|stimmt|yes
 export interface Addressing {
   /** Ergibt der Satz für den Gesprächsautomaten eine Absicht? */
   hasIntent: (text: string) => boolean;
-  /** Steht der Gesprächsautomat gerade auf der Bestätigungsfrage? */
-  awaitingConfirmation: boolean;
+  /** Trifft der Satz eine angebotene Schaltfläche eindeutig? */
+  matchesQuick?: (text: string) => boolean;
+  /** Hat die Notfallerkennung angeschlagen? */
+  isEmergency?: (text: string) => boolean;
+  /** Wo steht der Gesprächsautomat gerade? */
+  stage: Stage;
   lang: Lang;
 }
 
@@ -213,11 +217,13 @@ export function step(state: TurnState, event: VoiceEvent, addressing: Addressing
   switch (event.kind) {
     case "speech_out_started":
       s.phase = "speaking";
+      s.saying = event.text ?? "";
       s.lastActivityAt = event.at;
       return { state: s, actions };
 
     case "speech_out_finished":
       s.phase = "idle";
+      s.saying = "";
       s.lastActivityAt = event.at;
       return { state: s, actions };
 
@@ -264,19 +270,33 @@ export function step(state: TurnState, event: VoiceEvent, addressing: Addressing
         actions.push({ do: "ignore", text, reason: "asked_to_wait" });
         return { state: s, actions };
       }
-      if (SIDE_TALK_RE.test(text) && !addressing.hasIntent(text)) {
-        s.phase = "idle";
-        actions.push({ do: "ignore", text, reason: "not_addressed" });
-        return { state: s, actions };
-      }
-
-      const words = text.split(/\s+/u).filter(Boolean).length;
-      const intent = addressing.hasIntent(text);
+      // Galt der Satz uns? Die Beurteilung steht in addressee.ts – hier
+      // wird sie nur in Handlungen übersetzt, damit es genau eine Stelle
+      // gibt, an der über Nebengespräche entschieden wird.
+      const verdict = judge(
+        {
+          text,
+          durationMs: event.durationMs,
+          relativeDb: event.relativeDb,
+          duringOutput: state.phase === "speaking",
+          assistantSaying: state.saying || null,
+        },
+        {
+          stage: addressing.stage,
+          hasIntent: addressing.hasIntent(text),
+          matchesQuick: addressing.matchesQuick?.(text) ?? false,
+          isEmergency: addressing.isEmergency?.(text) ?? false,
+          lang: addressing.lang,
+        },
+        config.addressee,
+      ).verdict;
 
       // Eine knappe Zusage auf die Bestätigungsfrage ist der einzige Fall,
-      // in dem ein Missverständnis Geld und einen Termin kostet.
-      if (addressing.awaitingConfirmation && config.requireStrongConfirm && BARE_YES_RE.test(text) && !STRONG_YES_RE.test(text)) {
-        if (!state.reconfirmAsked) {
+      // in dem ein Missverständnis Geld und einen Termin kostet. Gebucht
+      // wird nur, was `isBindingYes` durchlässt: Ganzäußerung, richtige
+      // Stufe, eindeutig an uns gerichtet.
+      if (addressing.stage === "confirm" && config.requireStrongConfirm && BARE_YES_RE.test(text) && !STRONG_YES_RE.test(text)) {
+        if (!state.reconfirmAsked || !isBindingYes(text, verdict, addressing.stage)) {
           s.phase = "speaking";
           s.reconfirmAsked = true;
           actions.push({ do: "say", text: RECONFIRM[addressing.lang], reason: "reconfirm" });
@@ -286,19 +306,17 @@ export function step(state: TurnState, event: VoiceEvent, addressing: Addressing
         s.reconfirmAsked = false;
       }
 
-      if (!intent && words <= config.shortWords) {
-        // Kurz und zu nichts passend: vermutlich nicht an uns gerichtet.
-        // Schweigen ist hier die richtige Antwort, nicht „nicht verstanden".
+      if (verdict !== "me") {
+        // Nicht an uns gerichtet oder unklar: schweigen ist die richtige
+        // Antwort, nicht „das habe ich nicht verstanden".
         s.phase = "idle";
         s.unmatched = state.unmatched + 1;
+        actions.push({ do: "ignore", text, reason: "not_addressed" });
         if (s.unmatched >= config.unmatchedBeforePrompt) {
           s.unmatched = 0;
           s.phase = "speaking";
-          actions.push({ do: "ignore", text, reason: "not_addressed" });
           actions.push({ do: "say", text: STILL_THERE[addressing.lang], reason: "still_there" });
-          return { state: s, actions };
         }
-        actions.push({ do: "ignore", text, reason: "not_addressed" });
         return { state: s, actions };
       }
 
