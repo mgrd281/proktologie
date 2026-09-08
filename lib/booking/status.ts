@@ -25,6 +25,13 @@ export interface CockpitStatus {
    * abschaltet.
    */
   chatEnabled: boolean;
+  /**
+   * Mikrofon im Chatfenster. Fehlt das Feld oder ist kein Sprachanbieter
+   * eingerichtet, gilt „aus“ – hier gilt die umgekehrte Vorsicht als beim
+   * Chat: Ein Knopf, hinter dem nichts passiert, ist schlimmer als kein
+   * Knopf, und Zuhören kostet je Minute.
+   */
+  voice: boolean;
 }
 
 export type ProviderChoice = {
@@ -54,6 +61,7 @@ function parseStatus(body: unknown): CockpitStatus | null {
     bookingPaused: b.bookingPaused,
     banner: banner || null,
     chatEnabled: typeof b.chatEnabled === "boolean" ? b.chatEnabled : true,
+    voice: b.voice === true,
   };
 }
 

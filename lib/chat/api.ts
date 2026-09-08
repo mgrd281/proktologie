@@ -139,3 +139,48 @@ export async function sendChat(
     clearTimeout(timer);
   }
 }
+
+
+// ------------------------------------------------------------- Sprache
+
+export interface VoiceSecret {
+  value: string;
+  expiresAt: number;
+  sampleRate: number;
+}
+
+/**
+ * Einen kurzlebigen Ausweis fürs Zuhören holen. Der echte Schlüssel des
+ * Anbieters bleibt im Cockpit; hierher kommt nur ein Geheimnis, das nach
+ * Minuten verfällt und für genau eine Sitzung gilt.
+ */
+export async function voiceToken(base: string, sessionId: string, lang: ChatLang): Promise<VoiceSecret> {
+  const res = await fetch(`${base}/api/public/v1/voice/token`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ v: 1, sessionId, lang }),
+  });
+  if (!res.ok) throw new Error(`voice/token ${res.status}`);
+  const body = (await res.json()) as { value?: string; expiresAt?: number; sampleRate?: number };
+  if (!body.value) throw new Error("voice/token ohne Ausweis");
+  return { value: body.value, expiresAt: body.expiresAt ?? 0, sampleRate: body.sampleRate ?? 24_000 };
+}
+
+/**
+ * Einen fertigen Antwortsatz sprechen lassen. Hier geht ausschließlich
+ * hinein, was der Automat formuliert hat – nie der Text der Patientin.
+ */
+export async function voiceSpeak(base: string, sessionId: string, lang: ChatLang, text: string): Promise<Blob | null> {
+  try {
+    const res = await fetch(`${base}/api/public/v1/voice/speak`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ v: 1, sessionId, lang, text: text.slice(0, 600) }),
+    });
+    if (!res.ok) return null;
+    return await res.blob();
+  } catch {
+    // Ohne Stimme bleibt die Antwort trotzdem lesbar im Fenster stehen.
+    return null;
+  }
+}

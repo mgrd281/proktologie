@@ -21,7 +21,7 @@ export function allowedOrigins(): string[] {
     .filter(Boolean);
 }
 
-function corsHeaders(req: Request): Record<string, string> {
+export function corsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("origin");
   const allow = origin && allowedOrigins().includes(origin) ? origin : null;
   const h: Record<string, string> = {
@@ -56,7 +56,9 @@ export type ApiErrorCode =
   | "conflict"
   | "unsupported"
   | "blocked"
-  | "chat_disabled";
+  | "chat_disabled"
+  | "voice_disabled"
+  | "voice_unavailable";
 
 export function apiError(req: Request, status: number, code: ApiErrorCode, message: string, extra?: Record<string, unknown>) {
   return json(req, { error: { code, message, ...extra } }, { status });

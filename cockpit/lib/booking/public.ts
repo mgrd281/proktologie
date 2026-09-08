@@ -7,6 +7,7 @@ import { addDays, dateKey, startOfDay, zonedToUtc } from "../time.ts";
 import { acceptOffer, afterBooked, afterCancelled, afterRescheduled } from "./lifecycle.ts";
 import type { AppointmentView, Locale, WaitlistView } from "./model.ts";
 import * as repo from "./repo.ts";
+import { voiceConfigured } from "../voice/openai.ts";
 
 /**
  * Öffentliche Fachlogik hinter /api/public/v1. Die Website spricht nur mit
@@ -50,6 +51,8 @@ export interface PublicStatus {
   pauseTo: string | null;
   /** Chat-Assistent auf der Website sichtbar */
   chatEnabled: boolean;
+  /** Mikrofon im Chatfenster – nur mit eingerichtetem Sprachanbieter. */
+  voice: boolean;
 }
 
 export async function publicStatus(): Promise<PublicStatus> {
@@ -61,6 +64,9 @@ export async function publicStatus(): Promise<PublicStatus> {
     pauseFrom: s.pauseFrom?.toISOString() ?? null,
     pauseTo: s.pauseTo?.toISOString() ?? null,
     chatEnabled: s.chatEnabled,
+    // Ohne Schlüssel gibt es kein Mikrofon – die Website soll gar nicht
+    // erst einen Knopf zeigen, hinter dem nichts passiert.
+    voice: s.chatEnabled && voiceConfigured(),
   };
 }
 
