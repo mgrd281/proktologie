@@ -279,6 +279,17 @@ const INSURANCE_RE = /(?<![A-Z0-9])[A-Z]\d{9}(?![0-9])/g;
 const MEDICAL_QUESTION_RE =
   /(was ist|ist das|ist es|sind das|normal|schlimm|gefährlich|gefaehrlich|bedenklich|was soll ich|was kann ich|was hilft|hilft (?:mir|das|es|gegen)|was tun|was mache ich|muss ich mir sorgen|(?:kann|darf|soll|sollte) ich (?:\p{L}+\s+){0,5}(?:nehmen|einnehmen|benutzen|anwenden|auftragen)|empfehl|welche[srn]? (?:salbe|creme|medikament|tablette|mittel|schmerzmittel|zäpfchen|zaepfchen)|what is|is (?:it|this|that)|should i|do i need|dangerous|serious|what helps|how (?:do|can) i treat|what (?:can|should) i (?:do|take|use)|can i take|recommend|which (?:ointment|cream|medication|painkiller|tablet))/iu;
 
+/**
+ * Dieselbe Frage, aber ohne die ganz allgemeinen Wendungen. Sie gilt nur
+ * dort, wo außer einer Terminart oder einer Leistung gar kein
+ * gesundheitlicher Begriff im Satz steht: „What should I expect at the
+ * first visit?" und „How much time should I plan for a check-up?" sind
+ * Fragen nach dem Ablauf, keine nach Behandlung – „should i" allein darf
+ * daraus keine medizinische Auskunft machen.
+ */
+const MEDICAL_ADVICE_RE =
+  /(was ist|ist das|ist es|sind das|normal|schlimm|gefährlich|gefaehrlich|bedenklich|was soll ich|was kann ich|was hilft|hilft (?:mir|das|es|gegen)|was tun|was mache ich|muss ich mir sorgen|(?:kann|darf|soll|sollte) ich (?:\p{L}+\s+){0,5}(?:nehmen|einnehmen|benutzen|anwenden|auftragen)|empfehl|welche[srn]? (?:salbe|creme|medikament|tablette|mittel|schmerzmittel|zäpfchen|zaepfchen)|what is|is (?:it|this|that)|dangerous|serious|what helps|how (?:do|can) i treat|what (?:can|should) i (?:do|take|use)|can i take|recommend|which (?:ointment|cream|medication|painkiller|tablet))/iu;
+
 export interface HealthHit {
   /** Gefundene Begriffe – nur zur Diagnose im Test, nie zur Anzeige. */
   terms: string[];
@@ -314,7 +325,7 @@ export function detectHealthData(text: string, options: HealthOptions = {}): Hea
   if (!terms.length && !pattern && !insurance) {
     // „Was hilft gegen Hämorrhoiden?“: Die Terminart darf genannt werden,
     // eine Frage nach Behandlung oder Bedeutung bleibt aber medizinisch.
-    if (ignored && MEDICAL_QUESTION_RE.test(text)) return { terms: [], medicalQuestion: true };
+    if (ignored && MEDICAL_ADVICE_RE.test(text)) return { terms: [], medicalQuestion: true };
     return null;
   }
   return { terms, medicalQuestion: (terms.length > 0 || pattern) && MEDICAL_QUESTION_RE.test(subject) };

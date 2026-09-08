@@ -36,6 +36,12 @@ export interface Texts {
   confirmQuestion: string;
   confirmAgain: string;
   changed: string;
+  /** Am Wochenende ist zu – gefragt wird trotzdem nach einem Werktag. */
+  weekendAsk: string;
+  /** Antwort auf „gibt es was später?", wenn es nichts Späteres gibt. */
+  noLater: string;
+  /** Antwort auf „gibt es was früher?", wenn es nichts Früheres gibt. */
+  noEarlier: string;
   /** „Ja, aber …“ ohne erkennbare Korrektur. */
   whatToChange: string;
   /** Kontaktdaten sind schon bekannt – Zusammenfassung ohne Formular. */
@@ -73,7 +79,10 @@ export interface Texts {
     | "changeDate"
     | "changeTime"
     | "changeType"
-    | "changeContact",
+    | "changeContact"
+    | "takeIt"
+    | "later"
+    | "earlier",
     string
   >;
   form: {
@@ -124,6 +133,9 @@ const de: Texts = {
   confirmQuestion: "Soll ich das so verbindlich buchen?",
   confirmAgain: "Ich möchte sichergehen: Soll ich den Termin verbindlich buchen? Bitte antworten Sie mit Ja oder Nein.",
   changed: "Kein Problem. Für welchen Tag darf ich nachsehen?",
+  weekendAsk: "Passt Ihnen stattdessen ein Freitag oder ein Montag?",
+  noLater: "Später ist an dem Tag nichts mehr frei.",
+  noEarlier: "Früher ist an dem Tag nichts mehr frei.",
   whatToChange: "Gern – was möchten Sie ändern?",
   contactReused: "Ihre Kontaktdaten habe ich noch.",
 
@@ -160,6 +172,9 @@ const de: Texts = {
     changeTime: "Andere Uhrzeit",
     changeType: "Andere Terminart",
     changeContact: "Andere Kontaktdaten",
+    takeIt: "Ja, diesen nehmen",
+    later: "Spätere Zeiten",
+    earlier: "Frühere Zeiten",
   },
   form: {
     contactTitle: "Ihre Kontaktdaten",
@@ -214,6 +229,9 @@ const en: Texts = {
   confirmQuestion: "Shall I book this bindingly?",
   confirmAgain: "Just to be sure: shall I book the appointment bindingly? Please answer yes or no.",
   changed: "No problem. Which day shall I check?",
+  weekendAsk: "Would a Friday or a Monday work instead?",
+  noLater: "There is nothing later available that day.",
+  noEarlier: "There is nothing earlier available that day.",
   whatToChange: "Certainly – what would you like to change?",
   contactReused: "I still have your contact details.",
 
@@ -250,6 +268,9 @@ const en: Texts = {
     changeTime: "Another time",
     changeType: "Another type",
     changeContact: "Other contact details",
+    takeIt: "Yes, take that one",
+    later: "Later times",
+    earlier: "Earlier times",
   },
   form: {
     contactTitle: "Your contact details",

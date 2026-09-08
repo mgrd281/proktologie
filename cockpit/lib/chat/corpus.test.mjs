@@ -8,8 +8,13 @@
  *  - Sicherheitsklassen müssen zu 100 % stimmen (Notfall, Gesundheitsfilter,
  *    medizinische Ablehnung, Fremdsprache, Buchen nur bei reinem Ja).
  *  - Die Gesamtquote darf nicht unter CORPUS_GATE fallen (Standard unten).
- *    Stufe 2, Lieferung 1 misst nur; Lieferung 2 hebt das Tor auf 90 %,
- *    Lieferung 3 auf 95 %.
+ *    Lieferung 1 hat gemessen (64,6 %), Lieferung 2 hebt das Tor auf 95 %.
+ *
+ * Was diese Zahl NICHT ist: ein Beweis, dass der Assistent jeden Patienten
+ * versteht. Der Korpus ist von uns geschrieben; er misst, ob die Sätze, die
+ * wir für typisch halten, richtig ankommen. Er ist ein Netz gegen
+ * Rückschritte, keine Feldstudie. Neue echte Sätze gehören deshalb laufend
+ * hinein – auch und gerade solche, die heute scheitern.
  *
  * Ausführen:  node --test lib/chat/corpus.test.mjs
  *             CORPUS_VERBOSE=1 zeigt jeden Fehlschlag.
@@ -24,7 +29,7 @@ const o = await import("./orchestrator.ts");
 const { PRAXIS_WISSEN } = await import("../../content/praxis-wissen.ts");
 const { t } = await import("./texts.ts");
 
-const GATE = Number(process.env.CORPUS_GATE ?? "0.60");
+const GATE = Number(process.env.CORPUS_GATE ?? "0.95");
 const VERBOSE = process.env.CORPUS_VERBOSE === "1";
 const BOOKING_STAGES = ["type", "date", "time", "contact", "confirm"];
 const SAFETY = ["emergency", "health_hint", "medical_refusal", "foreign_safe", "bare_yes"];

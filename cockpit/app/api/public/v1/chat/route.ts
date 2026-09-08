@@ -132,7 +132,11 @@ function realDeps(ip: string, work: { touched: boolean }): ChatDeps {
     audit: (event, meta) => {
       // Ins revisionssichere Protokoll gehen nur Vorgänge, die jemanden
       // betreffen könnten. Der Rest ist eine Zeile im Log – ohne Inhalt.
-      if (event === "chat.blocked" || event === "chat.daily_limit" || event === "chat.emergency") {
+      // „chat.unknown_topic“ gehört dazu, obwohl es niemanden betrifft: Es
+      // ist die einzige Spur davon, was Patientinnen fragen, ohne eine
+      // Antwort zu bekommen – und die Praxis soll das sehen. Im Protokoll
+      // steht nur der Themenschlüssel, nie der Satz.
+      if (event === "chat.blocked" || event === "chat.daily_limit" || event === "chat.emergency" || event === "chat.unknown_topic") {
         void audit({ action: event, entity: "chat", meta: meta ?? {} }).catch(() => {});
       } else {
         console.log(`[chat] ${event}${meta ? ` ${JSON.stringify(meta)}` : ""}`);

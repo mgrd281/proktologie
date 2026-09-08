@@ -191,9 +191,9 @@ test("Buchung im Fenster: Bestätigungsfrage, Referenz, Mail an Patientin und Pr
   await dialog.getByRole("button", { name: "Termin vereinbaren" }).click();
   await dialog.getByRole("button", { name: "Kontrolltermin", exact: true }).click({ timeout: 20_000 });
   await dialog.getByRole("button", { name: "Nächster freier Termin" }).click({ timeout: 20_000 });
-  // Erster angebotener Tag, dann erste angebotene Uhrzeit
-  await dialog.locator("button").filter({ hasText: /^\w+tag, / }).first().click({ timeout: 20_000 });
-  await dialog.locator("button").filter({ hasText: /^\d{2}:\d{2} Uhr$/ }).first().click({ timeout: 20_000 });
+  // Der früheste Platz steht als Satz da – ein Klick nimmt ihn.
+  await expect(dialog.getByRole("log")).toContainText("Der früheste freie Termin ist", { timeout: 20_000 });
+  await dialog.getByRole("button", { name: "Ja, diesen nehmen" }).click({ timeout: 20_000 });
 
   await expect(dialog.getByText("Ihre Kontaktdaten", { exact: true })).toBeVisible({ timeout: 20_000 });
   await dialog.getByLabel("Vorname").fill("Erika");
@@ -248,7 +248,9 @@ test("Zwei gleichzeitige Zusagen für denselben Platz: nur eine bucht", async ({
   expect(gebucht.length, `genau eine Buchung, nicht ${gebucht.length}`).toBe(1);
   const andere = [x, y].find((r) => !r.answer.flags.booked)!;
   expect(andere.answer.reply).toMatch(/^Diese Zeit wurde gerade vergeben\./);
-  expect(andere.answer.quick?.every((q) => q.id.startsWith("time:"))).toBeTruthy();
+  // Andere Zeiten desselben Tages zum Anklicken – und ein Ausweg auf einen anderen Tag.
+  expect(andere.answer.quick?.some((q) => q.id.startsWith("time:"))).toBeTruthy();
+  expect(andere.answer.quick?.every((q) => q.id.startsWith("time:") || ["later", "earlier", "changeDate"].includes(q.id))).toBeTruthy();
 });
 
 test("Notfall: 112 und 116 117 im Fenster, ohne einen einzigen Modellaufruf", async ({ page, request }) => {
@@ -493,4 +495,52 @@ test("„Neues Gespräch“ verlässt den Notfallmodus", async ({ page }) => {
   await expect(dialog.getByRole("log")).toContainText("Guten Tag");
   await expect(dialog.getByRole("log")).not.toContainText("Herzinfarkt");
   await expect(dialog.getByRole("button", { name: "Termin vereinbaren" })).toBeVisible();
+});
+
+// ------------------------------------------- Verstehen (Stufe 2, 2B/2C)
+
+test("„So früh wie möglich“ ist ein Satz und ein Klick bis zum Formular", async ({ request }) => {
+  const r = await conversation(request, [{ quick: "type:kontrolle" }, "So früh wie möglich bitte"]);
+  expect(r.answer.reply).toMatch(/^Der früheste freie Termin ist /);
+  const nehmen = r.answer.quick?.find((q) => q.label === "Ja, diesen nehmen");
+  expect(nehmen, "ein Knopf, der genau diesen Termin nimmt").toBeTruthy();
+
+  const weiter = await chat(request, { sessionId: r.sessionId, state: r.answer.state, action: { kind: "quick", id: nehmen!.id } });
+  expect(weiter.answer.form?.id, "ein Klick weiter steht das Kontaktformular").toBe("contact");
+});
+
+test("Nachmittagszeiten sind sichtbar und wählbar", async ({ request }) => {
+  const avail = await request.get("/api/public/v1/availability?type=kontrolle");
+  const days = (await avail.json()).days as Array<{ date: string; slots: string[] }>;
+  const tag = days.find((d) => d.slots.some((s) => s >= "14:00"));
+  test.skip(!tag, "kein Tag mit Nachmittagszeiten im Horizont");
+
+  const r = await conversation(request, [{ quick: "type:kontrolle" }, `Am ${tag!.date} nachmittags`]);
+  const zeiten = (r.answer.quick ?? []).filter((q) => q.id.startsWith("time:")).map((q) => q.id.split("|")[1]!);
+  expect(zeiten.length, "es werden Zeiten angeboten").toBeGreaterThan(0);
+  expect(zeiten.every((z) => z >= "12:00"), `nur Nachmittag: ${zeiten.join(", ")}`).toBeTruthy();
+});
+
+test("„Wie lange dauert ein Kontrolltermin?“ antwortet mit Minuten, statt zu buchen", async ({ request }) => {
+  const r = await conversation(request, ["Wie lange dauert ein Kontrolltermin?"]);
+  expect(r.answer.reply).toMatch(/\d+ Minuten/);
+  expect(r.answer.quick?.some((q) => q.id.startsWith("type:")), "keine Buchung").toBeFalsy();
+});
+
+test("„Übernimmt die Krankenkasse die Kosten?“ wird beantwortet", async ({ request }) => {
+  const r = await conversation(request, ["Übernimmt die Krankenkasse die Kosten?"]);
+  expect(r.answer.reply).toMatch(/Krankenkassen übernommen|in der Regel/);
+  expect(r.answer.reply).not.toContain("Das weiß ich leider nicht");
+});
+
+test("Eine Leistungsfrage bekommt die Leistungsliste, keine Datenschutz-Ermahnung", async ({ request }) => {
+  const r = await conversation(request, ["Machen Sie eine komplette Darmspiegelung?"]);
+  expect(r.answer.reply).toMatch(/Darmspiegelung kooperieren wir/);
+  expect(r.answer.reply).not.toMatch(/keine gesundheitlichen Details/);
+});
+
+test("Am Wochenende ist geschlossen – und der Assistent bietet einen Werktag an", async ({ request }) => {
+  const r = await conversation(request, ["Geht auch am Samstag?"]);
+  expect(r.answer.reply).toMatch(/Am Wochenende ist die Praxis geschlossen/);
+  expect(r.answer.reply).toMatch(/Freitag oder ein Montag/);
 });

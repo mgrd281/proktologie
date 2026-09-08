@@ -10,7 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { DIENSTAG, HOURS_DE, KONTAKT, click, form, makeDeps, msg } from "./testkit.mjs";
+import { DIENSTAG, HOURS_DE, KONTAKT, click, form, makeDeps, msg, stateAt } from "./testkit.mjs";
 
 const o = await import("./orchestrator.ts");
 
@@ -84,7 +84,9 @@ test("Belegter Platz: Alternativen statt zweiter Buchung", async () => {
   assert.match(r.reply, /^Diese Zeit wurde gerade vergeben\./);
   assert.equal(r.state.stage, "time");
   assert.ok(r.quick.length > 0);
-  assert.ok(r.quick.every((q) => q.id.startsWith("time:")));
+  // Zeiten zum Anklicken – und ein Ausweg auf einen anderen Tag.
+  assert.ok(r.quick.filter((q) => q.id.startsWith("time:")).length > 0);
+  assert.ok(r.quick.every((q) => q.id.startsWith("time:") || ["changeDate", "later", "earlier"].includes(q.id)));
   assert.equal(r.flags.booked, undefined);
 });
 
@@ -530,4 +532,105 @@ test("Gewählte Sprache Englisch, deutsche Frage: die Sprechzeiten kommen trotzd
   assert.equal(r.lang, "en");
   assert.match(r.reply, /^Opening hours: /);
   assert.equal(calls.classify.length, 0);
+});
+
+// --------------------------------------------- Verstehen (Stufe 2, 2B)
+
+test("„So früh wie möglich“ ist ein Satz und ein Klick", async () => {
+  const { deps, calls } = makeDeps();
+  let r = await o.runTurn(click(null, "type:kontrolle"), deps);
+  r = await o.runTurn(msg(r.state, "So früh wie möglich bitte"), deps);
+  assert.equal(calls.nextFree.length, 1, "der früheste Platz wird gefragt");
+  assert.equal(calls.nextFree[0].fenster, null);
+  assert.match(r.reply, /^Der früheste freie Termin ist /);
+  const nehmen = r.quick?.find((q) => q.label === "Ja, diesen nehmen");
+  assert.ok(nehmen, "ein Knopf, der den Termin nimmt");
+
+  // Ein Klick weiter steht das Kontaktformular – ohne Tag und Uhrzeit zu tippen.
+  const weiter = await o.runTurn(click(r.state, nehmen.id), deps);
+  assert.equal(weiter.state.stage, "contact");
+  assert.equal(weiter.form?.id, "contact");
+  assert.equal(calls.book.length, 0);
+});
+
+test("„am liebsten vormittags“ schränkt die Suche ein, statt sie zu verwerfen", async () => {
+  const { deps, calls } = makeDeps();
+  const start = await o.runTurn(click(null, "type:kontrolle"), deps);
+  await o.runTurn(msg(start.state, "Ich nehme den ersten freien Termin, am liebsten vormittags"), deps);
+  assert.deepEqual(calls.nextFree.at(-1).fenster, { from: "07:00", to: "12:00" });
+});
+
+test("Ein Tagesteil ohne Tag ist trotzdem eine Auskunft wert", async () => {
+  const { deps, calls } = makeDeps();
+  const start = await o.runTurn(click(null, "type:kontrolle"), deps);
+  await o.runTurn(msg(start.state, "Lieber nachmittags"), deps);
+  assert.deepEqual(calls.availability.at(-1).fenster, { from: "12:00", to: "18:00" });
+});
+
+test("„gibt es was später?“ blättert weiter, statt dieselbe Liste zu wiederholen", async () => {
+  const { deps, calls } = makeDeps();
+  const state = stateAt("time", "de", { typeId: "kontrolle", date: DIENSTAG });
+  const r = await o.runTurn(msg(state, "gibt es was später?"), deps);
+  assert.equal(calls.availability.at(-1).seite, 2);
+  assert.equal(calls.availability.at(-1).datum, DIENSTAG);
+  // Gibt es keine spätere Seite, wird das gesagt statt so getan.
+  assert.match(r.reply, /Später ist an dem Tag nichts mehr frei\./);
+});
+
+test("Eine angeklickte Uhrzeit hebt ein früheres Fenster auf", async () => {
+  const { deps, calls } = makeDeps();
+  const state = stateAt("time", "de", { typeId: "kontrolle", date: DIENSTAG, window: { from: "14:00", to: "18:00" } });
+  await o.runTurn(click(state, `time:${DIENSTAG}|07:30`), deps);
+  assert.equal(calls.availability.at(-1).fenster, null, "sonst hieße es fälschlich „belegt“");
+  assert.equal(calls.availability.at(-1).uhrzeit, "07:30");
+});
+
+test("Am Wochenende ist zu – und der Assistent bietet einen Werktag an", async () => {
+  const { deps, calls } = makeDeps();
+  const r = await o.runTurn(msg(null, "Geht auch am Samstag?"), deps);
+  assert.match(r.reply, /Am Wochenende ist die Praxis geschlossen\./);
+  assert.match(r.reply, /Freitag oder ein Montag/);
+  assert.equal(calls.book.length, 0);
+});
+
+test("Ein Tippfehler kostet keinen Termin", async () => {
+  const { deps, calls } = makeDeps();
+  const start = await o.runTurn(click(null, "type:kontrolle"), deps);
+  await o.runTurn(msg(start.state, "Termin am Donerstag bitte"), deps);
+  assert.equal(calls.availability.at(-1).datum, "2026-07-16", "Donnerstag, trotz fehlendem n");
+});
+
+test("Eine Leistungsfrage ist keine Gesundheitsangabe", async () => {
+  const { deps, calls } = makeDeps();
+  const r = await o.runTurn(msg(null, "Machen Sie eine komplette Darmspiegelung?"), deps);
+  assert.match(r.reply, /Darmspiegelung kooperieren wir/);
+  assert.ok(!r.reply.includes("keine gesundheitlichen Details"), "keine Ermahnung");
+  assert.equal(calls.book.length, 0);
+
+  // Eine Schilderung derselben Sache bleibt eine Gesundheitsangabe.
+  const s = await o.runTurn(msg(null, "Ich hatte letztes Jahr eine Darmspiegelung mit Polypen"), deps);
+  assert.match(s.reply, /keine gesundheitlichen Details|Bitte schreiben Sie hier keine/);
+});
+
+test("Eine Leistungsfrage wird beantwortet, erreicht aber kein Modell", async () => {
+  const { deps, calls } = makeDeps();
+  const r = await o.runTurn(msg(null, "Machen Sie eine komplette Darmspiegelung?"), deps);
+  assert.match(r.reply, /Darmspiegelung kooperieren wir/);
+  assert.equal(calls.classify.length, 0, "keine Einordnung");
+  assert.equal(calls.phrase.length, 0, "und kein Umformulieren – der Satz nennt ein Verfahren");
+  assert.equal(r.flags.llm, "none");
+});
+
+test("Frage und Terminwunsch in einem Satz: beides wird beantwortet", async () => {
+  const { deps } = makeDeps();
+  const r = await o.runTurn(msg(null, "Ich hätte gern einen Termin, und wie komme ich zu Ihnen?"), deps);
+  assert.match(r.reply, /Christuskirche/, "die Frage wird beantwortet");
+  assert.equal(r.state.intent, "booking", "und die Buchung beginnt trotzdem");
+});
+
+test("Die Termindauer kommt aus der Datenbank, nicht aus einem festen Satz", async () => {
+  const { deps } = makeDeps();
+  const r = await o.runTurn(msg(null, "Wie lange dauert ein Termin?"), deps);
+  assert.match(r.reply, /\d+ bis \d+ Minuten/);
+  assert.notEqual(r.state.intent, "booking");
 });

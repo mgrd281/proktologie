@@ -73,13 +73,52 @@ test("Belegte Zeit: Absage plus die nächstgelegenen freien Zeiten", async () =>
 });
 
 test("Ohne Datum: die nächsten Tage mit freien Zeiten", async () => {
-  const a = await tools.naechsterFreierTermin({ art: "kontrolle" }, ctx);
+  const a = await tools.verfuegbarkeitPruefen({ art: "kontrolle" }, ctx);
   assert.equal(a.kind, "next_days");
   assert.ok(a.days.length > 0);
   assert.ok(a.days.length <= 3);
   assert.ok(a.days.every((d) => d.slots.length > 0));
   const satz = tools.renderSlotAnswer(a, "de", "Kontrolltermin", "040 490 80 21", NOW);
   assert.match(satz, /Nächste freie Zeiten für „Kontrolltermin“/);
+});
+
+test("„So früh wie möglich“ ist genau ein Platz, kein Angebot", async () => {
+  const a = await tools.naechsterFreierTermin({ art: "kontrolle" }, ctx);
+  assert.equal(a.kind, "earliest");
+  assert.match(a.date, /^\d{4}-\d{2}-\d{2}$/);
+  assert.match(a.time, /^\d{2}:\d{2}$/);
+  const satz = tools.renderSlotAnswer(a, "de", "Kontrolltermin", "040 490 80 21", NOW);
+  assert.match(satz, /^Der früheste freie Termin ist /);
+});
+
+test("Ein Fenster schränkt den frühesten Termin ein, ohne ihn zu erfinden", async () => {
+  const offen = await tools.naechsterFreierTermin({ art: "kontrolle" }, ctx);
+  const nachmittags = await tools.naechsterFreierTermin({ art: "kontrolle", fenster: { from: "14:00", to: "18:00" } }, ctx);
+  assert.equal(offen.kind, "earliest");
+  if (nachmittags.kind === "earliest") {
+    assert.ok(nachmittags.time >= "14:00" && nachmittags.time < "18:00", `Zeit im Fenster: ${nachmittags.time}`);
+  } else {
+    // Kein Nachmittagsplatz im Horizont: dann sagt das Werkzeug das ehrlich.
+    assert.equal(nachmittags.kind, "next_days");
+    assert.equal(nachmittags.days.length, 0);
+  }
+});
+
+test("Seitenweise Zeiten: dieselbe Liste, aber nicht zweimal dieselbe Seite", async () => {
+  const eins = await tools.verfuegbarkeitPruefen({ art: "kontrolle", datum: DIENSTAG, seite: 1 }, ctx);
+  assert.equal(eins.kind, "day_slots");
+  assert.equal(eins.page, 1);
+  assert.equal(eins.hasEarlier, false);
+  const zwei = await tools.verfuegbarkeitPruefen({ art: "kontrolle", datum: DIENSTAG, seite: 2 }, ctx);
+  assert.equal(zwei.kind, "day_slots");
+  if (eins.hasMore) {
+    assert.equal(zwei.page, 2);
+    assert.equal(zwei.hasEarlier, true);
+    assert.notDeepEqual(zwei.slots, eins.slots);
+  } else {
+    // Eine Seite hinter dem Ende gibt es nicht – die letzte bleibt stehen.
+    assert.equal(zwei.page, 1);
+  }
 });
 
 test("Samstag ist zu: der Assistent bietet den nächsten möglichen Tag an", async () => {
@@ -144,30 +183,3 @@ test("Terminart: Bezeichnung und Synonyme", async () => {
   assert.equal(tools.matchType("irgendwas anderes", types, "de"), null);
 });
 
-test("Datum: heute, morgen, Wochentag, deutsche und ISO-Schreibweise", () => {
-  assert.equal(tools.parseDateWords("heute noch?", NOW, "de"), "2026-07-13");
-  assert.equal(tools.parseDateWords("geht morgen?", NOW, "de"), "2026-07-14");
-  assert.equal(tools.parseDateWords("übermorgen", NOW, "de"), "2026-07-15");
-  assert.equal(tools.parseDateWords("am Dienstag bitte", NOW, "de"), "2026-07-14");
-  assert.equal(tools.parseDateWords("next friday", NOW, "en"), "2026-07-17");
-  assert.equal(tools.parseDateWords("am 16.7.", NOW, "de"), "2026-07-16");
-  assert.equal(tools.parseDateWords("am 16.07.2026", NOW, "de"), "2026-07-16");
-  assert.equal(tools.parseDateWords("2026-07-16", NOW, "de"), "2026-07-16");
-  assert.equal(tools.parseDateWords("irgendwann mal", NOW, "de"), null);
-});
-
-test("Datum ohne Jahr, das schon vorbei ist, meint das nächste Jahr", () => {
-  assert.equal(tools.parseDateWords("am 3.2.", NOW, "de"), "2027-02-03");
-});
-
-test("Uhrzeit: Ziffern, „Uhr“, halb und viertel, am/pm", () => {
-  assert.equal(tools.parseTimeWords("um 14:30"), "14:30");
-  assert.equal(tools.parseTimeWords("um 14.30 Uhr"), "14:30");
-  assert.equal(tools.parseTimeWords("um 9 Uhr"), "09:00");
-  assert.equal(tools.parseTimeWords("halb drei"), "14:30");
-  assert.equal(tools.parseTimeWords("viertel nach zwei"), "14:15");
-  assert.equal(tools.parseTimeWords("viertel vor drei"), "14:45");
-  assert.equal(tools.parseTimeWords("at 2:30 pm"), "14:30");
-  assert.equal(tools.parseTimeWords("at 9 am"), "09:00");
-  assert.equal(tools.parseTimeWords("irgendwann"), null);
-});

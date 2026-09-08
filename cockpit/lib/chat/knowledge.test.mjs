@@ -56,14 +56,48 @@ test("Gepflegte Fakten werden geantwortet, ungepflegte als unbekannt gemeldet", 
 
 test("Was die Praxis nicht geliefert hat, ist ausdrücklich als offen markiert", () => {
   const offen = unknownTopics();
-  for (const t of ["parken", "barrierefreiheit", "kassen", "urlaubsvertretung", "mitbringen"]) {
+  for (const t of ["parken", "barrierefreiheit", "urlaubsvertretung", "mitbringen", "sprachen"]) {
     assert.ok(offen.includes(t), `${t} sollte offen sein`);
   }
+  // „oeffnungszeiten“ und „dauer“ sind nicht ungepflegt, sondern live aus
+  // der Datenbank – sie dürfen hier nicht als offen erscheinen.
+  for (const t of ["oeffnungszeiten", "dauer"]) {
+    assert.ok(!offen.includes(t), `${t} ist live, nicht offen`);
+  }
   // Und was belegt ist, ist in beiden Sprachen belegt
-  for (const t of ["adresse", "anfahrt", "kontakt", "ueberweisung", "vorbereitung", "datenschutz"]) {
+  const belegt = [
+    "adresse", "anfahrt", "kontakt", "ueberweisung", "vorbereitung", "datenschutz",
+    "kassen", "diskretion", "erstbesuch", "arzt", "leistungen", "doctolib", "qualitaet", "wartezeit", "ohneTermin",
+  ];
+  for (const t of belegt) {
     assert.ok(PRAXIS_WISSEN[t].de, `${t} fehlt auf Deutsch`);
     assert.ok(PRAXIS_WISSEN[t].en, `${t} fehlt auf Englisch`);
   }
+});
+
+test("Leistungsfragen führen auf das Leistungsspektrum – samt ehrlicher Grenze", () => {
+  assert.ok(findTopics("Behandeln Sie Fisteln?", "de").includes("leistungen"));
+  assert.ok(findTopics("Machen Sie eine Rektoskopie?", "de").includes("leistungen"));
+  assert.ok(findTopics("Do you do a colonoscopy?", "en").includes("leistungen"));
+  assert.match(PRAXIS_WISSEN.leistungen.de, /Darmspiegelung/);
+  assert.match(PRAXIS_WISSEN.leistungen.en, /colonoscopy/);
+  // Ein Symptom ist keine Leistungsfrage – das fängt der Sicherheitsfilter ab.
+  assert.ok(!findTopics("Ich habe Schmerzen", "de").includes("leistungen"));
+});
+
+test("Die Termindauer kommt aus der Datenbank, nicht aus einem Text", () => {
+  const rows = [
+    { label: "Kontrolltermin", durationMin: 15 },
+    { label: "Proktologische Erstuntersuchung", durationMin: 30 },
+  ];
+  const spanne = answerFromFacts(["dauer"], "de", { ...live, durations: rows });
+  assert.match(spanne.text, /15 bis 30 Minuten/);
+  const genannt = answerFromFacts(["dauer"], "de", { ...live, durations: rows, typeLabel: "Kontrolltermin" });
+  assert.match(genannt.text, /„Kontrolltermin“ planen wir 15 Minuten/);
+  // Ohne Daten wird nicht geraten.
+  const ohne = answerFromFacts(["dauer"], "de", live);
+  assert.equal(ohne.text, "");
+  assert.deepEqual(ohne.unknown, ["dauer"]);
 });
 
 test("Öffnungszeiten kommen live, der Bannertext wird angehängt", () => {

@@ -39,18 +39,36 @@ export function makeDeps(over = {}) {
     types: async () => TYPES,
     availability: async (args, ctx) => {
       calls.availability.push(args);
-      if (!args.datum) return { kind: "next_days", days: [{ date: DIENSTAG, slots: SLOTS.slice(0, 3) }] };
+      const win = (list) => (args.fenster ? list.filter((x) => x >= args.fenster.from && x < args.fenster.to) : list);
+      if (!args.datum) return { kind: "next_days", days: [{ date: DIENSTAG, slots: win(SLOTS).slice(0, 3) }] };
       if (args.uhrzeit) {
         return SLOTS.includes(args.uhrzeit)
           ? { kind: "time_free", date: args.datum, time: args.uhrzeit }
           : { kind: "time_taken", date: args.datum, time: args.uhrzeit, alternatives: SLOTS.slice(0, 3) };
       }
       void ctx;
-      return { kind: "day_slots", date: args.datum, slots: SLOTS };
+      // Wie in tools.ts: gefiltert und seitenweise, damit „spätere Zeiten“
+      // im Test dieselbe Form hat wie im Betrieb.
+      const all = win(SLOTS);
+      if (all.length === 0) return { kind: "day_empty", date: args.datum, nextDays: [] };
+      const pages = Math.max(1, Math.ceil(all.length / 5));
+      const page = Math.min(pages, Math.max(1, Math.trunc(args.seite ?? 1)));
+      return {
+        kind: "day_slots",
+        date: args.datum,
+        slots: all.slice((page - 1) * 5, page * 5),
+        total: all.length,
+        page,
+        hasMore: page < pages,
+        hasEarlier: page > 1,
+        window: args.fenster ?? null,
+      };
     },
     nextFree: async (args) => {
       calls.nextFree.push(args);
-      return { kind: "next_days", days: [{ date: DIENSTAG, slots: SLOTS.slice(0, 3) }] };
+      const all = args.fenster ? SLOTS.filter((x) => x >= args.fenster.from && x < args.fenster.to) : SLOTS;
+      if (all.length === 0) return { kind: "next_days", days: [] };
+      return { kind: "earliest", date: DIENSTAG, time: all[0] };
     },
     info: async (lang) => ({ hoursText: lang === "de" ? HOURS_DE : HOURS_EN, banner: null }),
     classify: async (call) => {
@@ -94,6 +112,8 @@ export function stateAt(stage, lang = "de", draft = {}) {
       date: draft.date ?? DIENSTAG,
       time: inConfirm ? (draft.time ?? "09:00") : null,
       contact: inConfirm ? { firstName: "Erika", lastName: "Musterfrau", email: "erika@example.invalid", phone: "040 123456" } : null,
+      window: draft.window ?? null,
+      page: draft.page ?? 1,
     },
     lastOffer: [],
     callbackKind: null,
