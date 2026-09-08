@@ -1,13 +1,15 @@
 import { z } from "zod";
 import { PRACTICE } from "../practice.ts";
-import { fmtLongDateLocale } from "../time.ts";
+import { addDays, fmtLongDateLocale } from "../time.ts";
 import { detectForeign, detectForeignEmergency, FOREIGN_TEXTS, type ForeignLang } from "./foreign.ts";
-import { answerFromFacts, findTopics, groundingCheck, type LiveFacts, type Topic } from "./knowledge.ts";
+import { answerFromFacts, findTopics, groundingCheck, SERVICE_TERMS, type LiveFacts, type Topic } from "./knowledge.ts";
 import { detectLanguage, type Lang } from "./language.ts";
 import type { LlmCall } from "./llm.ts";
 import { classifyPrompt, groundPrompt, parseClassification, type ModelView } from "./prompts.ts";
 import { detectEmergency, detectHealthData, isAcuteConcern, maskPii } from "./safety.ts";
-import { matchType, parseDateWords, parseTimeWords, renderSlotAnswer, typeTerms, type SlotAnswer, type ToolContext } from "./tools.ts";
+import { matchType, renderSlotAnswer, typeTerms, type SlotAnswer, type ToolContext } from "./tools.ts";
+import { parseDate, parseTime } from "./datetime.ts";
+import { normalize } from "./normalize.ts";
 import { t } from "./texts.ts";
 
 /**
@@ -68,6 +70,12 @@ export interface TypeInfo {
 const dateRe = /^\d{4}-\d{2}-\d{2}$/;
 const timeRe = /^\d{2}:\d{2}$/;
 
+/** Ein Zeitfenster innerhalb eines Tages, beide Grenzen als „HH:MM". */
+export interface Window {
+  from: string;
+  to: string;
+}
+
 export const chatStateSchema = z.object({
   v: z.literal(1),
   lang: z.enum(["de", "en"]),
@@ -85,6 +93,15 @@ export const chatStateSchema = z.object({
         phone: z.string().max(40).optional(),
       })
       .nullable(),
+    /**
+     * Gewünschtes Zeitfenster („nur nachmittags“, „nach 16 Uhr“). Es
+     * gilt für die Suche, nicht für die Buchung – gebucht wird immer
+     * eine genaue Uhrzeit. Ältere Zustände ohne dieses Feld bleiben
+     * gültig; der Vorgabewert ist „kein Fenster“.
+     */
+    window: z.object({ from: z.string().regex(timeRe), to: z.string().regex(timeRe) }).nullable().default(null),
+    /** Welche Seite der Zeiten eines Tages gerade gezeigt wird. */
+    page: z.number().int().min(1).max(20).default(1),
   }),
   lastOffer: z.array(z.object({ date: z.string().regex(dateRe), time: z.string().regex(timeRe) })).max(8),
   callbackKind: z.enum(["rueckruf", "folgerezept", "ueberweisung", "befundkopie", "sonstiges"]).nullable(),
@@ -190,8 +207,11 @@ export type CallbackOutcome = { ok: true; ref: string } | { ok: false; code: "ra
 export interface ChatDeps {
   now(): Date;
   types(): Promise<TypeInfo[]>;
-  availability(args: { art: string; datum?: string | null; uhrzeit?: string | null }, ctx: ToolContext): Promise<SlotAnswer>;
-  nextFree(args: { art: string }, ctx: ToolContext): Promise<SlotAnswer>;
+  availability(
+    args: { art: string; datum?: string | null; uhrzeit?: string | null; fenster?: Window | null; seite?: number | null },
+    ctx: ToolContext,
+  ): Promise<SlotAnswer>;
+  nextFree(args: { art: string; fenster?: Window | null; ab?: string | null; bis?: string | null }, ctx: ToolContext): Promise<SlotAnswer>;
   info(lang: Lang): Promise<LiveFacts>;
   classify(call: LlmCall): Promise<string | null>;
   phrase(call: LlmCall): Promise<string | null>;
@@ -211,7 +231,7 @@ export function freshState(lang: Lang = "de"): ChatState {
     lang,
     stage: "idle",
     intent: null,
-    draft: { typeId: null, date: null, time: null, contact: null },
+    draft: { typeId: null, date: null, time: null, contact: null, window: null, page: 1 },
     lastOffer: [],
     callbackKind: null,
     failures: 0,
@@ -242,7 +262,10 @@ type QuickId =
   | "changeDate"
   | "changeTime"
   | "changeType"
-  | "changeContact";
+  | "changeContact"
+  | "takeIt"
+  | "later"
+  | "earlier";
 
 function quick(lang: Lang, ids: QuickId[]): QuickReply[] {
   const q = t(lang).quick;
@@ -402,6 +425,31 @@ const MANAGE_VERB_RE =
 /** „Wann ist mein Termin?“, „Ich kann morgen nicht kommen“ – außerhalb einer laufenden Buchung eine Nachfrage zu einem bestehenden Termin. */
 const MANAGE_LOOKUP_RE =
   /(wann ist mein(?:e)? termin|wann habe ich (?:meinen |einen )?termin|mein(?:en|em)? termin|my appointment|when is my appointment|habe ich (?:\p{L}+\s+){0,4}(?:schon |bereits )?(?:einen |den )?termin|ob ich (?:\p{L}+\s+){0,5}termin habe|do i have an appointment|am i booked|(?:what time|when) (?:am i|i'?m) booked|check (?:what time|when|if|whether) i|kann (?:ich )?(?:\p{L}+\s+){0,3}(?:leider )?nicht (?:kommen|erscheinen)|schaffe (?:es |ich es )?(?:\p{L}+\s+){0,3}nicht|can'?t (?:make it|come|attend)|cannot (?:make it|come|attend)|won'?t be able to (?:come|make it|attend)|change the (?:date|time|appointment)|move (?:my|the) appointment)/iu;
+/**
+ * Fachwörter, die in einer **Frage** keine Gesundheitsangabe sind, sondern
+ * die Frage nach dem Angebot: „Machen Sie eine Darmspiegelung?“ schildert
+ * keine Beschwerden. In einer Aussage („Ich hatte eine Operation“) bleibt
+ * dasselbe Wort eine Gesundheitsangabe – deshalb gilt diese Liste nur für
+ * Fragen.
+ *
+ * „surgery“ steht nur hier und nicht in `SERVICE_TERMS`: Im britischen
+ * Englisch ist „surgery“ die Sprechstunde, „open surgery hours“ also keine
+ * Leistungsfrage.
+ */
+const SERVICE_ASK_TERMS = [...SERVICE_TERMS, "surgery", "surgeries"];
+
+/**
+ * Ein ausdrücklicher Terminwunsch, auch mitten in einer Frage: „Ich hätte
+ * gern einen Termin, und wie komme ich zu Ihnen?“ ist beides – die Frage
+ * wird beantwortet, und die Buchung beginnt trotzdem.
+ *
+ * Bewusst eng: „Muss ich vorher einen Termin machen?“ fragt nach der Regel
+ * und ist kein Wunsch. Deshalb fehlen „Termin machen“ und „einen Termin“ –
+ * sie würden aus jeder Frage über Termine eine Buchung machen.
+ */
+const BOOKING_WISH_RE =
+  /(?:ich\s+(?:möchte|moechte|will|hätte|haette|brauche|bräuchte|braeuchte|suche)[^?!.]{0,40}termin|termin\s+(?:vereinbaren|buchen|ausmachen)|i(?:'d| would)? ?(?:like|want|need)[^?!.]{0,40}appointment|(?:book|schedule)\s+an?\s+appointment)/iu;
+
 /** Frageform: erst im Wissen nachsehen, bevor ein Wort wie „Termin“ eine Buchung startet. */
 const QUESTION_RE =
   /^\s*(?:hallo|hi|moin|guten (?:tag|morgen|abend)|hello|good (?:morning|afternoon|evening))?[,.!\s]*(wie|wann|wo|was|welche|welcher|welches|ob|kann ich|kann man|könnte ich|koennte ich|darf ich|muss ich|brauche ich|gibt es|haben sie|habt ihr|hat die|ist |sind |do you|can i|could i|may i|how|what|when|where|is there|are you|will i|does|does (?:the|dr|your)|is it|are there|will i|would you|could you)\b|.*\?\s*$/iu;
@@ -416,6 +464,79 @@ const FORWARD_KIND: Array<{ kind: CallbackKind; re: RegExp }> = [
 function forwardKind(text: string): CallbackKind {
   return FORWARD_KIND.find((x) => x.re.test(text))?.kind ?? "rueckruf";
 }
+
+// ------------------------------------------------- Wann soll es sein?
+
+/**
+ * Was ein Satz über den Zeitpunkt verrät – alles, was `datetime.ts`
+ * herausliest, in einer Form, mit der der Ablauf arbeiten kann.
+ */
+interface When {
+  /** Ein bestimmter Tag. */
+  date: string | null;
+  /** Eine genaue Uhrzeit. */
+  time: string | null;
+  /** Ein Zeitfenster („nachmittags", „nach 16 Uhr"). */
+  window: Window | null;
+  /** „so früh wie möglich" – der früheste freie Platz. */
+  earliest: boolean;
+  /** Samstag oder Sonntag: Da ist geschlossen. */
+  weekend: boolean;
+  /** Ein Zeitraum („nächste Woche", „Anfang Oktober"), von … bis. */
+  from: string | null;
+  to: string | null;
+}
+
+const NO_WHEN: When = { date: null, time: null, window: null, earliest: false, weekend: false, from: null, to: null };
+
+/**
+ * Erst der geschriebene Satz, dann – falls der nichts hergibt – der
+ * begradigte. So gewinnt immer das, was wirklich dasteht, und ein
+ * Tippfehler („Donerstag") bekommt trotzdem seine Chance.
+ */
+function readWhen(text: string, now: Date, lang: Lang): When {
+  if (!text.trim()) return NO_WHEN;
+  const norm = normalize(text);
+  const second = norm === text.toLowerCase() ? null : norm;
+  const d = parseDate(text, now, lang) ?? (second ? parseDate(second, now, lang) : null);
+  const h = parseTime(text, lang) ?? (second ? parseTime(second, lang) : null);
+  const window = h && h.from && h.to ? { from: h.from, to: h.to } : null;
+  return {
+    date: d?.kind === "day" ? (d.date ?? null) : null,
+    time: h?.kind === "exact" ? (h.time ?? null) : null,
+    window,
+    earliest: h?.kind === "earliest",
+    weekend: d?.kind === "weekend",
+    from: d?.kind === "range" ? (d.from ?? null) : null,
+    to: d?.kind === "range" ? (d.to ?? null) : null,
+  };
+}
+
+/** Steht im Satz überhaupt ein Terminwunsch? */
+function hasWish(w: When): boolean {
+  return Boolean(w.date || w.time || w.window || w.earliest || w.from || w.weekend);
+}
+
+/**
+ * Welches Fenster gilt jetzt? Eine genannte genaue Uhrzeit hebt ein
+ * früheres Fenster auf – wer erst „nachmittags" sagt und dann „geht auch
+ * neun Uhr?", bekommt sonst zur Antwort, neun Uhr sei belegt.
+ */
+function windowFor(when: When, draft: ChatState["draft"]): Window | null {
+  if (when.time) return null;
+  return when.window ?? draft.window;
+}
+
+/**
+ * Nachfragen zu einer Liste von Zeiten. Sie stehen bewusst vor der
+ * Fenster-Erkennung: „Das ist zu früh, was ist danach noch frei?" enthält
+ * das Wort „früh" und wäre sonst ein Vormittagswunsch.
+ */
+const LATER_RE = /(?<!\p{L})(?:sp(?:ä|ae)ter\p{L}*|danach|nach hinten|later|after that|after those)(?!\p{L})/iu;
+const EARLIER_RE = /(?<!\p{L})(?:fr(?:ü|ue)her\p{L}*|vorher|earlier|before that)(?!\p{L})/iu;
+const NONE_RE =
+  /(?<!\p{L})(?:nichts davon|nichts passt|keins? davon|keine davon|keine[rs]? passt|geht alles nicht|passt (?:alles )?nicht|was anderes|etwas anderes|something else|none of (?:those|them|these)|nothing (?:works|fits|suits)|(?:that |these |those )?do(?:es)?n'?t work)/iu;
+const OTHER_DAY_RE = /(?<!\p{L})(?:ander(?:er|en|em) tag|anderes datum|another day|other day|different day)(?!\p{L})/iu;
 
 // -------------------------------------------------------------- Ablauf
 
@@ -514,12 +635,18 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
   const lang = state.lang;
   const T = t(lang);
   const types = await deps.types();
-  const named = matchType(text, types, lang);
+  // Der begradigte Satz: Umlaute gefaltet, Wendungen ersetzt, Tippfehler
+  // gegen eine kleine Wortliste korrigiert. Er dient ausschließlich dem
+  // Erkennen – angezeigt und gespeichert wird immer das Geschriebene.
+  const norm = normalize(text);
+  const named = matchType(text, types, lang) ?? matchType(norm, types, lang);
   const namedType = named && types.some((x) => x.id === named) ? named : null;
+  // Die Frageform entscheidet mit, was als Gesundheitsangabe gilt.
+  const isQuestion = QUESTION_RE.test(text) || QUESTION_RE.test(norm);
   // 1. Gesundheitsangaben: Hinweis statt Verarbeitung – das Modell sieht
   //    diesen Text nicht, und gespeichert wird er auch nicht. Die Namen
   //    der buchbaren Terminarten zählen nicht als Gesundheitsangabe.
-  const health = detectHealthData(text, { ignore: typeTerms(types) });
+  const health = detectHealthData(text, { ignore: isQuestion ? [...typeTerms(types), ...SERVICE_ASK_TERMS] : typeTerms(types) });
   const acute = isAcuteConcern(text, health !== null);
   if (health?.medicalQuestion) {
     deps.audit("chat.health_filtered", { medicalQuestion: true });
@@ -543,10 +670,13 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
       // Terminart genannt und dazu etwas Gesundheitliches: Die Wahl gilt,
       // der Hinweis (oder bei Akutem der Anruf-Hinweis) kommt dazu, Tag
       // und Uhrzeit gehen nicht verloren.
-      const date = parseDateWords(text, now, lang);
-      const time = parseTimeWords(text);
-      const next: ChatState = { ...state, failures: 0, draft: { ...state.draft, date: date ?? state.draft.date, time: time ?? state.draft.time } };
-      return prefixed(await afterType(namedType, next, deps, now, ""), acute ? T.acute : T.healthHintShort);
+      const when = readWhen(text, now, lang);
+      const next: ChatState = {
+        ...state,
+        failures: 0,
+        draft: { ...state.draft, date: when.date ?? state.draft.date, time: when.time ?? state.draft.time, window: windowFor(when, state.draft) },
+      };
+      return prefixed(await afterType(namedType, next, deps, now, "", when), acute ? T.acute : T.healthHintShort);
     }
     // Akut, aber kein Notfall: kurzfristige Termine gibt es per Telefon –
     // kein Rat, keine Einschätzung, keine Ermahnung.
@@ -564,7 +694,7 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
   if (masked.masked.length) deps.audit("chat.masked", { kinds: masked.masked });
 
   // 3. Wünsche, die in jedem Schritt gelten
-  if (HANDOVER_RE.test(text)) {
+  if (HANDOVER_RE.test(text) || HANDOVER_RE.test(norm)) {
     const hours = (await deps.info(lang)).hoursText;
     return say({ ...state, intent: "handover", failures: 0 }, `${T.handover} ${hoursSentence(lang, hours)}`, {
       quick: quick(lang, ["callback"]),
@@ -572,8 +702,8 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
       flags: { handover: true },
     });
   }
-  if (FORWARD_RE.test(text) && !ASKS_WHETHER_RE.test(text)) {
-    const kind = forwardKind(text);
+  if ((FORWARD_RE.test(text) || FORWARD_RE.test(norm)) && !ASKS_WHETHER_RE.test(text)) {
+    const kind = forwardKind(text) === "rueckruf" ? forwardKind(norm) : forwardKind(text);
     return say({ ...state, stage: "callback", intent: "forward", callbackKind: kind, failures: 0 }, T.forward, {
       form: callbackForm(lang, kind),
       links: practiceLink(lang),
@@ -591,9 +721,31 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
     }
     case "date":
     case "time": {
-      const date = parseDateWords(text, now, lang);
-      const time = parseTimeWords(text);
-      if (date || time) return checkSlot({ ...state, failures: 0 }, deps, now, date ?? state.draft.date, time ?? (date ? null : state.draft.time));
+      const when = readWhen(text, now, lang);
+      const ready: ChatState = { ...state, failures: 0 };
+      if (when.weekend) return weekendReply(ready, deps);
+      // Ein genannter Tag gewinnt gegen jede Nachfrage: „und Donnerstag?"
+      // ist keine Bitte um spätere Zeiten, sondern ein anderer Tag.
+      if (when.date) {
+        return checkSlot(ready, deps, now, when.date, when.time, { window: windowFor(when, state.draft), page: 1 });
+      }
+      if (when.earliest || when.from) return askEarliest(ready, deps, now, when);
+      // Nachfragen vor der Fenster-Erkennung – „zu früh" ist kein Vormittag.
+      if (state.draft.date && LATER_RE.test(text)) {
+        return checkSlot(ready, deps, now, state.draft.date, null, { page: state.draft.page + 1, wanted: state.draft.page + 1 });
+      }
+      if (state.draft.date && EARLIER_RE.test(text)) {
+        const page = Math.max(1, state.draft.page - 1);
+        return checkSlot(ready, deps, now, state.draft.date, null, { page, wanted: state.draft.page - 1 });
+      }
+      if (when.time || when.window) {
+        return checkSlot(ready, deps, now, state.draft.date, when.time, { window: windowFor(when, state.draft), page: 1 });
+      }
+      // „Nichts davon passt", „anderer Tag" – weiter suchen, nicht raten.
+      if (NONE_RE.test(text) || OTHER_DAY_RE.test(text)) {
+        const ab = state.draft.date ? addDays(state.draft.date, 1) : null;
+        return askEarliest(ready, deps, now, { ...NO_WHEN, from: ab, window: state.draft.window });
+      }
       break;
     }
     default:
@@ -603,34 +755,53 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
   // 5. Terminverwaltung – vor dem Terminwunsch, sonst wird aus
   //    „Termin verschieben“ ein zweiter Termin.
   const inBooking = BOOKING_STAGES.includes(state.stage);
-  if (MANAGE_VERB_RE.test(text) || (!inBooking && MANAGE_LOOKUP_RE.test(text))) {
+  const manageVerb = MANAGE_VERB_RE.test(text) || MANAGE_VERB_RE.test(norm);
+  if (manageVerb || (!inBooking && (MANAGE_LOOKUP_RE.test(text) || MANAGE_LOOKUP_RE.test(norm)))) {
     return manageStub({ ...state, failures: 0 }, deps);
   }
 
   // 6. Terminwunsch im freien Satz – und Fragen zuerst aus dem Wissen
-  const date = parseDateWords(text, now, lang);
-  const time = parseTimeWords(text);
-  const isQuestion = QUESTION_RE.test(text);
+  const when = readWhen(text, now, lang);
   // Eine genannte Terminart („Ich glaube, ich habe Hämorrhoiden“) ist ein
   // Terminwunsch – außer in einer Frage, die zuerst das Wissen beantwortet.
-  // Ein nackter Tag oder eine Uhrzeit („Dienstag 14:30“, „Geht Montag?“)
-  // ist in diesem Chat ebenfalls ein Terminwunsch.
-  const wantsBooking = BOOKING_RE.test(text) || (date || time) !== null || (namedType !== null && !isQuestion);
+  // Ein nackter Tag, eine Uhrzeit oder ein Tagesteil („Dienstag 14:30“,
+  // „Geht Montag?“, „lieber nachmittags“) ist ebenfalls ein Terminwunsch.
+  const wantsBooking = BOOKING_RE.test(text) || BOOKING_RE.test(norm) || hasWish(when) || (namedType !== null && !isQuestion);
+
+  // Am Wochenende ist geschlossen – das gilt vor jeder Terminsuche und
+  // vor jeder Öffnungszeiten-Antwort, weil „Samstag?“ genau das fragt.
+  if (when.weekend) return weekendReply({ ...state, failures: 0 }, deps);
+  // „So früh wie möglich“ ist ein Wunsch, keine Wissensfrage – auch wenn
+  // er als Frage formuliert ist („Was ist das Früheste, was Sie haben?“).
+  if (when.earliest) {
+    const res = await startBooking({ ...state, failures: 0 }, deps, now, text, when);
+    return acute ? prefixed(res, T.acute) : res;
+  }
 
   if (acute && !wantsBooking) {
     return say({ ...state, failures: 0 }, T.acute, { quick: quick(lang, ["book", "callback"]), links: practiceLink(lang) });
   }
   if (isQuestion) {
-    const topics = findTopics(text, lang);
-    if (topics.length) return answerTopics(topics, { ...state, failures: 0 }, deps, masked.text);
+    const topics = topicsFor(text, norm, lang);
+    if (topics.length) {
+      // „Ich hätte gern einen Termin, und wie komme ich zu Ihnen?“ – erst
+      // die Antwort, dann der Termin. Eine der beiden Absichten fallen zu
+      // lassen wäre in beide Richtungen falsch.
+      if (BOOKING_WISH_RE.test(text) || BOOKING_WISH_RE.test(norm)) {
+        const info = await answerTopics(topics, { ...state, failures: 0 }, deps, masked.text);
+        const res = await startBooking({ ...state, failures: 0 }, deps, now, text, when);
+        return { ...res, reply: `${info.reply} ${res.reply}` };
+      }
+      return answerTopics(topics, { ...state, failures: 0 }, deps, masked.text);
+    }
   }
   if (wantsBooking) {
-    const res = await startBooking({ ...state, failures: 0 }, deps, now, text, date, time);
+    const res = await startBooking({ ...state, failures: 0 }, deps, now, text, when);
     return acute ? prefixed(res, T.acute) : res;
   }
 
   // 7. Frage zur Praxis – aus gepflegten Fakten, notfalls vom Modell formuliert
-  const topics = findTopics(text, lang);
+  const topics = topicsFor(text, norm, lang);
   if (topics.length) return answerTopics(topics, { ...state, failures: 0 }, deps, masked.text);
 
   // 8. Erst jetzt das Modell fragen – und nur als Hinweis
@@ -646,16 +817,17 @@ async function confirmStage(text: string, state: ChatState, deps: ChatDeps, now:
   const lang = state.lang;
   const T = t(lang);
   const d = state.draft;
-  const date = parseDateWords(text, now, lang);
-  const time = parseTimeWords(text);
+  const when = readWhen(text, now, lang);
+  const date = when.date;
+  const time = when.time;
   const changedType = namedType && namedType !== d.typeId ? namedType : null;
-  const changed = (date && date !== d.date) || (time && time !== d.time) || changedType;
+  const changed = (date && date !== d.date) || (time && time !== d.time) || Boolean(when.window) || changedType;
 
   if (changed) {
     const next: ChatState = { ...state, failures: 0, draft: { ...d, typeId: changedType ?? d.typeId } };
     const newDate = date ?? d.date;
-    const newTime = time ?? (date && date !== d.date ? null : d.time);
-    return checkSlot(next, deps, now, newDate, newTime);
+    const newTime = time ?? (date && date !== d.date ? null : when.window ? null : d.time);
+    return checkSlot(next, deps, now, newDate, newTime, { window: windowFor(when, d), page: 1 });
   }
   if (isBareYes(text)) return book(state, deps, now);
   if (NO_RE.test(text) || YES_START_RE.test(text)) {
@@ -685,7 +857,7 @@ async function handleQuick(id: string, prev: ChatState, deps: ChatDeps, now: Dat
   const lang = state.lang;
   const T = t(lang);
 
-  if (id === "book" || id === "again") return startBooking(state, deps, now, "", null, null);
+  if (id === "book" || id === "again") return startBooking(state, deps, now, "", NO_WHEN);
   if (id === "hours" || id === "directions") {
     const topics: Topic[] = id === "hours" ? ["oeffnungszeiten"] : ["anfahrt", "adresse"];
     return answerTopics(topics, state, deps, null);
@@ -695,19 +867,22 @@ async function handleQuick(id: string, prev: ChatState, deps: ChatDeps, now: Dat
     const kind = state.callbackKind ?? "rueckruf";
     return say({ ...state, stage: "callback", callbackKind: kind }, T.callbackIntro, { form: callbackForm(lang, kind) });
   }
-  if (id === "nextfree") {
-    if (!state.draft.typeId) return startBooking(state, deps, now, "", null, null);
-    const answer = await deps.nextFree({ art: state.draft.typeId }, { now, lang });
-    return renderAvailability(answer, { ...state, stage: "date" }, deps, now);
+  if (id === "nextfree") return askEarliest(state, deps, now, { ...NO_WHEN, earliest: true, window: state.draft.window });
+  if (id === "later" || id === "earlier") {
+    if (!state.draft.date) return say({ ...state, stage: "date" }, T.askDate, { quick: quick(lang, ["nextfree"]) });
+    const wanted = id === "later" ? state.draft.page + 1 : state.draft.page - 1;
+    return checkSlot(state, deps, now, state.draft.date, null, { page: Math.max(1, wanted), wanted });
   }
   if (id === "yes") return state.stage === "confirm" ? book(state, deps, now) : say(state, T.notUnderstood, { quick: quick(lang, ["book", "hours", "directions"]) });
   if (id === "no") return say(state, T.whatToChange, { quick: changeQuick(lang) });
   if (id === "changeDate" || id === "other") {
-    return say({ ...state, stage: "date", draft: { ...state.draft, date: null, time: null } }, T.askDate, { quick: quick(lang, ["nextfree"]) });
+    return say({ ...state, stage: "date", draft: { ...state.draft, date: null, time: null, window: null, page: 1 } }, T.askDate, {
+      quick: quick(lang, ["nextfree"]),
+    });
   }
   if (id === "changeTime") {
     if (!state.draft.date) return say({ ...state, stage: "date", draft: { ...state.draft, time: null } }, T.askDate, { quick: quick(lang, ["nextfree"]) });
-    return checkSlot({ ...state, draft: { ...state.draft, time: null } }, deps, now, state.draft.date, null);
+    return checkSlot({ ...state, draft: { ...state.draft, time: null } }, deps, now, state.draft.date, null, { window: null, page: 1 });
   }
   if (id === "changeType") {
     const types = await deps.types();
@@ -725,12 +900,14 @@ async function handleQuick(id: string, prev: ChatState, deps: ChatDeps, now: Dat
   if (id.startsWith("date:")) {
     const date = id.slice(5);
     if (!dateRe.test(date)) return say(state, T.askDate);
-    return checkSlot(state, deps, now, date, null);
+    return checkSlot(state, deps, now, date, null, { page: 1 });
   }
   if (id.startsWith("time:")) {
     const [date, time] = id.slice(5).split("|");
     if (!date || !time || !dateRe.test(date) || !timeRe.test(time)) return say(state, T.askTime);
-    return checkSlot(state, deps, now, date, time);
+    // Eine angeklickte Zeit ist eine genaue Zeit: Ein Fenster von vorher
+    // darf sie nicht wegfiltern.
+    return checkSlot(state, deps, now, date, time, { window: null, page: 1 });
   }
   return say(state, T.notUnderstood, { quick: quick(lang, ["book", "hours", "directions"]) });
 }
@@ -820,39 +997,85 @@ async function startBooking(
   deps: ChatDeps,
   now: Date,
   text: string,
-  date: string | null,
-  time: string | null,
+  when: When,
 ): Promise<ChatResponse> {
   const lang = state.lang;
   const types = await deps.types();
   if (types.length === 0) return say({ ...state, stage: "idle" }, t(lang).bookNotPossible, { links: practiceLink(lang) });
 
-  const named = text ? matchType(text, types, lang) : null;
+  const named = text ? (matchType(text, types, lang) ?? matchType(normalize(text), types, lang)) : null;
   const typeId = named && types.some((x) => x.id === named) ? named : state.draft.typeId;
-  const next: ChatState = { ...state, intent: "booking", draft: { ...state.draft, typeId, date: date ?? state.draft.date, time: time ?? state.draft.time } };
+  const window = windowFor(when, state.draft);
+  const next: ChatState = {
+    ...state,
+    intent: "booking",
+    draft: { ...state.draft, typeId, date: when.date ?? state.draft.date, time: when.time ?? state.draft.time, window },
+  };
 
   if (!typeId) {
-    // Ohne genannte Terminart nicht raten: Wenn schon ein Tag im Raum
-    // steht, wird er mit der allgemeinen Terminart beantwortet – die
-    // Auswahl kommt trotzdem, denn danach wird erneut geprüft.
-    if (next.draft.date || next.draft.time) {
-      const fallback = types.find((x) => x.id === "unklar") ?? types[0]!;
-      const answer = await deps.availability({ art: fallback.id, datum: next.draft.date, uhrzeit: next.draft.time }, { now, lang });
+    // Ohne genannte Terminart nicht raten: Wenn schon ein Tag, eine Zeit
+    // oder ein Fenster im Raum steht, wird es mit der allgemeinen
+    // Terminart beantwortet – die Auswahl kommt trotzdem, denn danach
+    // wird erneut geprüft.
+    const fallback = types.find((x) => x.id === "unklar") ?? types[0]!;
+    if (when.earliest || when.from) {
+      const answer = await deps.nextFree({ art: fallback.id, fenster: window, ab: when.from, bis: when.to }, { now, lang });
+      const sentence = renderSlotAnswer(answer, lang, fallback.label, phone, now);
+      return say({ ...next, stage: "type" }, `${sentence} ${t(lang).askType}`, { quick: typeQuick(types) });
+    }
+    if (next.draft.date || next.draft.time || window) {
+      const answer = await deps.availability(
+        { art: fallback.id, datum: next.draft.date, uhrzeit: next.draft.time, fenster: window, seite: 1 },
+        { now, lang },
+      );
       const sentence = renderSlotAnswer(answer, lang, fallback.label, phone, now);
       return say({ ...next, stage: "type" }, `${sentence} ${t(lang).askType}`, { quick: typeQuick(types) });
     }
     return say({ ...next, stage: "type" }, t(lang).askType, { quick: typeQuick(types) });
   }
-  return afterType(typeId, next, deps, now, text);
+  return afterType(typeId, next, deps, now, text, when);
 }
 
-async function afterType(typeId: string, state: ChatState, deps: ChatDeps, now: Date, text: string): Promise<ChatResponse> {
+/**
+ * „So früh wie möglich“ – und alles, was sich wie ein Zeitraum anhört
+ * („nächste Woche“, „Anfang Oktober“). Beides ist dieselbe Frage an die
+ * Verfügbarkeit: der erste freie Platz, gegebenenfalls eingegrenzt.
+ */
+async function askEarliest(state: ChatState, deps: ChatDeps, now: Date, when: When, typeId?: string): Promise<ChatResponse> {
+  const lang = state.lang;
+  const art = typeId ?? state.draft.typeId;
+  if (!art) return startBooking(state, deps, now, "", when);
+  const window = windowFor(when, state.draft);
+  const answer = await deps.nextFree({ art, fenster: window, ab: when.from, bis: when.to }, { now, lang });
+  const next: ChatState = {
+    ...state,
+    intent: "booking",
+    stage: "date",
+    draft: { ...state.draft, typeId: art, date: null, time: null, window, page: 1 },
+  };
+  return renderAvailability(answer, next, deps, now);
+}
+
+async function afterType(
+  typeId: string,
+  state: ChatState,
+  deps: ChatDeps,
+  now: Date,
+  text: string,
+  when: When = NO_WHEN,
+): Promise<ChatResponse> {
   const lang = state.lang;
   const T = t(lang);
-  const date = state.draft.date ?? (text ? parseDateWords(text, now, lang) : null);
-  const time = state.draft.time ?? (text ? parseTimeWords(text) : null);
-  const next: ChatState = { ...state, intent: "booking", draft: { ...state.draft, typeId, date, time } };
-  if (date) return checkSlot(next, deps, now, date, time);
+  const date = state.draft.date ?? when.date;
+  const time = state.draft.time ?? when.time;
+  const window = windowFor(when, state.draft);
+  const next: ChatState = { ...state, intent: "booking", draft: { ...state.draft, typeId, date, time, window } };
+  if (when.weekend) return weekendReply(next, deps);
+  if (when.earliest || when.from) return askEarliest(next, deps, now, when, typeId);
+  if (date) return checkSlot(next, deps, now, date, time, { window, page: 1 });
+  // Ein Fenster ohne Tag („nur nachmittags“) ist trotzdem eine Auskunft
+  // wert: die nächsten Tage, die in dieses Fenster passen.
+  if (window) return checkSlot(next, deps, now, null, null, { window, page: 1 });
   // Aus freiem Text erkannt: kurz bestätigen, was verstanden wurde.
   const label = text ? (await deps.types()).find((x) => x.id === typeId)?.label : undefined;
   const reply = label ? `${T.typeNoted} ${label}. ${T.askDate}` : T.askDate;
@@ -860,12 +1083,31 @@ async function afterType(typeId: string, state: ChatState, deps: ChatDeps, now: 
 }
 
 /** Verfügbarkeit fragen und daraus den nächsten Schritt ableiten. */
-async function checkSlot(state: ChatState, deps: ChatDeps, now: Date, date: string | null, time: string | null): Promise<ChatResponse> {
+async function checkSlot(
+  state: ChatState,
+  deps: ChatDeps,
+  now: Date,
+  date: string | null,
+  time: string | null,
+  opts: { window?: Window | null; page?: number; wanted?: number } = {},
+): Promise<ChatResponse> {
   const lang = state.lang;
-  if (!state.draft.typeId) return startBooking(state, deps, now, "", date, time);
-  const answer = await deps.availability({ art: state.draft.typeId, datum: date, uhrzeit: time }, { now, lang });
-  const next: ChatState = { ...state, draft: { ...state.draft, date, time: answer.kind === "time_free" ? time : null } };
-  return renderAvailability(answer, next, deps, now);
+  const window = opts.window === undefined ? state.draft.window : opts.window;
+  if (!state.draft.typeId) return startBooking(state, deps, now, "", { ...NO_WHEN, date, time, window });
+  const page = Math.max(1, opts.page ?? 1);
+  const answer = await deps.availability({ art: state.draft.typeId, datum: date, uhrzeit: time, fenster: window, seite: page }, { now, lang });
+  const next: ChatState = {
+    ...state,
+    draft: { ...state.draft, date, time: answer.kind === "time_free" ? time : null, window, page },
+  };
+  const res = await renderAvailability(answer, next, deps, now);
+  // Ehrlich bleiben, wenn es die gewünschte Seite nicht gibt: Sonst
+  // stünden dieselben Zeiten noch einmal da, als wären sie neu.
+  if (opts.wanted !== undefined && answer.kind === "day_slots" && answer.page !== opts.wanted) {
+    const T = t(lang);
+    return { ...res, reply: `${opts.wanted > answer.page ? T.noLater : T.noEarlier} ${res.reply}` };
+  }
+  return res;
 }
 
 async function renderAvailability(answer: SlotAnswer, state: ChatState, deps: ChatDeps, now: Date): Promise<ChatResponse> {
@@ -900,18 +1142,37 @@ async function renderAvailability(answer: SlotAnswer, state: ChatState, deps: Ch
       const next: ChatState = {
         ...state,
         stage: "time",
-        draft: { ...state.draft, date: answer.date, time: null },
+        draft: { ...state.draft, date: answer.date, time: null, window: answer.window ?? state.draft.window, page: answer.page },
         lastOffer: answer.slots.map((time) => ({ date: answer.date, time })),
       };
-      return say(next, `${sentence} ${T.askTime}`, { quick: timeQuick(lang, answer.date, answer.slots) });
+      // Blättern nur anbieten, wenn es wirklich mehr gibt – ein Knopf,
+      // der nichts Neues zeigt, ist eine Enttäuschung mit Klick.
+      const more: QuickId[] = [];
+      if (answer.hasMore) more.push("later");
+      if (answer.hasEarlier) more.push("earlier");
+      more.push("changeDate");
+      return say(next, `${sentence} ${T.askTime}`, { quick: [...timeQuick(lang, answer.date, answer.slots), ...quick(lang, more)] });
+    }
+    case "earliest": {
+      // Ein Satz, ein Klick: Der Knopf trägt Tag und Uhrzeit, der nächste
+      // Zug prüft sie erneut und geht zum Kontaktformular.
+      const next: ChatState = {
+        ...state,
+        stage: "time",
+        draft: { ...state.draft, date: answer.date, time: null, page: 1 },
+        lastOffer: [{ date: answer.date, time: answer.time }],
+      };
+      return say(next, sentence, {
+        quick: [{ id: `time:${answer.date}|${answer.time}`, label: T.quick.takeIt }, ...quick(lang, ["changeDate", "changeTime"])],
+      });
     }
     case "day_empty": {
-      const next: ChatState = { ...state, stage: "date", draft: { ...state.draft, date: null, time: null } };
+      const next: ChatState = { ...state, stage: "date", draft: { ...state.draft, date: null, time: null, page: 1 } };
       return say(next, sentence, { quick: dayQuick(lang, answer.nextDays) });
     }
     case "next_days": {
-      const next: ChatState = { ...state, stage: "date", draft: { ...state.draft, date: null, time: null } };
-      return say(next, sentence, { quick: dayQuick(lang, answer.days) });
+      const next: ChatState = { ...state, stage: "date", draft: { ...state.draft, date: null, time: null, page: 1 } };
+      return say(next, sentence, { quick: [...dayQuick(lang, answer.days), ...quick(lang, answer.days.length ? [] : ["callback"])] });
     }
     case "unavailable": {
       const next: ChatState = { ...state, stage: answer.reason === "past" ? "date" : "idle" };
@@ -974,7 +1235,7 @@ async function book(state: ChatState, deps: ChatDeps, now: Date): Promise<ChatRe
       stage: "done",
       intent: null,
       lastOffer: [],
-      draft: { typeId: null, date: null, time: null, contact: d.contact },
+      draft: { typeId: null, date: null, time: null, contact: d.contact, window: null, page: 1 },
     };
     return say(done, `${head} ${tail}`, {
       quick: quick(lang, ["again", "myAppointment"]),
@@ -985,7 +1246,7 @@ async function book(state: ChatState, deps: ChatDeps, now: Date): Promise<ChatRe
 
   switch (outcome.code) {
     case "slot_taken": {
-      const answer = await deps.availability({ art: d.typeId, datum: d.date, uhrzeit: null }, { now, lang });
+      const answer = await deps.availability({ art: d.typeId, datum: d.date, uhrzeit: null, fenster: null, seite: 1 }, { now, lang });
       const again = await renderAvailability(answer, { ...state, stage: "time", draft: { ...d, time: null } }, deps, now);
       const taken = lang === "de" ? "Diese Zeit wurde gerade vergeben." : "That time has just been taken.";
       return { ...again, reply: `${taken} ${again.reply}` };
@@ -1010,7 +1271,15 @@ async function answerTopics(topics: Topic[], state: ChatState, deps: ChatDeps, q
   const lang = state.lang;
   const T = t(lang);
   const live = await deps.info(lang);
-  const answer = answerFromFacts(topics, lang, live);
+  const types = await deps.types();
+  // Die Termindauer steht nicht im gepflegten Text, sondern je Terminart in
+  // der Datenbank. Ist die Terminart im Gespräch schon genannt, wird ihre
+  // Dauer genannt – sonst die Spanne über alle.
+  const answer = answerFromFacts(topics, lang, {
+    ...live,
+    durations: types.map((x) => ({ label: x.label, durationMin: x.durationMin })),
+    typeLabel: types.find((x) => x.id === state.draft.typeId)?.label ?? null,
+  });
   // Was die Praxis nicht hinterlegt hat, wird gezählt – nur der Themenschlüssel, nie der Text.
   for (const topic of answer.unknown) deps.audit("chat.unknown_topic", { topic });
 
@@ -1032,6 +1301,27 @@ async function answerTopics(topics: Topic[], state: ChatState, deps: ChatDeps, q
   }
   if (answer.unknown.length) reply = `${reply} ${T.unknownTopic}`;
   return say(state, reply, { quick: quick(lang, ["book", "hours", "directions"]), flags: { llm } });
+}
+
+/**
+ * Themen aus dem geschriebenen und aus dem begradigten Satz. Die Reihen-
+ * folge des Geschriebenen gewinnt – sie bestimmt, welcher Faktentext
+ * zuerst kommt; der begradigte Satz steuert nur bei, was sonst an einem
+ * Tippfehler gescheitert wäre.
+ */
+function topicsFor(text: string, norm: string, lang: Lang): Topic[] {
+  const found = findTopics(text, lang);
+  for (const topic of findTopics(norm, lang)) if (!found.includes(topic)) found.push(topic);
+  return found;
+}
+
+/**
+ * „Geht auch am Samstag?“ – am Wochenende ist zu. Der Assistent sagt das
+ * und bietet gleich einen Werktag an, statt eine leere Liste zu zeigen.
+ */
+async function weekendReply(state: ChatState, deps: ChatDeps): Promise<ChatResponse> {
+  const res = await answerTopics(["wochenende"], state, deps, null);
+  return { ...res, reply: `${res.reply} ${t(state.lang).weekendAsk}`, quick: quick(state.lang, ["nextfree", "book"]) };
 }
 
 // ------------------------------------------------- Modell als Hinweis
@@ -1083,16 +1373,16 @@ async function classifyAndRoute(
 
   // Das Modell darf einordnen, aber nichts erfinden: Datum und Uhrzeit
   // gelten nur, wenn die eigenen Parser sie im Text ebenfalls finden.
-  const ownDate = parseDateWords(text, now, lang);
-  const ownTime = parseTimeWords(text);
-  const date = cls.date && cls.date === ownDate ? cls.date : ownDate;
-  const time = cls.time && cls.time === ownTime ? cls.time : ownTime;
+  const own = readWhen(text, now, lang);
+  const date = cls.date && cls.date === own.date ? cls.date : own.date;
+  const time = cls.time && cls.time === own.time ? cls.time : own.time;
+  const when: When = { ...own, date, time };
   const next: ChatState = { ...state, failures: 0, lang: cls.lang };
   const flags = { llm: "model" as const };
 
   switch (cls.intent) {
     case "booking":
-      return withLlm(await startBooking(next, deps, now, cls.type ? `${text} ${cls.type}` : text, date, time), flags);
+      return withLlm(await startBooking(next, deps, now, cls.type ? `${text} ${cls.type}` : text, when), flags);
     case "hours":
       return withLlm(await answerTopics(["oeffnungszeiten"], next, deps, masked), flags);
     case "directions":

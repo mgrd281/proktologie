@@ -806,6 +806,34 @@ export async function recentMessages(limit = 25): Promise<MessageLogRow[]> {
   }));
 }
 
+/** Ein Thema, nach dem im Chat gefragt wurde, ohne dass eine Antwort hinterlegt ist. */
+export interface UnknownTopicRow {
+  topic: string;
+  count: number;
+}
+
+/**
+ * Was der Chat nicht wusste – die letzten 30 Tage, nach Häufigkeit.
+ *
+ * Im Protokoll steht ausschließlich der Themenschlüssel („parken“), nie
+ * der Satz des Patienten. Die Praxis sieht damit, was ihre Patientinnen
+ * wirklich fragen, und kann die fehlenden Antworten nachliefern – ohne
+ * dass irgendwo eine Nachricht gespeichert wird.
+ */
+export async function unknownChatTopics(days = 30, limit = 20): Promise<UnknownTopicRow[]> {
+  const db = await getDb();
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const topic = sql<string>`${t.auditLog.meta}->>'topic'`;
+  const rows = await db
+    .select({ topic, count: count() })
+    .from(t.auditLog)
+    .where(and(eq(t.auditLog.action, "chat.unknown_topic"), gte(t.auditLog.at, since), isNotNull(topic)))
+    .groupBy(topic)
+    .orderBy(desc(count()))
+    .limit(limit);
+  return rows.filter((r) => r.topic).map((r) => ({ topic: r.topic, count: Number(r.count) }));
+}
+
 export async function messageSent(appointmentId: string, kind: string): Promise<boolean> {
   const db = await getDb();
   const [row] = await db

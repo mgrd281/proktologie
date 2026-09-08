@@ -1,5 +1,6 @@
 import { PRAXIS_WISSEN, type Topic } from "../../content/praxis-wissen.ts";
 import type { Lang } from "./language.ts";
+import { fold } from "./normalize.ts";
 
 /**
  * Antworten auf Praxisfragen – ausschließlich aus gepflegten Fakten.
@@ -63,16 +64,51 @@ function escapeRe(s: string): string {
  * werden am Wortanfang gesucht.
  */
 export function keywordHits(text: string, keyword: string): boolean {
-  const kw = keyword.toLowerCase().trim();
+  // Beide Seiten gefaltet: Wer „Oeffnungszeiten" oder „oeffnungszeiten"
+  // tippt, meint dasselbe wie „Öffnungszeiten" – und die Tippfehler-
+  // Korrektur liefert ohnehin nur die gefaltete Schreibweise.
+  const kw = fold(keyword).trim();
   if (!kw) return false;
   const body = escapeRe(kw);
   const re = kw.length <= 4 && !kw.includes(" ") ? new RegExp(`(?<!\\p{L})${body}(?!\\p{L})`, "iu") : new RegExp(`(?<!\\p{L})${body}`, "iu");
-  return re.test(text);
+  return re.test(fold(text));
 }
+
+/**
+ * Wörter, mit denen nach dem Leistungsangebot gefragt wird („Behandeln Sie
+ * Fisteln?"). Sie führen auf das Thema `leistungen` – dort steht auch die
+ * ehrliche Grenze, dass die komplette Darmspiegelung nicht hier stattfindet.
+ *
+ * Zweierlei ist beim Pflegen zu beachten:
+ *
+ *  - **Wortanfang-Regel.** „fissur" trifft NICHT „Analfissur". Deshalb steht
+ *    jede Zusammensetzung, die Patientinnen wirklich schreiben, einzeln.
+ *  - **Keine Symptome.** „Blut", „Schmerzen", „Juckreiz" gehören nicht
+ *    hierher: Das sind Gesundheitsangaben, die der Sicherheitsfilter vor dem
+ *    Wissen abfängt. Ein Fachwort wie „Fistel" ist dagegen eine Frage nach
+ *    dem Angebot – und die darf beantwortet werden.
+ */
+export const SERVICE_TERMS: string[] = [
+  // Krankheitsbilder
+  "hämorrhoid", "haemorrhoid", "hemorrhoid", "hemorroid",
+  "fissur", "analfissur", "fissure",
+  "fistel", "analfistel", "fistula",
+  "mariske", "marisken", "skin tag",
+  "abszess", "analabszess", "abscess",
+  "analvenenthrombose", "thrombose", "thrombosis",
+  // Diagnostik
+  "proktoskop", "proctoscop", "rektoskop", "rectoscop",
+  "enddarm", "darmspiegelung", "koloskop", "colonoscop", "sigmoidoskop", "bowel screening",
+  // Vorsorge
+  "krebsvorsorge", "darmkrebs", "enddarmkrebs", "vorsorge", "cancer screening",
+  // Behandlung
+  "ambulant", "outpatient", "operation", "operativ", "eingriff",
+  "gummibandligatur", "ligatur", "verödung", "veroedung", "sklerosierung", "banding",
+];
 
 /** Welche Themen berührt die Frage? Reihenfolge = Reihenfolge der Fakten. */
 export function findTopics(text: string, lang: Lang): Topic[] {
-  const t = text.toLowerCase();
+  const t = fold(text);
   const found: Topic[] = [];
   // Die Stichwörter beider Sprachen zählen: Wer die Oberfläche auf Englisch
   // gestellt hat und trotzdem „Wann haben Sie geöffnet?“ tippt, bekommt die
@@ -82,6 +118,10 @@ export function findTopics(text: string, lang: Lang): Topic[] {
     const words = lang === "de" ? [...own[key].keywords.de, ...own[key].keywords.en] : [...own[key].keywords.en, ...own[key].keywords.de];
     if (words.some((w) => keywordHits(t, w))) found.push(key);
   }
+  // „Behandeln Sie Fisteln?“ – ein Fachwort führt auf das Leistungsspektrum.
+  // Bewusst hier und nicht in den Stichwörtern der Praxis: So bleibt die
+  // gepflegte Liste kurz und die lange Fachwortliste getrennt davon.
+  if (!found.includes("leistungen") && SERVICE_TERMS.some((w) => keywordHits(t, w))) found.push("leistungen");
   return found;
 }
 
@@ -99,6 +139,14 @@ export interface LiveFacts {
   hoursText: string;
   /** Hinweistext der Praxis (Urlaub o. Ä.), wenn gesetzt. */
   banner: string | null;
+  /**
+   * Termindauern aus der Datenbank. Die Website nennt keine – die Zahl steht
+   * je Terminart in `appointment_types.duration_min`. Fehlt sie, bleibt das
+   * Thema „dauer" ehrlich unbeantwortet statt geraten.
+   */
+  durations?: Array<{ label: string; durationMin: number }>;
+  /** Die schon genannte Terminart, falls im Gespräch bekannt. */
+  typeLabel?: string | null;
 }
 
 export function answerFromFacts(topics: Topic[], lang: Lang, live: LiveFacts): FactAnswer {
@@ -107,6 +155,37 @@ export function answerFromFacts(topics: Topic[], lang: Lang, live: LiveFacts): F
   for (const topic of topics) {
     if (topic === "oeffnungszeiten") {
       facts.push(lang === "de" ? `Sprechzeiten: ${live.hoursText}.` : `Opening hours: ${live.hoursText}.`);
+      continue;
+    }
+    // Die Termindauer ist keine Textzeile, sondern eine Zahl aus der
+    // Datenbank – und je Terminart eine andere. Ist die Terminart schon
+    // bekannt, wird sie genannt; sonst die Spanne.
+    if (topic === "dauer") {
+      const rows = live.durations ?? [];
+      if (rows.length === 0) {
+        unknown.push(topic);
+        continue;
+      }
+      const chosen = live.typeLabel ? rows.find((r) => r.label === live.typeLabel) : undefined;
+      if (chosen) {
+        facts.push(
+          lang === "de"
+            ? `Für „${chosen.label}“ planen wir ${chosen.durationMin} Minuten ein.`
+            : `For “${chosen.label}” we schedule ${chosen.durationMin} minutes.`,
+        );
+        continue;
+      }
+      const min = Math.min(...rows.map((r) => r.durationMin));
+      const max = Math.max(...rows.map((r) => r.durationMin));
+      facts.push(
+        min === max
+          ? lang === "de"
+            ? `Für einen Termin planen wir ${min} Minuten ein.`
+            : `We schedule ${min} minutes for an appointment.`
+          : lang === "de"
+            ? `Je nach Terminart planen wir ${min} bis ${max} Minuten ein.`
+            : `Depending on the appointment type we schedule ${min} to ${max} minutes.`,
+      );
       continue;
     }
     const value = PRAXIS_WISSEN[topic][lang];

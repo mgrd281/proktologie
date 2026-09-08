@@ -37,6 +37,7 @@ export function DemoPanel({
   messages,
   pendingJobs,
   cronConfigured,
+  unknownTopics,
 }: {
   canEdit: boolean;
   demoCount: number;
@@ -45,6 +46,7 @@ export function DemoPanel({
   messages: MessageLogRow[];
   pendingJobs: number;
   cronConfigured: boolean;
+  unknownTopics: Array<{ topic: string; label: string; count: number }>;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -228,6 +230,27 @@ export function DemoPanel({
             </tbody>
           </table>
         </div>
+      </Card>
+
+      <Card className="lg:col-span-2">
+        <Eyebrow>Was der Chat nicht wusste</Eyebrow>
+        <p className="mt-2 text-[13px] leading-relaxed text-text-muted">
+          Fragen der letzten 30 Tage, zu denen keine Antwort hinterlegt ist – gezählt wird ausschließlich das Thema, nie der Satz der Patientin. Wer hier oben steht, ist der nächste Text, der sich lohnt.
+        </p>
+        {unknownTopics.length === 0 ? (
+          <p className="mt-4 text-[13px] text-text-muted">In den letzten 30 Tagen blieb keine Frage offen.</p>
+        ) : (
+          <ul className="mt-4 divide-y divide-line rounded-2xl ring-1 ring-line">
+            {unknownTopics.map((row) => (
+              <li key={row.topic} className="flex items-center justify-between gap-4 bg-surface-raised px-4 py-2.5 text-[13px]">
+                <span className="text-text">{row.label}</span>
+                <span className="tnum rounded-full bg-surface-sunken px-2.5 py-0.5 text-[12px] font-medium text-text-muted">
+                  {row.count}&nbsp;×
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
 
       <Dialog open={confirmPurge} onClose={() => setConfirmPurge(false)} title="Alle Demo-Daten löschen?" confirmLabel="Endgültig löschen" danger busy={pending} onConfirm={purge}>

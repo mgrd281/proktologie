@@ -23,9 +23,12 @@ export interface ToolContext {
 export type SlotAnswer =
   | { kind: "time_free"; date: string; time: string }
   | { kind: "time_taken"; date: string; time: string; alternatives: string[] }
-  | { kind: "day_slots"; date: string; slots: string[] }
+  /** Zeiten eines Tages – seitenweise, damit „gibt es was später?" eine Antwort hat. */
+  | { kind: "day_slots"; date: string; slots: string[]; total: number; page: number; hasMore: boolean; hasEarlier: boolean; window?: { from: string; to: string } | null }
   | { kind: "day_empty"; date: string; nextDays: Array<{ date: string; slots: string[] }> }
   | { kind: "next_days"; days: Array<{ date: string; slots: string[] }> }
+  /** Der früheste freie Platz – die Antwort auf „so früh wie möglich". */
+  | { kind: "earliest"; date: string; time: string }
   | { kind: "unavailable"; reason: "not_live" | "paused" | "unknown_type" | "past" | "error"; banner?: string | null };
 
 /** Wie viele Zeiten der Assistent höchstens auf einmal anbietet. */
@@ -71,7 +74,7 @@ export async function praxisSprechzeiten(lang: Lang): Promise<string> {
  * Je nachdem, wie viel die Patientin schon gesagt hat.
  */
 export async function verfuegbarkeitPruefen(
-  args: { art: string; datum?: string | null; uhrzeit?: string | null },
+  args: { art: string; datum?: string | null; uhrzeit?: string | null; fenster?: { from: string; to: string } | null; seite?: number | null },
   ctx: ToolContext,
 ): Promise<SlotAnswer> {
   try {
@@ -82,12 +85,15 @@ export async function verfuegbarkeitPruefen(
     if (!types.some((t) => t.id === args.art)) return { kind: "unavailable", reason: "unknown_type" };
 
     // Ohne Datum: die nächsten Tage mit freien Zeiten
-    if (!args.datum) return naechsteTage(args.art, ctx);
+    if (!args.datum) return naechsteTage(args.art, ctx, undefined, args.fenster ?? null);
 
     const heute = dateKey(ctx.now);
     if (args.datum < heute) return { kind: "unavailable", reason: "past" };
 
-    const slots = (await repo.availability(args.art, args.datum, ctx.now)).map((s) => s.time);
+    const all = (await repo.availability(args.art, args.datum, ctx.now)).map((s) => s.time);
+    // Ein genanntes Fenster ist ein Wunsch, kein Vorschlag: Wer „nur
+    // nachmittags" sagt, will nicht sieben Uhr angeboten bekommen.
+    const slots = inWindow(all, args.fenster ?? null);
 
     if (args.uhrzeit) {
       if (slots.includes(args.uhrzeit)) return { kind: "time_free", date: args.datum, time: args.uhrzeit };
@@ -99,30 +105,72 @@ export async function verfuegbarkeitPruefen(
     }
 
     if (slots.length === 0) {
-      const next = await naechsteTage(args.art, { ...ctx, now: ctx.now }, args.datum);
+      const next = await naechsteTage(args.art, { ...ctx, now: ctx.now }, args.datum, args.fenster ?? null);
       return { kind: "day_empty", date: args.datum, nextDays: next.kind === "next_days" ? next.days : [] };
     }
-    return { kind: "day_slots", date: args.datum, slots: slots.slice(0, MAX_SLOTS) };
+    // Seitenweise: „gibt es was später?" heißt eine Seite weiter, nicht
+    // dieselben fünf Zeiten noch einmal. Eine Seite hinter dem Ende gibt
+    // es nicht – dann bleibt die letzte, und der Assistent sagt das.
+    const pages = Math.max(1, Math.ceil(slots.length / MAX_SLOTS));
+    const page = Math.min(pages, Math.max(1, Math.trunc(args.seite ?? 1)));
+    const start = (page - 1) * MAX_SLOTS;
+    return {
+      kind: "day_slots",
+      date: args.datum,
+      slots: slots.slice(start, start + MAX_SLOTS),
+      total: slots.length,
+      page,
+      hasMore: page < pages,
+      hasEarlier: page > 1,
+      window: args.fenster ?? null,
+    };
   } catch {
     return { kind: "unavailable", reason: "error" };
   }
 }
 
-/** „Wann haben Sie am ehesten etwas frei?“ */
-export async function naechsterFreierTermin(args: { art: string }, ctx: ToolContext): Promise<SlotAnswer> {
-  return naechsteTage(args.art, ctx);
+/** Nur die Zeiten, die in ein gewünschtes Fenster fallen. */
+function inWindow(slots: string[], fenster: { from: string; to: string } | null): string[] {
+  if (!fenster) return slots;
+  return slots.filter((t) => t >= fenster.from && t < fenster.to);
 }
 
-async function naechsteTage(art: string, ctx: ToolContext, ab?: string): Promise<SlotAnswer> {
+/**
+ * „Wann haben Sie am ehesten etwas frei?“ – die Antwort auf „so früh wie
+ * möglich". Ein Fenster („aber nachmittags") und ein frühester Tag
+ * („nächste Woche") schränken ein, ohne die Frage zu ändern.
+ */
+export async function naechsterFreierTermin(
+  args: { art: string; fenster?: { from: string; to: string } | null; ab?: string | null; bis?: string | null },
+  ctx: ToolContext,
+): Promise<SlotAnswer> {
+  const days = await naechsteTage(args.art, ctx, args.ab ? addDays(args.ab, -1) : undefined, args.fenster ?? null, args.bis ?? null);
+  if (days.kind !== "next_days") return days;
+  const first = days.days.find((d) => d.slots.length > 0);
+  if (!first || !first.slots[0]) return days;
+  return { kind: "earliest", date: first.date, time: first.slots[0] };
+}
+
+async function naechsteTage(
+  art: string,
+  ctx: ToolContext,
+  ab?: string,
+  fenster: { from: string; to: string } | null = null,
+  bis: string | null = null,
+): Promise<SlotAnswer> {
   try {
     const live = await liveOrReason();
     if (!live.ok) return live.answer;
     const from = ab ? addDays(ab, 1) : dateKey(ctx.now);
     const horizon = (await publicTypeList()).find((t) => t.id === art)?.maxAheadDays ?? DEFAULT_HORIZON_DAYS;
-    const to = addDays(dateKey(ctx.now), horizon);
+    const to = bis && bis < addDays(dateKey(ctx.now), horizon) ? bis : addDays(dateKey(ctx.now), horizon);
     if (from > to) return { kind: "next_days", days: [] };
     const range = await repo.availabilityRange(art, from, to, ctx.now);
-    const days = range.filter((d) => d.slots.length > 0).slice(0, 3).map((d) => ({ date: d.date, slots: d.slots.slice(0, MAX_SLOTS) }));
+    const days = range
+      .map((d) => ({ date: d.date, slots: inWindow(d.slots, fenster) }))
+      .filter((d) => d.slots.length > 0)
+      .slice(0, 3)
+      .map((d) => ({ date: d.date, slots: d.slots.slice(0, MAX_SLOTS) }));
     return { kind: "next_days", days };
   } catch {
     return { kind: "unavailable", reason: "error" };
@@ -167,6 +215,10 @@ export function renderSlotAnswer(a: SlotAnswer, lang: Lang, typeLabel: string, p
       return lang === "de"
         ? `Am ${day(a.date)} ist nichts frei. Frei wäre ${day(a.nextDays[0]!.date)} um ${list(a.nextDays[0]!.slots.slice(0, 3))}${uhr}.`
         : `Nothing is free on ${day(a.date)}. The next option is ${day(a.nextDays[0]!.date)} at ${list(a.nextDays[0]!.slots.slice(0, 3))}.`;
+    case "earliest":
+      return lang === "de"
+        ? `Der früheste freie Termin ist ${day(a.date)} um ${a.time}${uhr}.`
+        : `The earliest available appointment is ${day(a.date)} at ${a.time}.`;
     case "next_days":
       if (a.days.length === 0) {
         return lang === "de"
@@ -239,103 +291,9 @@ export function matchType(text: string, types: Array<{ id: string; label: string
   return null;
 }
 
-const WEEKDAY_WORDS: Record<string, number> = {
-  montag: 1, monday: 1, mo: 1, mon: 1,
-  dienstag: 2, tuesday: 2, di: 2, tue: 2,
-  mittwoch: 3, wednesday: 3, mi: 3, wed: 3,
-  donnerstag: 4, thursday: 4, do: 4, thu: 4,
-  freitag: 5, friday: 5, fr: 5, fri: 5,
-  samstag: 6, saturday: 6, sa: 6, sat: 6,
-  sonntag: 7, sunday: 7, so: 7, sun: 7,
-};
-
-/** „morgen“, „Dienstag“, „12.3.“, „2026-03-12“, „next tuesday“. */
-export function parseDateWords(text: string, now: Date, lang: Lang): string | null {
-  const t = text.toLowerCase();
-  const heute = dateKey(now);
-
-  if (/(?<!\p{L})(heute|today)(?!\p{L})/u.test(t)) return heute;
-  // „Guten Morgen“ ist ein Gruß, „morgens“ ein Tagesteil – nur das nackte „morgen“ ist ein Datum
-  if (/(?<!\p{L})(?<!guten\s)(?<!guten )(morgen|tomorrow)(?!\p{L})/u.test(t) && !/übermorgen|uebermorgen/.test(t)) return addDays(heute, 1);
-  if (/(?<!\p{L})(übermorgen|uebermorgen|day after tomorrow)(?!\p{L})/u.test(t)) return addDays(heute, 2);
-
-  // ISO zuerst – eindeutig
-  const iso = /(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)/.exec(t);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-
-  // 12.3. / 12.03.2026 – deutsche Schreibweise
-  const dmy = /(?<!\d)(\d{1,2})\.\s?(\d{1,2})\.(?:\s?(\d{4}))?(?!\d)/.exec(t);
-  if (dmy) {
-    const day = Number(dmy[1]);
-    const month = Number(dmy[2]);
-    const year = dmy[3] ? Number(dmy[3]) : new Date(`${heute}T12:00:00Z`).getUTCFullYear();
-    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-      const candidate = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-      // Ohne Jahresangabe: ein bereits vergangenes Datum meint das nächste Jahr
-      if (!dmy[3] && candidate < heute) return `${year + 1}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-      return candidate;
-    }
-  }
-
-  // Wochentag → nächstes Vorkommen (heute zählt nicht mit).
-  // Kurzformen („Mo“, „Di“, „so“, „do“) sind im Fließtext gewöhnliche
-  // Wörter – „so früh wie möglich“, „do i need“. Sie zählen nur mit Anlass:
-  // nach „am/jeden/nächsten/…“, mit Punkt, oder als ganze Nachricht.
-  for (const [word, weekday] of Object.entries(WEEKDAY_WORDS)) {
-    if (word.length <= 3) {
-      const english = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"].includes(word);
-      if (english && lang !== "en") continue;
-      const cue = new RegExp(`(?:^|(?<=\\b(?:am|jeden|nächsten|naechsten|diesen|kommenden|on|next|this)\\s))${word}(?:\\.|(?=\\s*$))`, "u");
-      if (!cue.test(t.trim())) continue;
-    } else if (!t.includes(word)) {
-      continue;
-    }
-    for (let i = 1; i <= 7; i++) {
-      const d = addDays(heute, i);
-      const dow = ((new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7) + 1;
-      if (dow === weekday) return d;
-    }
-  }
-  return null;
-}
-
-/** „14:30“, „14.30 Uhr“, „14 Uhr“, „halb drei“, „2:30 pm“. */
-export function parseTimeWords(text: string): string | null {
-  const t = text.toLowerCase();
-  const pad = (h: number, m: number) => `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-
-  // 2:30 pm / 2 pm
-  const ampm = /(?<!\d)(\d{1,2})(?::(\d{2}))?\s*(am|pm)(?!\p{L})/u.exec(t);
-  if (ampm) {
-    let h = Number(ampm[1]);
-    const m = Number(ampm[2] ?? 0);
-    if (h >= 1 && h <= 12) {
-      if (ampm[3] === "pm" && h !== 12) h += 12;
-      if (ampm[3] === "am" && h === 12) h = 0;
-      return pad(h, m);
-    }
-  }
-
-  // 14:30 oder 14.30 (Uhr)
-  const hm = /(?<!\d)([01]?\d|2[0-3])[:.]([0-5]\d)(?!\d)/.exec(t);
-  if (hm) return pad(Number(hm[1]), Number(hm[2]));
-
-  // „14 Uhr“ / „at 14“
-  const hOnly = /(?<!\d)([01]?\d|2[0-3])\s*(?:uhr|o'?clock)/.exec(t);
-  if (hOnly) return pad(Number(hOnly[1]), 0);
-
-  // „halb drei“ = 14:30, „viertel nach zwei“ = 14:15 – nur nachmittags sinnvoll
-  const ZAHL: Record<string, number> = { eins: 1, ein: 1, zwei: 2, drei: 3, vier: 4, fünf: 5, fuenf: 5, sechs: 6, sieben: 7, acht: 8, neun: 9, zehn: 10, elf: 11, zwölf: 12, zwoelf: 12 };
-  const halb = /halb\s+(\p{L}+)/u.exec(t);
-  if (halb && ZAHL[halb[1]!] !== undefined) {
-    const h = ZAHL[halb[1]!]!;
-    return pad(h === 1 ? 12 : h - 1 + (h - 1 < 7 ? 12 : 0), 30);
-  }
-  const viertel = /viertel\s+(nach|vor)\s+(\p{L}+)/u.exec(t);
-  if (viertel && ZAHL[viertel[2]!] !== undefined) {
-    const base = ZAHL[viertel[2]!]!;
-    const h = base < 7 ? base + 12 : base;
-    return viertel[1] === "nach" ? pad(h, 15) : pad(h === 0 ? 23 : h - 1, 45);
-  }
-  return null;
-}
+/**
+ * Datum und Uhrzeit lesen jetzt `datetime.ts` – dieselbe Aufgabe, aber mit
+ * Monatsnamen, Zeitfenstern, Bereichen und einer Regel gegen jede Falle,
+ * die der frühere Parser hier hatte. Zwei Parser nebeneinander, die sich
+ * uneinig sein können, wären genau der Fehler, den Stufe 2 behoben hat.
+ */

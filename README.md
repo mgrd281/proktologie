@@ -426,12 +426,64 @@ jeder mit Erwartungsklasse. `node --test lib/chat/corpus.test.mjs` schickt
 sie ohne Modell durch den Automaten und meldet die Trefferquote je Klasse;
 Notfall, Gesundheitsfilter, medizinische Ablehnung, Fremdsprache und
 „Buchen nur bei reinem Ja“ müssen zu 100 % stimmen, die Gesamtquote liegt
-über dem Tor (`CORPUS_GATE`, Lieferung 1: 60 %, gemessen 64,6 %; Lieferung 2
-hebt es auf 90 %, Lieferung 3 auf 95 %). `CORPUS_VERBOSE=1` zeigt jeden
-Fehlschlag. Was noch fehlt, steht damit schwarz auf weiß: Tagesteile und
-Zeitfenster, „so früh wie möglich“, Monatsnamen, Nachfragen in der
-Zeitauswahl, Tippfehler und die Wissensthemen Leistungen, Dauer, Arzt,
-Diskretion, Erstbesuch – Lieferung 2.
+über dem Tor (`CORPUS_GATE`). `CORPUS_VERBOSE=1` zeigt jeden Fehlschlag.
+
+Was diese Zahl **nicht** ist: ein Beweis, dass der Assistent jeden Patienten
+versteht. Der Korpus ist von uns geschrieben; er misst, ob die Sätze, die wir
+für typisch halten, richtig ankommen, und er ist ein Netz gegen Rückschritte.
+Echte Sätze aus dem Betrieb gehören laufend hinein – gerade solche, die
+heute scheitern.
+
+**Stufe 2, Lieferung 2 – Verstehen und Wissen.** Der Korpus stieg von
+64,6 % auf 100 % (Tor jetzt 95 %).
+
+*Wann soll es sein?* Ein neues Modul (`cockpit/lib/chat/datetime.ts`) liest
+Wochentage mit Modifikatoren („nächsten Dienstag“ ist die nächste
+Kalenderwoche), Monatsnamen und Ordinalzahlen in beiden Sprachen, „16.7.“,
+„in drei Tagen“, „nächste Woche“, „Anfang Oktober“, „Ende der Woche“ und
+„von Dienstag auf Donnerstag“ (der Donnerstag zählt). Uhrzeiten kommen als
+Punkt oder als Fenster: vormittags, mittags, nachmittags, abends, „nach 16
+Uhr“, „vor 9“, „gegen 10“, „zwischen 14 und 16“, „nach der Arbeit“, „halb
+drei“, „viertel vor drei“. Fenster werden auf die Sprechzeiten beschnitten –
+„nach 16 Uhr“ heißt 16 bis 18 Uhr, nicht bis Mitternacht. Jede Falle hat
+ihre Regel: „Guten Morgen“ ist kein Datum, „so früh wie möglich“ ist weder
+Sonntag noch Vormittag, „do i need a referral“ kein Donnerstag, und eine
+Kurzform wie „So“ zählt nur mit Punkt, mit Signalwort davor oder als ganze
+Nachricht.
+
+*Schnellstmöglich in einem Klick.* „So früh wie möglich“, „schnellstmöglich“,
+„asap“, „nächster freier Termin“ liefern den frühesten Platz als Satz plus
+Knopf **„Ja, diesen nehmen“**; von dort geht es direkt ins Kontaktformular.
+Ein Tagesteil schränkt ein, ohne die Frage zu ändern („am liebsten
+vormittags“).
+
+*Zeiten haben Seiten.* Die Zeiten eines Tages kommen seitenweise mit
+„Spätere Zeiten“ und „Frühere Zeiten“. Nachfragen in der Zeitauswahl
+funktionieren: „gibt es was später?“, „eher nachmittags“, „nichts davon
+passt“, „anderer Tag“, „und Donnerstag?“. Gibt es nichts Späteres, wird das
+gesagt, statt dieselbe Liste noch einmal zu zeigen. Eine angeklickte Uhrzeit
+hebt ein Fenster auf – sonst hieße es fälschlich „belegt“.
+
+*Tippfehler kosten keinen Termin.* `cockpit/lib/chat/normalize.ts` faltet
+Umlaute, ersetzt gängige Wendungen („habt ihr offen“ → Öffnungszeiten) und
+korrigiert gegen eine kleine Liste von Kernbegriffen mit Abstand eins
+(Damerau-Levenshtein, ohne Paket). Die Schutzliste ist der wichtigste Teil:
+„morgens“ wird nie zu „morgen“, „cancer“ nie zu „cancel“.
+
+*Elf neue Wissensthemen*, jeder Satz wörtlich von der Website: Krankenkasse,
+Diskretion, erster Termin, Arzt und Qualifikation, Leistungen (samt der
+ehrlichen Grenze, dass die komplette Darmspiegelung nicht hier stattfindet),
+Doctolib (getrennte Systeme, keine Synchronisation), Qualität, Wartezeit,
+ohne Termin, Sprachen im Team. Die **Termindauer** kommt live aus der
+Datenbank, nicht aus einem Text. Eine Leistungsfrage („Machen Sie eine
+Darmspiegelung?“) ist keine Gesundheitsangabe mehr und bekommt die
+Leistungsliste; dieselbe Sache als Schilderung („Ich hatte eine
+Darmspiegelung mit Polypen“) bleibt eine. Am Wochenende ist geschlossen –
+der Assistent sagt das und bietet einen Werktag an.
+
+*Was der Chat nicht wusste* steht jetzt im Cockpit unter *Einstellungen →
+Demo & Betrieb*: die Themen der letzten 30 Tage nach Häufigkeit. Gezählt
+wird ausschließlich der Themenschlüssel, nie der Satz der Patientin.
 
 ### Anfragen-Posteingang
 
