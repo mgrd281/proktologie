@@ -47,6 +47,10 @@ export interface ChatAnswer {
     emergency?: true;
     handover?: true;
     booked?: { ref: string; mail: "sent" | "failed" };
+    /** Der Server hat die Sprache aus dem Text erkannt – nur dann folgt die Oberfläche `lang`. */
+    langDetected?: true;
+    /** Eine Sprache, die der Chat nicht spricht: die Antwort ist ein fester Satz in dieser Sprache. */
+    foreign?: string;
     llm: "model" | "fallback" | "none";
   };
 }
@@ -57,6 +61,8 @@ export type ChatResult = { ok: true; answer: ChatAnswer } | ({ ok: false } & Cha
 export interface ChatSend {
   sessionId: string;
   state: unknown;
+  /** Vom Patienten ausdrücklich gewählte Sprache – sie gewinnt gegen die Erkennung. */
+  lang?: ChatLang;
   message?: string;
   action?: { kind: "quick"; id: string } | { kind: "form"; formId: "contact" | "callback"; values: Record<string, string> };
 }
@@ -79,6 +85,8 @@ function parseAnswer(body: unknown): ChatAnswer | null {
       emergency: flags.emergency === true ? true : undefined,
       handover: flags.handover === true ? true : undefined,
       booked: isBooked(flags.booked) ? flags.booked : undefined,
+      langDetected: flags.langDetected === true ? true : undefined,
+      foreign: typeof flags.foreign === "string" ? flags.foreign : undefined,
       llm,
     },
   };

@@ -4,7 +4,7 @@ import * as repo from "../booking/repo.ts";
 import { buildIcs } from "../ics.ts";
 import { PRAXIS_WISSEN } from "../../content/praxis-wissen.ts";
 import { PRACTICE } from "../practice.ts";
-import { dateKey, fmtLongDate, timeKey } from "../time.ts";
+import { dateKey, fmtLongDate, fmtLongDateLocale, timeKey } from "../time.ts";
 import { emailChannel } from "./email.ts";
 import * as tpl from "./templates.ts";
 
@@ -175,15 +175,18 @@ export async function sendWaitlistJoinedMail(waitlistId: string): Promise<SendOu
   if (!w) return { sent: false, reason: "not_found" };
   if (!w.pii.email) return { sent: false, reason: "no_email" };
   const token = await repo.waitlistManageTokenFor(w.id);
+  const L = (d: string) => fmtLongDateLocale(new Date(d), w.locale);
+  const en = w.locale === "en";
   const windowText =
     w.windowFrom && w.windowTo
-      ? `${fmtLongDate(new Date(w.windowFrom))} bis ${fmtLongDate(new Date(w.windowTo))}`
+      ? `${L(w.windowFrom)} ${en ? "to" : "bis"} ${L(w.windowTo)}`
       : w.windowFrom
-        ? `ab ${fmtLongDate(new Date(w.windowFrom))}`
+        ? `${en ? "from" : "ab"} ${L(w.windowFrom)}`
         : w.windowTo
-          ? `bis ${fmtLongDate(new Date(w.windowTo))}`
+          ? `${en ? "until" : "bis"} ${L(w.windowTo)}`
           : null;
   const mail = tpl.waitlistJoined({
+    locale: w.locale,
     firstName: w.pii.firstName,
     lastName: w.pii.lastName,
     typeLabel: w.typeLabel,
@@ -197,7 +200,7 @@ export async function sendWaitlistJoinedMail(waitlistId: string): Promise<SendOu
     windowText,
   });
   try {
-    const r = await emailChannel().send({ to: w.pii.email, toName: `${w.pii.firstName} ${w.pii.lastName}`, subject: mail.subject, text: mail.text, html: tpl.textToHtml(mail.text) });
+    const r = await emailChannel().send({ to: w.pii.email, toName: `${w.pii.firstName} ${w.pii.lastName}`, subject: mail.subject, text: mail.text, html: tpl.textToHtml(mail.text, w.locale) });
     await repo.logMessage({ channel: "email", kind: "waitlist_joined", waitlistId: w.id, status: "sent", providerId: r.providerId ?? null });
     return { sent: true, kindKey: "waitlist_joined" };
   } catch (e) {

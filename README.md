@@ -399,6 +399,40 @@ Grenzen: 20 Nachrichten je Sitzung, 120 je Stunde und IP, 3 Buchungen je
 E-Mail-Adresse und Kalendertag. Abschalten unter *Einstellungen →
 Demo & Betrieb*; das Fenster zeigt dann nur Telefonnummer und Sprechzeiten.
 
+**Stufe 2, Lieferung 1 – Fehlerkorrekturen und das Messgerät.** Nur ein
+reines Ja bucht („ja aber um 15 Uhr“ prüft 15 Uhr, die Kontaktdaten
+bleiben); nach der Buchung stehen „Noch ein Termin“ und „Mein Termin“ als
+Knöpfe da, ein zweiter Termin braucht kein Formular. „Ist ein Notfalltermin
+möglich?“, „kein Notfall, aber dringend“ und „Notfall: brauche schnell einen
+Termin“ sind kein 112-Fall mehr, sondern bekommen den Akut-Hinweis der
+Praxis (erst anrufen, kurzfristige Termine); das nackte Wort bleibt ein
+Notfall. Die Namen buchbarer Terminarten („Termin wegen Hämorrhoiden am
+Dienstag“) sind keine Gesundheitsangabe – Terminart und Tag landen im
+Entwurf; „Was hilft gegen Hämorrhoiden?“ bleibt eine medizinische Frage und
+erreicht kein Modell. „Guten Morgen“ ist kein Datum, „so“ kein Sonntag.
+Fragen mit „Termin“ (absagen, verschieben, „wann ist mein Termin“, „wie lange
+dauert“) starten keine Buchung mehr. Der Sprachumschalter begrüßt neu und
+schickt die Wahl mit jeder Nachricht (`lang`); die Erkennung überstimmt sie
+nicht. Türkisch, Arabisch, Russisch, Ukrainisch und Polnisch bekommen einen
+festen Satz in dieser Sprache samt Notfallwortschatz – ohne Modellaufruf
+(`cockpit/lib/chat/foreign.ts`). „Neues Gespräch“ im Kopf des Fensters
+räumt den Verlauf und verlässt auch den Notfallmodus. Wartelisten-Mails
+folgen der Sprache der Patientin (im verschlüsselten Personenteil, ohne
+Schemaänderung); der Hinweis „zu viele Termine“ nennt keine Zahl mehr.
+
+Das Messgerät: `cockpit/lib/chat/corpus/*.json` enthält 452 echte
+Patientensätze (278 Deutsch, 149 Englisch, 25 in fünf weiteren Sprachen),
+jeder mit Erwartungsklasse. `node --test lib/chat/corpus.test.mjs` schickt
+sie ohne Modell durch den Automaten und meldet die Trefferquote je Klasse;
+Notfall, Gesundheitsfilter, medizinische Ablehnung, Fremdsprache und
+„Buchen nur bei reinem Ja“ müssen zu 100 % stimmen, die Gesamtquote liegt
+über dem Tor (`CORPUS_GATE`, Lieferung 1: 60 %, gemessen 64,6 %; Lieferung 2
+hebt es auf 90 %, Lieferung 3 auf 95 %). `CORPUS_VERBOSE=1` zeigt jeden
+Fehlschlag. Was noch fehlt, steht damit schwarz auf weiß: Tagesteile und
+Zeitfenster, „so früh wie möglich“, Monatsnamen, Nachfragen in der
+Zeitauswahl, Tippfehler und die Wissensthemen Leistungen, Dauer, Arzt,
+Diskretion, Erstbesuch – Lieferung 2.
+
 ### Anfragen-Posteingang
 
 Alles, was kein Termin ist: Rückrufbitten aus dem Chat, Folgerezepte,

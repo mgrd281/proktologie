@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { PRACTICE } from "../practice.ts";
 import { fmtLongDateLocale } from "../time.ts";
+import { detectForeign, detectForeignEmergency, FOREIGN_TEXTS, type ForeignLang } from "./foreign.ts";
 import { answerFromFacts, findTopics, groundingCheck, type LiveFacts, type Topic } from "./knowledge.ts";
 import { detectLanguage, type Lang } from "./language.ts";
 import type { LlmCall } from "./llm.ts";
 import { classifyPrompt, groundPrompt, parseClassification, type ModelView } from "./prompts.ts";
-import { detectEmergency, detectHealthData, maskPii } from "./safety.ts";
-import { matchType, parseDateWords, parseTimeWords, renderSlotAnswer, type SlotAnswer, type ToolContext } from "./tools.ts";
+import { detectEmergency, detectHealthData, isAcuteConcern, maskPii } from "./safety.ts";
+import { matchType, parseDateWords, parseTimeWords, renderSlotAnswer, typeTerms, type SlotAnswer, type ToolContext } from "./tools.ts";
 import { t } from "./texts.ts";
 
 /**
@@ -35,6 +36,14 @@ import { t } from "./texts.ts";
  * Aufruf geprüft; was nicht passt, wird durch einen frischen Zustand
  * ersetzt. Ein manipulierter Entwurf bringt niemandem etwas: Vor jeder
  * Buchung prüft die Datenbank Terminart, Zeit und Belegung erneut.
+ *
+ * Reihenfolge im freien Text – sie ist das Ergebnis echter Fehler:
+ *   Fremdsprache → Gesundheitsangaben → Übergabe/Weiterleitung →
+ *   Antwort auf die gestellte Frage → Terminverwaltung → Akutes →
+ *   Fragen aus dem Wissen → Terminwunsch → Wissen → Modell.
+ * Fragen kommen VOR dem Terminwunsch, weil „Wie lange dauert ein Termin?“
+ * sonst eine Buchung startet. Verwaltung kommt VOR dem Terminwunsch, weil
+ * „Termin verschieben“ sonst einen zweiten Termin erzeugt.
  */
 
 // ---------------------------------------------------------------- Typen
@@ -88,6 +97,8 @@ export const chatRequestSchema = z.object({
   v: z.literal(1),
   sessionId: z.string().uuid(),
   state: z.unknown().nullish(),
+  /** Vom Patienten ausdrücklich gewählte Sprache – sie gewinnt gegen die Erkennung. */
+  lang: z.enum(["de", "en"]).optional(),
   message: z.string().max(600).optional(),
   action: z
     .union([
@@ -133,6 +144,10 @@ export interface ChatResponse {
     emergency?: true;
     handover?: true;
     booked?: { ref: string; mail: "sent" | "failed" };
+    /** Die Sprache wurde aus der Nachricht erkannt und gewechselt. */
+    langDetected?: true;
+    /** Nachricht in einer Sprache, die der Chat nicht spricht – fester Satz, kein Modell. */
+    foreign?: ForeignLang;
     /** „model“ = eine Modellantwort wurde verwendet, „fallback“ = verworfen oder nicht erreichbar. */
     llm: "model" | "fallback" | "none";
   };
@@ -209,11 +224,34 @@ function reviveState(raw: unknown, fallbackLang: Lang): ChatState {
   return parsed.success ? parsed.data : freshState(fallbackLang);
 }
 
+const BOOKING_STAGES: Stage[] = ["type", "date", "time", "contact", "confirm"];
+
 // -------------------------------------------------------- Bausteine UI
 
-function quick(lang: Lang, ids: Array<"book" | "hours" | "directions" | "yes" | "no" | "callback" | "nextfree" | "other">): QuickReply[] {
+type QuickId =
+  | "book"
+  | "hours"
+  | "directions"
+  | "yes"
+  | "no"
+  | "callback"
+  | "nextfree"
+  | "other"
+  | "again"
+  | "myAppointment"
+  | "changeDate"
+  | "changeTime"
+  | "changeType"
+  | "changeContact";
+
+function quick(lang: Lang, ids: QuickId[]): QuickReply[] {
   const q = t(lang).quick;
   return ids.map((id) => ({ id, label: q[id] }));
+}
+
+/** Die vier Wege aus einer Zusammenfassung heraus. */
+function changeQuick(lang: Lang): QuickReply[] {
+  return quick(lang, ["changeDate", "changeTime", "changeType", "changeContact"]);
 }
 
 function typeQuick(types: TypeInfo[]): QuickReply[] {
@@ -288,6 +326,11 @@ function say(state: ChatState, reply: string, extras: Extras = {}): ChatResponse
   return { reply, lang: state.lang, state, flags: { llm: "none", ...flags }, ...rest };
 }
 
+/** Einen Satz voranstellen, ohne den Rest der Antwort zu verändern. */
+function prefixed(res: ChatResponse, sentence: string): ChatResponse {
+  return { ...res, reply: `${sentence} ${res.reply}` };
+}
+
 const phone = PRACTICE.phone;
 
 function telLinks(lang: Lang): Array<{ label: string; href: string }> {
@@ -304,15 +347,64 @@ function practiceLink(lang: Lang): Array<{ label: string; href: string }> {
 // ------------------------------------------------------------- Regeln
 
 const HANDOVER_RE =
-  /(mit (?:einem |einer )?(?:menschen?|mitarbeiter|mensch)|echte[rn]? mensch|jemanden sprechen|jemand sprechen|persönlich sprechen|mit dem team|mitarbeiterin|rezeption|speak (?:to|with) (?:a )?(?:human|someone|somebody|person|staff)|talk to (?:a )?(?:human|someone|somebody|person)|real person)/iu;
+  /(mit (?:einem |einer )?(?:menschen?|mitarbeiter|mensch)|echte[rn]? mensch|jemanden sprechen|jemand sprechen|persönlich sprechen|mit dem team|mitarbeiterin|rezeption|sprechstundenhilfe|(?:die|der|mit der) praxis sprechen|verbinden|durchstellen|zurückruf|zurueckruf|rückruf|rueckruf|(?<!\p{L})(?:kein(?:en)? )?bot(?!\p{L})|roboter|automat(?!isch)|speak (?:to|with) (?:a )?(?:human|someone|somebody|person|staff|the practice|the team)|talk to (?:a )?(?:human|someone|somebody|person|the practice|the team)|real (?:person|human)|human being|call (?:me )?back|callback)/iu;
 const FORWARD_RE =
   /(rezept|folgerezept|krankschreibung|krankmeldung|arbeitsunfähig|attest|befund|überweisung|ueberweisung|prescription|sick note|sick leave|medical certificate|referral|findings|test results)/iu;
 /** „Brauche ich eine Überweisung?“ ist eine Frage, keine Bitte um Weiterleitung. */
-const ASKS_WHETHER_RE = /(brauche ich|braucht man|benötige ich|benoetige ich|muss ich|ist eine|ist ein |nötig|noetig|erforderlich|do i need|is a |is an |necessary|required)/iu;
-const BOOKING_RE = /(termin|buchen|vereinbaren|sprechstunde bekommen|appointment|book|booking|schedule)/iu;
-const FREE_SLOT_RE = /(frei|verfügbar|verfuegbar|zeit|available|free|slot|open)/iu;
-const YES_RE = /^(ja|jawohl|ja bitte|ja gerne|ja, bitte|genau|gern|gerne|ok|okay|passt|richtig|stimmt|yes|yes please|sure|correct|right|please do)\b/iu;
-const NO_RE = /^(nein|nee|ne\b|nicht|lieber nicht|ändern|aendern|anders|no|nope|change|not quite)\b/iu;
+const ASKS_WHETHER_RE =
+  /(brauche ich|brauch ich|braucht man|benötige ich|benoetige ich|muss ich|ist eine|ist ein |nötig|noetig|erforderlich|ohne (?:eine |die |meine )?(?:überweisung|ueberweisung)|reicht (?:eine|die|meine|auch eine)?\s*(?:überweisung|ueberweisung)|geht (?:das|es) (?:auch )?ohne|do i need|is a |is an |necessary|required|without (?:a |the |my )?referral|need a referral)/iu;
+const BOOKING_RE =
+  /(termin|buchen|vereinbaren|sprechstunde bekommen|vorstellen|vorbeikommen|vorbei kommen|reinkommen|appointment|book|booking|schedule|see the doctor|see dr|see a doctor|come in|come by|consultation|visit)/iu;
+/**
+ * Ein reines Ja – und nur das bucht. „Ja, aber um 15 Uhr“ ist kein Ja,
+ * sondern eine Korrektur; sie wurde früher als Zusage gelesen und buchte
+ * die falsche Zeit.
+ */
+const YES_CORE = new Set([
+  "ja", "jaa", "jawohl", "jo", "jup", "jupp", "jap", "jep", "yep", "yeah", "yes", "y", "ok", "okay", "oki", "okey", "genau", "gern", "gerne",
+  "passt", "richtig", "stimmt", "korrekt", "klar", "natürlich", "natuerlich", "sicher", "buchen", "buch", "verbindlich", "bestätigen",
+  "bestaetigen", "bestätige", "bestaetige", "einverstanden", "absolut", "sure", "correct", "right", "book", "confirm", "confirmed",
+  "absolutely", "definitely", "fine", "perfect", "great", "exactly", "agreed", "yup",
+]);
+const YES_FILLER = new Set([
+  "bitte", "so", "das", "alles", "ist", "gut", "super", "prima", "machen", "wir", "ich", "es", "den", "termin", "nehme", "nehmen",
+  "danke", "dankeschön", "dankeschoen", "vielen", "dank", "und", "please", "do", "go", "ahead", "it", "that", "is", "thanks", "thank",
+  "you", "sounds", "good", "the", "appointment", "take", "let", "lets", "let's", "with", "this", "one", "then",
+]);
+const NOT_YES = new Set([
+  "nein", "nicht", "kein", "keine", "aber", "lieber", "doch", "anders", "andere", "anderen", "anderer", "ändern", "aendern", "statt",
+  "no", "not", "but", "rather", "other", "another", "change", "instead", "different", "don't", "dont", "nope", "nee", "nö", "ne",
+]);
+/** „Jaaa 👍“, „Jo, buchen“, „sure, go ahead“ – ein Ja ohne jede Einschränkung. */
+function isBareYes(text: string): boolean {
+  const words = text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}'\s]/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w.replace(/(\p{L})\1{2,}/gu, "$1"));
+  if (!words.length || words.length > 8) return false;
+  let core = false;
+  for (const w of words) {
+    if (NOT_YES.has(w)) return false;
+    if (YES_CORE.has(w)) core = true;
+    else if (!YES_FILLER.has(w)) return false;
+  }
+  return core;
+}
+/** Beginnt mit Ja, geht aber weiter – Absicht unklar, also nachfragen. */
+const YES_START_RE = /^(ja|jawohl|yes|ok|okay|genau|gern|gerne|sure)\b/iu;
+const NO_RE =
+  /^(nein|nee|nö|ne\b|nicht|lieber (?:doch )?nicht|doch nicht|eher nicht|ändern|aendern|anders|no|nope|rather not|not really|no thanks|change|not quite)\b/iu;
+/** Absagen, verschieben, bestätigen – in jeder Phase eine Verwaltungsabsicht. */
+const MANAGE_VERB_RE =
+  /(?<!\p{L})(absag|stornier|cancel|verschieb|umbuch|reschedul|move my appointment|change my appointment|bestätig\p{L}*(?:\s+ich)?\s+(?:den\s+|meinen\s+|my\s+)?termin|confirm my appointment|termin\s+(?:nehme|nehm)\s+ich\s+wahr|nehme ich wahr|sag\p{L}*\s+(?:ich\s+)?(?:einen\s+|den\s+|meinen\s+)?termin\s+ab(?!\p{L})|termin\s+ab(?:zu)?sagen|i'?ll be there|i will (?:be there|attend))/iu;
+/** „Wann ist mein Termin?“, „Ich kann morgen nicht kommen“ – außerhalb einer laufenden Buchung eine Nachfrage zu einem bestehenden Termin. */
+const MANAGE_LOOKUP_RE =
+  /(wann ist mein(?:e)? termin|wann habe ich (?:meinen |einen )?termin|mein(?:en|em)? termin|my appointment|when is my appointment|habe ich (?:\p{L}+\s+){0,4}(?:schon |bereits )?(?:einen |den )?termin|ob ich (?:\p{L}+\s+){0,5}termin habe|do i have an appointment|am i booked|(?:what time|when) (?:am i|i'?m) booked|check (?:what time|when|if|whether) i|kann (?:ich )?(?:\p{L}+\s+){0,3}(?:leider )?nicht (?:kommen|erscheinen)|schaffe (?:es |ich es )?(?:\p{L}+\s+){0,3}nicht|can'?t (?:make it|come|attend)|cannot (?:make it|come|attend)|won'?t be able to (?:come|make it|attend)|change the (?:date|time|appointment)|move (?:my|the) appointment)/iu;
+/** Frageform: erst im Wissen nachsehen, bevor ein Wort wie „Termin“ eine Buchung startet. */
+const QUESTION_RE =
+  /^\s*(?:hallo|hi|moin|guten (?:tag|morgen|abend)|hello|good (?:morning|afternoon|evening))?[,.!\s]*(wie|wann|wo|was|welche|welcher|welches|ob|kann ich|kann man|könnte ich|koennte ich|darf ich|muss ich|brauche ich|gibt es|haben sie|habt ihr|hat die|ist |sind |do you|can i|could i|may i|how|what|when|where|is there|are you|will i|does|does (?:the|dr|your)|is it|are there|will i|would you|could you)\b|.*\?\s*$/iu;
 
 const FORWARD_KIND: Array<{ kind: CallbackKind; re: RegExp }> = [
   { kind: "folgerezept", re: /(rezept|prescription)/iu },
@@ -334,23 +426,31 @@ export function collectText(req: ChatRequest): string {
 
 /** Notfall? Diese Prüfung braucht weder Datenbank noch Modell noch Zustand. */
 export function isEmergency(req: ChatRequest): boolean {
-  return detectEmergency(collectText(req)) !== null;
+  const text = collectText(req);
+  if (detectEmergency(text)) return true;
+  const foreign = detectForeign(text);
+  return foreign !== null && detectForeignEmergency(text, foreign);
 }
 
-/** Der geprüfte Zustand aus der Anfrage – manipuliertes wird verworfen. */
+/** Der geprüfte Zustand aus der Anfrage – manipuliertes wird verworfen, ausdrückliche Sprache gilt. */
 export function stateFor(req: ChatRequest): ChatState {
-  return reviveState(req.state, detectLanguage(req.message ?? "", "de").lang);
+  const state = reviveState(req.state, req.lang ?? detectLanguage(req.message ?? "", "de").lang);
+  return req.lang && req.lang !== state.lang ? { ...state, lang: req.lang } : state;
 }
 
 /**
  * Die Notfallantwort. Sie steht bewusst als eigene Funktion da: Die Route
  * gibt sie aus, bevor gezählt, geprüft oder abgeschaltet wird – 112 muss
  * auch dann erscheinen, wenn der Chat pausiert oder das Limit erreicht ist.
+ * In einer Sprache, die der Chat nicht spricht, kommt der Notfallsatz
+ * trotzdem in dieser Sprache.
  */
-export function emergencyReply(state: ChatState): ChatResponse {
-  return say({ ...state, stage: "idle", failures: 0 }, t(state.lang).emergency, {
+export function emergencyReply(state: ChatState, text = ""): ChatResponse {
+  const foreign = text ? detectForeign(text) : null;
+  const reply = foreign ? FOREIGN_TEXTS[foreign].emergency : t(state.lang).emergency;
+  return say({ ...state, stage: "idle", failures: 0 }, reply, {
     links: telLinks(state.lang),
-    flags: { emergency: true },
+    flags: foreign ? { emergency: true, foreign } : { emergency: true },
   });
 }
 
@@ -362,7 +462,7 @@ export async function runTurn(req: ChatRequest, deps: ChatDeps): Promise<ChatRes
   // 1. Notfall geht allem voraus – auch dem, was in einem Formularfeld steht.
   if (isEmergency(req)) {
     deps.audit("chat.emergency");
-    return emergencyReply(state);
+    return emergencyReply(state, collectText(req));
   }
 
   if (req.action?.kind === "form") return handleForm(req.action, state, deps);
@@ -370,40 +470,100 @@ export async function runTurn(req: ChatRequest, deps: ChatDeps): Promise<ChatRes
 
   const text = (req.message ?? "").trim();
   if (!text) return say(state, t(state.lang).notUnderstood, { quick: quick(state.lang, ["book", "hours", "directions"]) });
-  return handleMessage(text, state, deps, now);
+  return handleMessage(text, state, deps, now, { explicitLang: Boolean(req.lang), fresh: req.state == null });
 }
 
 // -------------------------------------------------------- Freier Text
 
-async function handleMessage(text: string, prev: ChatState, deps: ChatDeps, now: Date): Promise<ChatResponse> {
-  const guess = detectLanguage(text, prev.lang);
-  const lang: Lang = guess.confidence === "high" ? guess.lang : prev.lang;
-  const state: ChatState = { ...prev, lang };
-  const T = t(lang);
+async function handleMessage(
+  text: string,
+  prev: ChatState,
+  deps: ChatDeps,
+  now: Date,
+  opts: { explicitLang: boolean; fresh: boolean },
+): Promise<ChatResponse> {
+  // 0. Eine Sprache, die der Chat nicht spricht: fester Satz in dieser
+  //    Sprache, kein Modell, keine weitere Verarbeitung. Der Text könnte
+  //    Gesundheitsangaben enthalten, die kein Filter dieser Datei erkennt.
+  const foreign = detectForeign(text);
+  if (foreign) {
+    deps.audit("chat.foreign", { lang: foreign });
+    const F = FOREIGN_TEXTS[foreign];
+    return say({ ...prev, failures: 0 }, F.reply, {
+      quick: [
+        { id: "book", label: F.quickBook },
+        { id: "hours", label: F.quickHours },
+      ],
+      links: practiceLink(prev.lang),
+      flags: { foreign },
+    });
+  }
 
-  // 2. Gesundheitsangaben: Hinweis statt Verarbeitung – das Modell sieht
-  //    diesen Text nicht, und gespeichert wird er auch nicht.
-  const health = detectHealthData(text);
+  // Ohne Vorgabe darf die Erkennung umschalten – nur bei hoher Sicherheit.
+  // Ein frischer Zustand trägt die erkannte Sprache schon (stateFor), die
+  // Oberfläche erfährt es trotzdem, damit sie ihre Beschriftung anpasst.
+  const guess = detectLanguage(text, prev.lang);
+  const detected =
+    !opts.explicitLang && guess.confidence === "high" && (guess.lang !== prev.lang || (opts.fresh && guess.lang !== "de"));
+  const state: ChatState = detected ? { ...prev, lang: guess.lang } : prev;
+  const res = await handleText(text, state, deps, now);
+  return detected ? { ...res, flags: { ...res.flags, langDetected: true } } : res;
+}
+
+async function handleText(text: string, state: ChatState, deps: ChatDeps, now: Date): Promise<ChatResponse> {
+  const lang = state.lang;
+  const T = t(lang);
+  const types = await deps.types();
+  const named = matchType(text, types, lang);
+  const namedType = named && types.some((x) => x.id === named) ? named : null;
+  // 1. Gesundheitsangaben: Hinweis statt Verarbeitung – das Modell sieht
+  //    diesen Text nicht, und gespeichert wird er auch nicht. Die Namen
+  //    der buchbaren Terminarten zählen nicht als Gesundheitsangabe.
+  const health = detectHealthData(text, { ignore: typeTerms(types) });
+  const acute = isAcuteConcern(text, health !== null);
+  if (health?.medicalQuestion) {
+    deps.audit("chat.health_filtered", { medicalQuestion: true });
+    return say({ ...state, failures: 0 }, T.medicalRefusal, { quick: quick(lang, ["book", "callback"]) });
+  }
+  // „Bitte schicken Sie den Befund an meinen Hausarzt“: eine Weiterleitung,
+  // kein Gespräch über Gesundheit – das Formular kommt, der Text wird nicht
+  // verarbeitet (eine Schilderung im Formular wird dort verworfen).
+  if (health && FORWARD_RE.test(text) && !ASKS_WHETHER_RE.test(text)) {
+    deps.audit("chat.health_filtered", { medicalQuestion: false });
+    const kind = forwardKind(text);
+    return say({ ...state, stage: "callback", intent: "forward", callbackKind: kind, failures: 0 }, T.forward, {
+      form: callbackForm(lang, kind),
+      links: practiceLink(lang),
+      flags: { handover: true },
+    });
+  }
   if (health) {
-    deps.audit("chat.health_filtered", { medicalQuestion: health.medicalQuestion });
-    const types = await deps.types();
-    const named = matchType(text, types, lang);
-    if (health.medicalQuestion) {
-      return say({ ...state, failures: 0 }, T.medicalRefusal, { quick: quick(lang, ["book", "callback"]) });
+    deps.audit("chat.health_filtered", { medicalQuestion: false });
+    if (namedType) {
+      // Terminart genannt und dazu etwas Gesundheitliches: Die Wahl gilt,
+      // der Hinweis (oder bei Akutem der Anruf-Hinweis) kommt dazu, Tag
+      // und Uhrzeit gehen nicht verloren.
+      const date = parseDateWords(text, now, lang);
+      const time = parseTimeWords(text);
+      const next: ChatState = { ...state, failures: 0, draft: { ...state.draft, date: date ?? state.draft.date, time: time ?? state.draft.time } };
+      return prefixed(await afterType(namedType, next, deps, now, ""), acute ? T.acute : T.healthHintShort);
     }
-    // „Hämorrhoiden“ ist zugleich eine Terminart: Hinweis geben und die
-    // Auswahl anbieten, statt die Schilderung zu verarbeiten.
-    if (named || state.stage === "type") {
-      return say({ ...state, stage: "type", intent: "booking", failures: 0 }, `${T.healthHint} ${T.askType}`, { quick: typeQuick(types) });
+    // Akut, aber kein Notfall: kurzfristige Termine gibt es per Telefon –
+    // kein Rat, keine Einschätzung, keine Ermahnung.
+    if (acute) {
+      return say({ ...state, failures: 0 }, T.acute, { quick: quick(lang, ["book", "callback"]), links: practiceLink(lang) });
+    }
+    if (state.stage === "type") {
+      return say({ ...state, failures: 0 }, `${T.healthHint} ${T.askType}`, { quick: typeQuick(types) });
     }
     return say({ ...state, failures: 0 }, T.healthHint, { quick: quick(lang, ["book", "hours", "directions"]) });
   }
 
-  // 3. Ab hier darf ein Modell mitreden – aber nur maskiert.
+  // 2. Ab hier darf ein Modell mitreden – aber nur maskiert.
   const masked = maskPii(text);
   if (masked.masked.length) deps.audit("chat.masked", { kinds: masked.masked });
 
-  // 4. Wünsche, die in jedem Schritt gelten
+  // 3. Wünsche, die in jedem Schritt gelten
   if (HANDOVER_RE.test(text)) {
     const hours = (await deps.info(lang)).hoursText;
     return say({ ...state, intent: "handover", failures: 0 }, `${T.handover} ${hoursSentence(lang, hours)}`, {
@@ -421,18 +581,12 @@ async function handleMessage(text: string, prev: ChatState, deps: ChatDeps, now:
     });
   }
 
-  // 5. Antwort auf die gerade gestellte Frage
+  // 4. Antwort auf die gerade gestellte Frage
   switch (state.stage) {
-    case "confirm": {
-      if (YES_RE.test(text)) return book(state, deps, now);
-      if (NO_RE.test(text)) return say({ ...state, stage: "date", draft: { ...state.draft, date: null, time: null }, failures: 0 }, T.changed, { quick: quick(lang, ["nextfree"]) });
-      if (state.failures === 0) return say({ ...state, failures: 1 }, T.confirmAgain, { quick: quick(lang, ["yes", "no"]) });
-      return say({ ...state, stage: "date", draft: { ...state.draft, date: null, time: null }, failures: 0 }, T.changed, { quick: quick(lang, ["nextfree"]) });
-    }
+    case "confirm":
+      return confirmStage(text, state, deps, now, namedType);
     case "type": {
-      const types = await deps.types();
-      const id = matchType(text, types, lang);
-      if (id && types.some((x) => x.id === id)) return afterType(id, { ...state, failures: 0 }, deps, now, text);
+      if (namedType) return afterType(namedType, { ...state, failures: 0 }, deps, now, text);
       break;
     }
     case "date":
@@ -446,11 +600,33 @@ async function handleMessage(text: string, prev: ChatState, deps: ChatDeps, now:
       break;
   }
 
-  // 6. Terminwunsch im freien Satz
+  // 5. Terminverwaltung – vor dem Terminwunsch, sonst wird aus
+  //    „Termin verschieben“ ein zweiter Termin.
+  const inBooking = BOOKING_STAGES.includes(state.stage);
+  if (MANAGE_VERB_RE.test(text) || (!inBooking && MANAGE_LOOKUP_RE.test(text))) {
+    return manageStub({ ...state, failures: 0 }, deps);
+  }
+
+  // 6. Terminwunsch im freien Satz – und Fragen zuerst aus dem Wissen
   const date = parseDateWords(text, now, lang);
   const time = parseTimeWords(text);
-  if (BOOKING_RE.test(text) || ((date || time) && FREE_SLOT_RE.test(text))) {
-    return startBooking({ ...state, failures: 0 }, deps, now, text, date, time);
+  const isQuestion = QUESTION_RE.test(text);
+  // Eine genannte Terminart („Ich glaube, ich habe Hämorrhoiden“) ist ein
+  // Terminwunsch – außer in einer Frage, die zuerst das Wissen beantwortet.
+  // Ein nackter Tag oder eine Uhrzeit („Dienstag 14:30“, „Geht Montag?“)
+  // ist in diesem Chat ebenfalls ein Terminwunsch.
+  const wantsBooking = BOOKING_RE.test(text) || (date || time) !== null || (namedType !== null && !isQuestion);
+
+  if (acute && !wantsBooking) {
+    return say({ ...state, failures: 0 }, T.acute, { quick: quick(lang, ["book", "callback"]), links: practiceLink(lang) });
+  }
+  if (isQuestion) {
+    const topics = findTopics(text, lang);
+    if (topics.length) return answerTopics(topics, { ...state, failures: 0 }, deps, masked.text);
+  }
+  if (wantsBooking) {
+    const res = await startBooking({ ...state, failures: 0 }, deps, now, text, date, time);
+    return acute ? prefixed(res, T.acute) : res;
   }
 
   // 7. Frage zur Praxis – aus gepflegten Fakten, notfalls vom Modell formuliert
@@ -458,7 +634,44 @@ async function handleMessage(text: string, prev: ChatState, deps: ChatDeps, now:
   if (topics.length) return answerTopics(topics, { ...state, failures: 0 }, deps, masked.text);
 
   // 8. Erst jetzt das Modell fragen – und nur als Hinweis
-  return classifyAndRoute(text, masked.text, state, deps, now);
+  return classifyAndRoute(text, masked.text, state, deps, now, isQuestion);
+}
+
+/**
+ * Die Bestätigungsfrage. Nur ein reines Ja bucht. Jede erkennbare
+ * Korrektur (anderer Tag, andere Uhrzeit, andere Terminart) wird
+ * übernommen und erneut geprüft – die Kontaktdaten bleiben.
+ */
+async function confirmStage(text: string, state: ChatState, deps: ChatDeps, now: Date, namedType: string | null): Promise<ChatResponse> {
+  const lang = state.lang;
+  const T = t(lang);
+  const d = state.draft;
+  const date = parseDateWords(text, now, lang);
+  const time = parseTimeWords(text);
+  const changedType = namedType && namedType !== d.typeId ? namedType : null;
+  const changed = (date && date !== d.date) || (time && time !== d.time) || changedType;
+
+  if (changed) {
+    const next: ChatState = { ...state, failures: 0, draft: { ...d, typeId: changedType ?? d.typeId } };
+    const newDate = date ?? d.date;
+    const newTime = time ?? (date && date !== d.date ? null : d.time);
+    return checkSlot(next, deps, now, newDate, newTime);
+  }
+  if (isBareYes(text)) return book(state, deps, now);
+  if (NO_RE.test(text) || YES_START_RE.test(text)) {
+    return say({ ...state, failures: 0 }, T.whatToChange, { quick: changeQuick(lang) });
+  }
+  if (state.failures === 0) return say({ ...state, failures: 1 }, T.confirmAgain, { quick: quick(lang, ["yes", "no"]) });
+  return say({ ...state, failures: 0 }, T.whatToChange, { quick: changeQuick(lang) });
+}
+
+/**
+ * Terminverwaltung – bis die Verwaltung im Chat gebaut ist (Stufe 2D),
+ * der ehrliche Weg: Link in der Bestätigungsmail oder Telefon.
+ */
+async function manageStub(state: ChatState, deps: ChatDeps): Promise<ChatResponse> {
+  const res = await answerTopics(["absagen"], state, deps, null);
+  return { ...res, quick: quick(state.lang, ["callback", "book"]), links: practiceLink(state.lang) };
 }
 
 function hoursSentence(lang: Lang, hoursText: string): string {
@@ -472,11 +685,12 @@ async function handleQuick(id: string, prev: ChatState, deps: ChatDeps, now: Dat
   const lang = state.lang;
   const T = t(lang);
 
-  if (id === "book") return startBooking(state, deps, now, "", null, null);
+  if (id === "book" || id === "again") return startBooking(state, deps, now, "", null, null);
   if (id === "hours" || id === "directions") {
     const topics: Topic[] = id === "hours" ? ["oeffnungszeiten"] : ["anfahrt", "adresse"];
     return answerTopics(topics, state, deps, null);
   }
+  if (id === "myAppointment") return manageStub(state, deps);
   if (id === "callback") {
     const kind = state.callbackKind ?? "rueckruf";
     return say({ ...state, stage: "callback", callbackKind: kind }, T.callbackIntro, { form: callbackForm(lang, kind) });
@@ -487,8 +701,20 @@ async function handleQuick(id: string, prev: ChatState, deps: ChatDeps, now: Dat
     return renderAvailability(answer, { ...state, stage: "date" }, deps, now);
   }
   if (id === "yes") return state.stage === "confirm" ? book(state, deps, now) : say(state, T.notUnderstood, { quick: quick(lang, ["book", "hours", "directions"]) });
-  if (id === "no" || id === "other") {
-    return say({ ...state, stage: "date", draft: { ...state.draft, date: null, time: null } }, T.changed, { quick: quick(lang, ["nextfree"]) });
+  if (id === "no") return say(state, T.whatToChange, { quick: changeQuick(lang) });
+  if (id === "changeDate" || id === "other") {
+    return say({ ...state, stage: "date", draft: { ...state.draft, date: null, time: null } }, T.askDate, { quick: quick(lang, ["nextfree"]) });
+  }
+  if (id === "changeTime") {
+    if (!state.draft.date) return say({ ...state, stage: "date", draft: { ...state.draft, time: null } }, T.askDate, { quick: quick(lang, ["nextfree"]) });
+    return checkSlot({ ...state, draft: { ...state.draft, time: null } }, deps, now, state.draft.date, null);
+  }
+  if (id === "changeType") {
+    const types = await deps.types();
+    return say({ ...state, stage: "type", draft: { ...state.draft, typeId: null } }, T.askType, { quick: typeQuick(types) });
+  }
+  if (id === "changeContact") {
+    return say({ ...state, stage: "contact", draft: { ...state.draft, contact: null } }, T.askContact, { form: contactForm(lang) });
   }
   if (id.startsWith("type:")) {
     const typeId = id.slice(5);
@@ -578,7 +804,7 @@ async function handleForm(
     const message = outcome.code === "rate_limited" ? T.rateLimited : outcome.code === "blocked" ? T.blocked : T.callbackFailed;
     return say({ ...state, stage: "callback" }, message, { links: practiceLink(lang) });
   }
-  const dropped = noteHasHealth ? ` ${T.healthHint}` : "";
+  const dropped = noteHasHealth ? ` ${T.healthHintShort}` : "";
   const ref = lang === "de" ? `Ihre Referenz: ${outcome.ref}.` : `Your reference: ${outcome.ref}.`;
   return say({ ...state, stage: "done", callbackKind: null }, `${T.callbackSaved} ${ref}${dropped}`, { quick: quick(lang, ["book", "hours"]) });
 }
@@ -622,11 +848,15 @@ async function startBooking(
 
 async function afterType(typeId: string, state: ChatState, deps: ChatDeps, now: Date, text: string): Promise<ChatResponse> {
   const lang = state.lang;
+  const T = t(lang);
   const date = state.draft.date ?? (text ? parseDateWords(text, now, lang) : null);
   const time = state.draft.time ?? (text ? parseTimeWords(text) : null);
   const next: ChatState = { ...state, intent: "booking", draft: { ...state.draft, typeId, date, time } };
   if (date) return checkSlot(next, deps, now, date, time);
-  return say({ ...next, stage: "date" }, t(lang).askDate, { quick: quick(lang, ["nextfree"]) });
+  // Aus freiem Text erkannt: kurz bestätigen, was verstanden wurde.
+  const label = text ? (await deps.types()).find((x) => x.id === typeId)?.label : undefined;
+  const reply = label ? `${T.typeNoted} ${label}. ${T.askDate}` : T.askDate;
+  return say({ ...next, stage: "date" }, reply, { quick: quick(lang, ["nextfree"]) });
 }
 
 /** Verfügbarkeit fragen und daraus den nächsten Schritt ableiten. */
@@ -647,7 +877,14 @@ async function renderAvailability(answer: SlotAnswer, state: ChatState, deps: Ch
 
   switch (answer.kind) {
     case "time_free": {
-      const next: ChatState = { ...state, stage: "contact", draft: { ...state.draft, date: answer.date, time: answer.time } };
+      const draft = { ...state.draft, date: answer.date, time: answer.time };
+      // Kontaktdaten schon da (Korrektur oder zweite Buchung): gleich die
+      // Zusammenfassung – niemand tippt seinen Namen zweimal.
+      if (draft.contact) {
+        const next: ChatState = { ...state, stage: "confirm", draft };
+        return say(next, `${sentence} ${T.contactReused} ${await summarySentence(next, deps)}`, { quick: quick(lang, ["yes", "no"]) });
+      }
+      const next: ChatState = { ...state, stage: "contact", draft };
       return say(next, `${sentence} ${T.askContact}`, { form: contactForm(lang) });
     }
     case "time_taken": {
@@ -730,7 +967,18 @@ async function book(state: ChatState, deps: ChatDeps, now: Date): Promise<ChatRe
         ? `Gebucht: ${outcome.typeLabel} am ${day} um ${d.time} Uhr. Ihre Referenz: ${outcome.ref}.`
         : `Booked: ${outcome.typeLabel} on ${day} at ${d.time}. Your reference: ${outcome.ref}.`;
     const tail = outcome.mail === "sent" ? T.bookedMailSent : T.bookedMailFailed;
-    return say({ ...state, stage: "done", intent: null, lastOffer: [] }, `${head} ${tail}`, {
+    // Der Entwurf wird geräumt, die Kontaktdaten bleiben: Ein zweiter
+    // Termin in derselben Sitzung braucht kein Formular mehr.
+    const done: ChatState = {
+      ...state,
+      stage: "done",
+      intent: null,
+      lastOffer: [],
+      draft: { typeId: null, date: null, time: null, contact: d.contact },
+    };
+    return say(done, `${head} ${tail}`, {
+      quick: quick(lang, ["again", "myAppointment"]),
+      links: practiceLink(lang),
       flags: { booked: { ref: outcome.ref, mail: outcome.mail } },
     });
   }
@@ -763,6 +1011,8 @@ async function answerTopics(topics: Topic[], state: ChatState, deps: ChatDeps, q
   const T = t(lang);
   const live = await deps.info(lang);
   const answer = answerFromFacts(topics, lang, live);
+  // Was die Praxis nicht hinterlegt hat, wird gezählt – nur der Themenschlüssel, nie der Text.
+  for (const topic of answer.unknown) deps.audit("chat.unknown_topic", { topic });
 
   if (answer.facts.length === 0) {
     return say(state, T.unknownTopic, { quick: quick(lang, ["callback", "book"]), links: practiceLink(lang) });
@@ -786,10 +1036,24 @@ async function answerTopics(topics: Topic[], state: ChatState, deps: ChatDeps, q
 
 // ------------------------------------------------- Modell als Hinweis
 
-async function classifyAndRoute(text: string, masked: string, state: ChatState, deps: ChatDeps, now: Date): Promise<ChatResponse> {
+async function classifyAndRoute(
+  text: string,
+  masked: string,
+  state: ChatState,
+  deps: ChatDeps,
+  now: Date,
+  question = false,
+): Promise<ChatResponse> {
   const lang = state.lang;
   const T = t(lang);
   const types = await deps.types();
+  // Eine Frage, zu der kein Faktentext passt: Das Modell könnte nur raten.
+  // Ehrlich ist „das weiß ich nicht“ – gezählt, damit die Praxis sieht,
+  // was gefragt wird (nur der Schlüssel, nie der Text).
+  const unknownQuestion = () => {
+    deps.audit("chat.unknown_topic", { topic: "frage" });
+    return say({ ...state, failures: 0 }, T.unknownTopic, { quick: quick(lang, ["callback", "book"]), links: practiceLink(lang), flags: { llm: "fallback" } });
+  };
   const view: ModelView = {
     stage: state.stage,
     lang,
@@ -802,6 +1066,7 @@ async function classifyAndRoute(text: string, masked: string, state: ChatState, 
   const cls = raw ? parseClassification(raw) : null;
 
   if (!cls) {
+    if (question) return unknownQuestion();
     const failures = state.failures + 1;
     if (failures >= 2) {
       return say({ ...state, intent: "handover", failures: 0 }, T.handover, {
@@ -844,18 +1109,15 @@ async function classifyAndRoute(text: string, masked: string, state: ChatState, 
     case "yes":
       return withLlm(next.stage === "confirm" ? await book(next, deps, now) : notUnderstood(next), flags);
     case "no":
-      return withLlm(
-        next.stage === "confirm"
-          ? say({ ...next, stage: "date", draft: { ...next.draft, date: null, time: null } }, T.changed, { quick: quick(lang, ["nextfree"]) })
-          : notUnderstood(next),
-        flags,
-      );
+      return withLlm(next.stage === "confirm" ? say(next, T.whatToChange, { quick: changeQuick(lang) }) : notUnderstood(next), flags);
     case "info": {
       const topics = cls.topics.length ? findTopics(cls.topics.join(" "), lang) : [];
       if (topics.length) return withLlm(await answerTopics(topics, next, deps, masked), flags);
+      deps.audit("chat.unknown_topic", { topic: "frage" });
       return say(next, T.unknownTopic, { quick: quick(lang, ["callback", "book"]), links: practiceLink(lang), flags });
     }
     default:
+      if (question) return withLlm(unknownQuestion(), flags);
       return withLlm(notUnderstood({ ...next, failures: state.failures + 1 }), flags);
   }
 }

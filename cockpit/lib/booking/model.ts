@@ -75,6 +75,8 @@ export interface WaitlistView {
   note: string | null;
   status: WaitlistStatus;
   source: AppointmentSource;
+  /** Sprache der Patienten-Mails – liegt im verschlüsselten Personenteil. */
+  locale: Locale;
   offeredAppointmentId: string | null;
   offeredAt: string | null;
   offerExpiresAt: string | null;

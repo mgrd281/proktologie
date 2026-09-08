@@ -209,6 +209,9 @@ test("Buchung im Fenster: Bestätigungsfrage, Referenz, Mail an Patientin und Pr
 
   const ref = (await dialog.getByRole("log").innerText()).match(/PE-[A-Z0-9]{4}/)?.[0];
   expect(ref).toBeTruthy();
+  // Nach der Buchung keine Sackgasse: die nächsten Schritte stehen als Knöpfe da
+  await expect(dialog.getByRole("button", { name: "Noch ein Termin" })).toBeVisible({ timeout: 10_000 });
+  await expect(dialog.getByRole("button", { name: "Mein Termin" })).toBeVisible();
 
   await e2e(request, { action: "tick" });
   const neu = outbox().slice(vorher);
@@ -403,4 +406,91 @@ test("Abgeschaltet: das Fenster zeigt nur Telefon und Sprechzeiten, die Route an
   expect(notfall.answer.flags.emergency).toBe(true);
 
   await e2e(request, { action: "settings", settings: { chatEnabled: true } });
+});
+
+// ===================================================== Stufe 2, Lieferung 1
+
+test("Korrektur in der Bestätigung bucht nicht – die neue Zeit wird geprüft, dann gebucht", async ({ request }) => {
+  const avail = await request.get("/api/public/v1/availability?type=kontrolle");
+  const days = (await avail.json()).days as Array<{ date: string; slots: string[] }>;
+  const tag = days.find((d) => d.slots.length >= 3)!;
+  expect(tag, "ein Tag mit drei freien Zeiten").toBeTruthy();
+  const [erste, , dritte] = tag.slots as [string, string, string];
+
+  const zusammenfassung = await conversation(request, [
+    { quick: "book" },
+    { quick: "type:kontrolle" },
+    { quick: `time:${tag.date}|${erste}` },
+    { form: ["contact", { firstName: "Karla", lastName: "Korrektur", email: "korrektur@example.invalid", consent: "true" }] },
+  ]);
+  expect(zusammenfassung.answer.reply).toMatch(/Soll ich das so verbindlich buchen\?$/);
+
+  const korrektur = await chat(request, { sessionId: zusammenfassung.sessionId, state: zusammenfassung.state, message: `ja aber um ${dritte} Uhr` });
+  expect(korrektur.answer.flags.booked, "eine Korrektur ist keine Zusage").toBeUndefined();
+  expect(korrektur.answer.reply).toContain(`${dritte} Uhr`);
+  expect(korrektur.answer.reply).toContain("Ihre Kontaktdaten habe ich noch.");
+  expect(korrektur.answer.form, "kein zweites Kontaktformular").toBeUndefined();
+
+  const gebucht = await chat(request, { sessionId: zusammenfassung.sessionId, state: korrektur.answer.state, message: "ja, bitte" });
+  expect(gebucht.answer.flags.booked?.ref).toMatch(/^PE-/);
+  expect(gebucht.answer.reply).toContain(`um ${dritte} Uhr`);
+  expect(gebucht.answer.quick?.map((q) => q.id)).toEqual(["again", "myAppointment"]);
+});
+
+test("„Ist ein Notfalltermin möglich?“ ist kein Notfall; „Guten Morgen“ ist kein Datum", async ({ request }) => {
+  await llmReset(request);
+  const akut = await conversation(request, ["Ist ein Notfalltermin möglich?"]);
+  expect(akut.answer.flags.emergency).toBeUndefined();
+  expect(akut.answer.reply).toMatch(/kurzfristig/);
+  expect(akut.answer.reply).toContain("040 490 80 21");
+
+  const morgen = await conversation(request, ["Guten Morgen, ich hätte gern einen Termin"]);
+  expect(morgen.answer.reply).toBe("Gern. Worum geht es bei dem Termin?");
+  expect(morgen.answer.quick?.some((q) => q.id === "type:kontrolle")).toBeTruthy();
+
+  const verwaltung = await conversation(request, ["Wann ist mein Termin?"]);
+  expect(verwaltung.answer.reply).toMatch(/Bestätigungs-E-Mail/);
+  expect(verwaltung.answer.quick?.some((q) => q.id.startsWith("type:")), "keine neue Buchung").toBeFalsy();
+  // Der Faktentext darf umformuliert werden (nur Fakten, nichts Persönliches);
+  // eingeordnet hat das Modell hier nichts – die Regeln haben entschieden.
+  const calls = await llmCalls(request);
+  expect(calls.map((c) => c.task), "keine Einordnung durch das Modell").not.toContain("classify");
+});
+
+test("Türkisch: fester Satz auf Türkisch, kein Modellaufruf, Knöpfe bleiben", async ({ request }) => {
+  await llmReset(request);
+  const r = await conversation(request, ["Merhaba, randevu almak istiyorum"]);
+  expect(r.answer.reply).toContain("Almanca veya İngilizce");
+  expect(r.answer.reply).toContain("040 490 80 21");
+  expect(r.answer.flags).toMatchObject({ foreign: "tr" });
+  expect(r.answer.quick?.map((q) => q.label)).toEqual(["Randevu al", "Çalışma saatleri"]);
+  expect(await llmCalls(request), "Fremdsprache erreicht kein Modell").toEqual([]);
+});
+
+test("Sprachumschalter: neue Begrüßung, englische Knöpfe, und die Antwort bleibt Englisch", async ({ page }) => {
+  const dialog = await openChat(page, "/");
+  await expect(dialog.getByRole("log")).toContainText("Guten Tag", { timeout: 20_000 });
+  await dialog.getByRole("button", { name: "English" }).click();
+  await expect(dialog.getByRole("log")).toContainText("Hello, this is the assistant");
+  await expect(dialog.getByRole("log")).not.toContainText("Guten Tag");
+  await expect(dialog.getByRole("button", { name: "Book an appointment" })).toBeVisible();
+
+  await dialog.getByLabel("Your message").fill("Wann haben Sie geöffnet?");
+  await dialog.getByLabel("Your message").press("Enter");
+  await expect(dialog.getByRole("log")).toContainText("Opening hours:", { timeout: 30_000 });
+  await expect(dialog.getByRole("log")).not.toContainText("Sprechzeiten:");
+});
+
+test("„Neues Gespräch“ verlässt den Notfallmodus", async ({ page }) => {
+  const dialog = await openChat(page, "/");
+  await dialog.getByLabel("Ihre Nachricht").fill("Ich glaube, das ist ein Herzinfarkt");
+  await dialog.getByLabel("Ihre Nachricht").press("Enter");
+  const alarm = dialog.getByRole("alert");
+  await expect(alarm).toBeVisible({ timeout: 30_000 });
+  await alarm.getByRole("button", { name: "Neues Gespräch" }).click();
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await expect(dialog.getByLabel("Ihre Nachricht")).toBeVisible();
+  await expect(dialog.getByRole("log")).toContainText("Guten Tag");
+  await expect(dialog.getByRole("log")).not.toContainText("Herzinfarkt");
+  await expect(dialog.getByRole("button", { name: "Termin vereinbaren" })).toBeVisible();
 });

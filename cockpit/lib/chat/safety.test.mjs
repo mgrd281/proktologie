@@ -134,3 +134,51 @@ test("Text ohne Personenbezug bleibt unverändert", () => {
   const s = "Ich hätte gern einen Kontrolltermin nächste Woche.";
   assert.deepEqual(maskPii(s), { text: s, masked: [] });
 });
+
+// ---- Was KEIN Notfall ist ----
+
+test("Fragen nach Notfallterminen und Notfallnummern sind kein Notfall", () => {
+  const fragen = [
+    "Ist ein Notfalltermin möglich?",
+    "Haben Sie eine Notfallsprechstunde?",
+    "Wie ist die Notfallnummer?",
+    "kein Notfall, aber dringend",
+    "Es ist kein akuter Notfall",
+    "Do you offer emergency appointments?",
+    "What is the emergency number?",
+    "not an emergency, but urgent",
+  ];
+  for (const s of fragen) assert.equal(detectEmergency(s), null, `fälschlich Notfall: ${s}`);
+  // Das nackte Wort bleibt ein Notfall – lieber einmal zu viel
+  assert.ok(detectEmergency("Notfall!"));
+  assert.ok(detectEmergency("Das ist ein Notfall"));
+  assert.ok(detectEmergency("This is an emergency"));
+});
+
+test("Akut, aber kein Notfall, wird als solches erkannt", async () => {
+  const { isAcuteConcern } = await import("./safety.ts");
+  assert.equal(isAcuteConcern("Ist ein Notfalltermin möglich?"), true);
+  assert.equal(isAcuteConcern("Ich bräuchte dringend einen Termin"), true);
+  assert.equal(isAcuteConcern("Ich habe starke Schmerzen, wann kann ich kommen?"), true);
+  assert.equal(isAcuteConcern("Ich hätte gern einen Kontrolltermin nächste Woche"), false);
+});
+
+test("Terminarten sind keine Gesundheitsangabe, wenn der Aufrufer sie ausnimmt", () => {
+  const ignore = ["Hämorrhoiden", "hämorrhoid", "Analfissur", "fissur", "Analfistel", "fistel"];
+  assert.equal(detectHealthData("Ich brauche einen Termin wegen Hämorrhoiden am Dienstag", { ignore }), null);
+  assert.equal(detectHealthData("Termin für Analfissur bitte", { ignore }), null);
+  // Mit weiteren Angaben bleibt es eine Gesundheitsangabe
+  assert.ok(detectHealthData("Termin wegen Hämorrhoiden, es blutet seit Tagen", { ignore }));
+  // Ohne Ausnahme trifft es weiterhin
+  assert.ok(detectHealthData("Ich brauche einen Termin wegen Hämorrhoiden"));
+});
+
+test("Harmlose Wörter mit Gesundheits-Teilstring bleiben frei", () => {
+  const frei = [
+    "Do you have anything in the afternoon?",
+    "Ich möchte eine Analyse der Kosten",
+    "Ich bin nach der Arbeit erst um 17 Uhr da",
+    "Can I come after work?",
+  ];
+  for (const s of frei) assert.equal(detectHealthData(s), null, `falsch erkannt: ${s}`);
+});

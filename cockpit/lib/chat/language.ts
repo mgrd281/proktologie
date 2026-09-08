@@ -19,6 +19,7 @@ const DE = [
   "bitte","danke","möchte","moechte","gern","gerne","wann","wie","wo","was","warum","kann","können","koennen","muss","soll",
   "termin","termine","uhr","morgen","heute","übermorgen","uebermorgen","woche","montag","dienstag","mittwoch","donnerstag","freitag",
   "frei","offen","geöffnet","geoeffnet","sprechzeiten","öffnungszeiten","oeffnungszeiten","anfahrt","adresse","praxis","danke",
+  "nummer","faxnummer","kommen","geht","wäre","waere","gut","nachmittags","vormittags","absagen","verschieben","nehmen","lieber","jemand","ihr","euch","seid","habt","wir","uns",
   "sie","ihnen","ihre","mein","meine","noch","auch","sehr","würde","wuerde","hätte","haette","brauche","suche",
 ];
 
@@ -27,6 +28,7 @@ const EN = [
   "please","thanks","thank","would","like","want","when","how","where","what","why","can","could","should","need",
   "appointment","appointments","time","tomorrow","today","week","monday","tuesday","wednesday","thursday","friday",
   "free","available","open","opening","hours","directions","address","practice","you","your","my","me","also","very","there","book","booking",
+  "number","fax","doctor","see","come","anything","something","afternoon","morning","check","cancel","change","date","rather","sure","ahead","someone","call","back","closed","if","possible","later","earlier","none","these","other","day",
 ];
 
 const DE_SET = new Set(DE);

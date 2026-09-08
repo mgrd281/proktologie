@@ -42,6 +42,8 @@ export interface StoredSession {
   form?: ChatForm | null;
   /** Ein einmal erkannter Notfall bleibt bestehen, auch nach einem Seitenwechsel. */
   emergency?: boolean;
+  /** Die Sprache wurde ausdrücklich gewählt – dann wird sie mitgeschickt und die Erkennung überstimmt sie nicht mehr. */
+  langChosen?: boolean;
 }
 
 export const STORAGE_KEY = "pe-chat-v1";
@@ -49,7 +51,7 @@ export const STORAGE_KEY = "pe-chat-v1";
 export const MAX_MESSAGES = 60;
 
 export function newSession(lang: "de" | "en" = "de", id = randomId()): StoredSession {
-  return { v: 1, sessionId: id, lang, state: null, messages: [], open: false, quick: [], form: null, emergency: false };
+  return { v: 1, sessionId: id, lang, state: null, messages: [], open: false, quick: [], form: null, emergency: false, langChosen: false };
 }
 
 /** UUID v4, wenn der Browser sie anbietet – sonst ein einfacher Ersatz. */
@@ -100,6 +102,7 @@ export function parseSession(raw: string | null): StoredSession | null {
     quick: parseQuick(s.quick),
     form: parseForm(s.form),
     emergency: s.emergency === true,
+    langChosen: s.langChosen === true,
   };
 }
 
