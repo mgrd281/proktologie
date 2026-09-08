@@ -65,7 +65,7 @@ const de: ChatCopy = {
   langSwitch: "English",
   logLabel: "Gesprächsverlauf",
   composerLabel: "Ihre Nachricht",
-  composerPlaceholder: "Nachricht schreiben …",
+  composerPlaceholder: "Frage oder Terminwunsch schreiben …",
   send: "Senden",
   typing: "Der Assistent schreibt …",
   greeting: (hours) =>
@@ -103,7 +103,7 @@ const en: ChatCopy = {
   langSwitch: "Deutsch",
   logLabel: "Conversation",
   composerLabel: "Your message",
-  composerPlaceholder: "Write a message …",
+  composerPlaceholder: "Ask a question or name a time …",
   send: "Send",
   typing: "The assistant is typing …",
   greeting: (hours) =>

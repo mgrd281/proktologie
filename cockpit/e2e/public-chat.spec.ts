@@ -544,3 +544,28 @@ test("Am Wochenende ist geschlossen – und der Assistent bietet einen Werktag a
   expect(r.answer.reply).toMatch(/Am Wochenende ist die Praxis geschlossen/);
   expect(r.answer.reply).toMatch(/Freitag oder ein Montag/);
 });
+
+test("Der Platz zum Schreiben ist zu finden: Cursor steht drin, freies Tippen geht sofort", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const dialog = await openChat(page, "/");
+
+  // Ohne einen einzigen Klick muss der Cursor im Eingabefeld stehen – das
+  // ist das einzige Zeichen, das ohne Worte sagt „hier schreiben Sie“.
+  await expect(async () => {
+    expect(await page.evaluate(() => document.activeElement?.id ?? "")).toBe("site-chat-input");
+  }).toPass({ timeout: 10_000 });
+
+  await dialog.getByRole("button", { name: "Termin vereinbaren" }).first().click();
+  await expect(dialog.getByRole("button", { name: "Kontrolltermin", exact: true })).toBeVisible({ timeout: 25_000 });
+
+  // Auch nach einer Antwort: weitertippen ohne vorher zu klicken.
+  await page.keyboard.type("Geht Donnerstag nachmittags?");
+  await expect(dialog.locator("#site-chat-input")).toHaveValue("Geht Donnerstag nachmittags?");
+});
+
+test("Auf dem Telefon zieht sich die Tastatur nicht ungefragt auf", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openChat(page, "/");
+  await page.waitForTimeout(1_200);
+  expect(await page.evaluate(() => document.activeElement?.id ?? ""), "kein erzwungener Fokus").not.toBe("site-chat-input");
+});
