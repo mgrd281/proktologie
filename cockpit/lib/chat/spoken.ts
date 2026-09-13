@@ -25,8 +25,11 @@ export type Lang = "de" | "en";
 // -------------------------------------------------------------- Name
 
 /** Einleitungen, die vor dem eigentlichen Namen stehen. */
+const NAME_FILLER_RE = /^(?:(?:ja|nein|also|äh|ähm|hm|okay|ok|gut|danke)[,\s]+)*/iu;
 const NAME_LEAD_RE =
-  /^(?:(?:ja|nein|also|äh|ähm|hm|okay|ok|gut|danke)[,\s]+)*(?:(?:ich\s+(?:heiße|heisse|bin)|mein\s+name\s+ist|der\s+name\s+ist|name\s+ist|my\s+name\s+is|i\s+am|i'm|it's|this\s+is)\s+)?/iu;
+  /^(?:(?:ich\s+(?:heiße|heisse|bin)(?:\s+(?:die|der|das))?|mein\s+name\s+ist|der\s+name\s+ist|name\s+ist|mein\s+(?:nachname|vorname|familienname)\s+(?:ist|lautet)|der\s+(?:nachname|vorname|familienname)\s+(?:ist|lautet)|(?:nachname|vorname)\s*:?|my\s+name\s+is|my\s+(?:last|first|family)\s+name\s+is|i\s+am|i'm|it's|this\s+is)\s+)/iu;
+/** „…, bitte.“ / „…, danke.“ am Ende gehört nicht zum Namen. */
+const NAME_TAIL_RE = /[,\s]+(?:bitte|danke|dankeschön|please|thanks|thank you)[.!\s]*$/iu;
 /**
  * Wörter, die in keinem Namen vorkommen – ein Satz mit einem davon ist
  * eine Absicht, kein Name („Lieber am Mittwoch“, „Ich möchte abbrechen“)
@@ -38,6 +41,8 @@ const NOT_A_NAME = new Set([
   "und", "oder", "das", "ist", "mir", "wir", "sie", "mein", "meine", "nein", "ja", "danke", "am", "um", "uhr", "morgen", "heute",
   "montag", "dienstag", "mittwoch", "donnerstag", "freitag", "samstag", "sonntag", "woche", "wochen", "vormittags", "nachmittags",
   "abbrechen", "zurück", "stopp", "stop", "mit", "einem", "einer", "menschen", "mensch", "sprechen", "hallo", "egal",
+  "wie", "was", "wer", "wo", "wann", "komm", "mal", "moment", "warte", "gleich", "schatz", "mama", "papa", "bitte", "danke",
+  "ahnung", "weiß", "weiss", "vielleicht", "genau", "richtig", "falsch", "okay", "ok",
   "the", "a", "an", "i", "want", "would", "like", "please", "not", "no", "yes", "appointment", "cancel", "monday", "tuesday",
   "wednesday", "thursday", "friday", "week", "weeks", "morning", "afternoon", "hello",
 ]);
@@ -48,8 +53,11 @@ const TITLE_RE = /^(?:herr|frau|hr\.?|fr\.?|dr\.?|prof\.?|mr\.?|mrs\.?|ms\.?|mis
 const NAME_WORD_RE = /^[\p{L}][\p{L}'’.-]*$/u;
 
 export interface SpokenName {
+  /** Leer, wenn nur ein Nachname mit Zusatz genannt wurde („von der Heide“). */
   firstName: string;
   lastName: string | null;
+  /** Es stand eine Einleitung davor („ich heiße“, „mein Name ist“) – dann ist es sicher ein voller Name. */
+  lead: boolean;
 }
 
 /**
@@ -59,9 +67,14 @@ export interface SpokenName {
  * vornamen sind häufiger als Doppelnachnamen ohne Bindestrich).
  */
 export function parseSpokenName(text: string): SpokenName | null {
-  const cleaned = text
-    .trim()
+  const raw = text.trim();
+  // Eine Frage ist kein Name.
+  if (/\?\s*$/u.test(raw)) return null;
+  const noFiller = raw.replace(NAME_FILLER_RE, "");
+  const lead = NAME_LEAD_RE.test(noFiller);
+  const cleaned = noFiller
     .replace(NAME_LEAD_RE, "")
+    .replace(NAME_TAIL_RE, "")
     .replace(/[.!?,;:]+$/u, "")
     .trim();
   const words = cleaned
@@ -72,11 +85,13 @@ export function parseSpokenName(text: string): SpokenName | null {
   if (words.length === 0 || words.length > 6) return null;
   if (words.some((w) => NOT_A_NAME.has(w.toLowerCase()))) return null;
   const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
-  if (words.length === 1) return { firstName: cap(words[0]!), lastName: null };
+  if (words.length === 1) return { firstName: cap(words[0]!), lastName: null, lead };
+  // „von der Heide“ allein: nur ein Nachname mit Zusatz.
+  if (PARTICLES.has(words[0]!.toLowerCase())) return { firstName: "", lastName: [...words.slice(0, -1), cap(words[words.length - 1]!)].join(" "), lead };
   // „Anna Maria von der Heide“: ab dem ersten Zusatz beginnt der Nachname.
   const particle = words.findIndex((w, i) => i > 0 && i < words.length - 1 && PARTICLES.has(w.toLowerCase()));
-  if (particle > 0) return { firstName: words.slice(0, particle).map(cap).join(" "), lastName: [...words.slice(particle, -1), cap(words[words.length - 1]!)].join(" ") };
-  return { firstName: words.slice(0, -1).map(cap).join(" "), lastName: cap(words[words.length - 1]!) };
+  if (particle > 0) return { firstName: words.slice(0, particle).map(cap).join(" "), lastName: [...words.slice(particle, -1), cap(words[words.length - 1]!)].join(" "), lead };
+  return { firstName: words.slice(0, -1).map(cap).join(" "), lastName: cap(words[words.length - 1]!), lead };
 }
 
 // ------------------------------------------------------------ E-Mail
@@ -94,8 +109,14 @@ const EMAIL_TOKENS: Array<[RegExp, string]> = [
 ];
 /** Häufige Endungen, die die Erkennung gern als Wort schreibt. */
 const TLD_FIX_RE = /\.(?:d e|c o m|n e t|o r g|c h|a t)$/iu;
-/** Was das Formular als gültig ansieht – dieselbe Prüfung wie beim Tippen. */
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/u;
+/** Was das Formular als gültig ansieht – dieselbe Prüfung wie beim Tippen, nur ohne Satzzeichen. */
+const EMAIL_RE = /^[^\s@,;:!?]+@[^\s@,;:!?]+\.[a-z]{2,}$/u;
+/** Die Adresse irgendwo im Satz – Füllwörter drumherum bleiben draußen. */
+const EMAIL_IN_TEXT_RE = /[\p{L}\p{N}._%+-]+@[\p{L}\p{N}.-]+\.[a-z]{2,}/u;
+/** Endungen, an die die Erkennung gern noch ein Wort klebt („de bitte“ → „debitte“). */
+const KNOWN_TLDS = ["com", "de", "net", "org", "at", "ch", "eu", "info", "io", "me", "uk", "nl", "fr", "it", "es", "pl", "tr"];
+/** Höflichkeit am Ende gehört nicht zur Adresse. */
+const EMAIL_TAIL_RE = /(?:[,.!?]*\s+(?:bitte|danke|dankeschön|genau|richtig|oder|so|ja|nein|please|thanks|thank you|right|okay|ok))+[.!?]*$/iu;
 
 /**
  * „max punkt mustermann ät gmx punkt de“ → „max.mustermann@gmx.de“.
@@ -108,7 +129,9 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/u;
 export function normalizeSpokenEmail(text: string): string | null {
   let s = text
     .trim()
-    .replace(/^(?:(?:ja|nein|also|äh|ähm|okay|ok)[,\s]+)*(?:meine\s+e-?mail(?:-?adresse)?\s+(?:ist|lautet)|die\s+adresse\s+(?:ist|lautet)|(?:es|sie|die)\s+(?:ist|lautet)|e-?mail\s*:?|my\s+e-?mail\s+is|it's|it\s+is|email\s*:?)\s*/iu, "")
+    .replace(/^(?:(?:ja|nein|also|äh|ähm|okay|ok|gut)[,\s]+)*/iu, "")
+    .replace(/^(?:meine\s+e-?mail(?:-?adresse)?\s+(?:ist|lautet)|meine\s+adresse\s+(?:ist|lautet)|die\s+adresse\s+(?:ist|lautet)|(?:es|sie|die)\s+(?:ist|lautet)|e-?mail\s*:?|my\s+e-?mail\s+is|it's|it\s+is|email\s*:?)\s*/iu, "")
+    .replace(EMAIL_TAIL_RE, "")
     .replace(/[.!?,;:]+$/u, "")
     .toLowerCase();
   // Bereits eine Adresse? Dann nur säubern.
@@ -122,7 +145,14 @@ export function normalizeSpokenEmail(text: string): string | null {
   s = s.replace(/\s+/gu, "");
   // Doppelte Zeichen aus Ersetzungen („..“, „@@“) glätten.
   s = s.replace(/\.{2,}/gu, ".").replace(/@{2,}/gu, "@").replace(/^[.@_-]+|[.@_-]+$/gu, "");
-  return EMAIL_RE.test(s) ? s : null;
+  // Die Adresse aus dem Satz herausnehmen – Satzzeichen begrenzen sie.
+  const found = EMAIL_IN_TEXT_RE.exec(s)?.[0];
+  if (!found) return null;
+  // Ein angeklebtes Wort hinter einer bekannten Endung („debitte“) fällt weg.
+  const tld = found.slice(found.lastIndexOf(".") + 1);
+  const known = KNOWN_TLDS.find((k) => tld === k) ?? KNOWN_TLDS.find((k) => tld.startsWith(k) && tld.length > k.length);
+  const address = known && known !== tld ? found.slice(0, found.lastIndexOf(".") + 1) + known : found;
+  return EMAIL_RE.test(address) ? address : null;
 }
 
 // ----------------------------------------------------------- Telefon
@@ -144,6 +174,20 @@ const TENS_WORDS: Record<string, string> = {
  * sind keine Telefonnummer.
  */
 export function parseSpokenPhone(text: string): string | null {
+  const digits = spokenDigits(text);
+  if (digits === null) return null;
+  const bare = digits.startsWith("+") ? digits.slice(1) : digits;
+  if (bare.length < 6 || bare.length > 20) return null;
+  return digits;
+}
+
+/**
+ * Nur die Ziffern, ohne Längenprüfung – mit führendem Plus, wenn gesprochen.
+ * `null`, sobald ein fremdes Wort dazwischen steht. Damit lässt sich eine
+ * Nummer, die in zwei Anläufen kommt („null eins sieben sechs“ – Pause –
+ * „eins zwei …“), zusammensetzen.
+ */
+export function spokenDigits(text: string): string | null {
   const s = text.trim().toLowerCase().replace(/^(?:(?:ja|also|äh|okay|ok)[,\s]+)*(?:meine\s+(?:nummer|handynummer|telefonnummer)\s+(?:ist|lautet)|(?:die\s+)?nummer\s+(?:ist|lautet)|my\s+(?:number|phone)\s+is)\s*/iu, "");
   const plus = /\b(?:plus|international)\b/iu.test(s) || s.trim().startsWith("+");
   const parts = s.split(/[\s,.\-/()]+/u).filter(Boolean);
@@ -154,17 +198,17 @@ export function parseSpokenPhone(text: string): string | null {
       digits += w;
       continue;
     }
-    if (TENS_WORDS[w]) {
+    if (Object.hasOwn(TENS_WORDS, w)) {
       digits += TENS_WORDS[w];
       continue;
     }
-    if (DIGIT_WORDS[w]) {
+    if (Object.hasOwn(DIGIT_WORDS, w)) {
       digits += DIGIT_WORDS[w];
       continue;
     }
     // „einundzwanzig“ u. ä. – zusammengesetzte Zahlwörter: Einer + „und“ + Zehner.
     const m = /^(\p{L}+?)und(\p{L}+)$/u.exec(w);
-    if (m && DIGIT_WORDS[m[1]!] && TENS_WORDS[m[2]!]) {
+    if (m && Object.hasOwn(DIGIT_WORDS, m[1]!) && Object.hasOwn(TENS_WORDS, m[2]!)) {
       const t = Number(TENS_WORDS[m[2]!]);
       const u = Number(DIGIT_WORDS[m[1]!]);
       digits += String(t + u);
@@ -174,7 +218,7 @@ export function parseSpokenPhone(text: string): string | null {
     // Ein fremdes Wort mitten in der Nummer: Das war keine Nummer.
     return null;
   }
-  if (digits.length < 6 || digits.length > 20) return null;
+  if (digits.length === 0) return null;
   return (plus ? "+" : "") + digits;
 }
 

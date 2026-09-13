@@ -11,7 +11,7 @@ import { matchType, renderSlotAnswer, typeTerms, type SlotAnswer, type ToolConte
 import { parseDate, parseTime } from "./datetime.ts";
 import { normalize } from "./normalize.ts";
 import { t } from "./texts.ts";
-import { isSkip, normalizeSpokenEmail, parseSpokenName, parseSpokenPhone, spokenYesNo } from "./spoken.ts";
+import { isSkip, normalizeSpokenEmail, parseSpokenName, parseSpokenPhone, spokenDigits, spokenYesNo } from "./spoken.ts";
 import { isBindingYes, judge } from "../voice/addressee.ts";
 
 /**
@@ -125,6 +125,8 @@ export const chatStateSchema = z.object({
         lastName: z.string().max(80).optional(),
         email: z.string().max(200).optional(),
         phone: z.string().max(40).optional(),
+        /** Ziffern einer Nummer, die in mehreren Anläufen kommt. */
+        phonePart: z.string().max(24).optional(),
       })
       .nullable()
       .default(null),
@@ -1428,10 +1430,23 @@ async function contactDialogue(text: string, state: ChatState, deps: ChatDeps, n
   // Sie wird nicht übernommen, nicht gespeichert, nicht zurückgelesen – es
   // kommt derselbe Hinweis wie beim Tippen (bei Akutem: erst anrufen), und
   // die offene Frage wird noch einmal gestellt. Die Notiz filtert ihr Schritt.
+  // Und wer wirklich Krebs oder Stuhl heißt, kommt nach dem zweiten Anlauf
+  // ans Formular – dort gilt der Name, wie er getippt wird.
   if (step !== "note" && detectHealthData(said) !== null) {
     deps.audit("chat.health_filtered", { medicalQuestion: false });
+    if (state.failures >= 1) {
+      return say({ ...state, failures: 0, draft: { ...d, contactStep: null, pending: null } }, V.typeInstead, { form: contactForm(lang) });
+    }
     const hint = isAcuteConcern(said, true) ? T.acute : T.healthHintShort;
-    return say(state, `${hint} ${questionFor(step, pending, V)}`, step === "emailConfirm" ? { quick: quick(lang, ["correct", "wrong"]) } : {});
+    return say({ ...state, failures: state.failures + 1 }, `${hint} ${questionFor(step, pending, V)}`, step === "emailConfirm" ? { quick: quick(lang, ["correct", "wrong"]) } : {});
+  }
+  // Ein Zuruf an jemanden im Raum („Schatz, komm mal") ist auch hier kein Name.
+  if (
+    (step === "name" || step === "lastName") &&
+    judge({ text: said }, { stage: "contact", hasIntent: parseSpokenName(said) !== null, isEmergency: false, lang }).reasons.includes("third_party_marker")
+  ) {
+    deps.audit("chat.voice_aside", { stage: state.stage, verdict: "aside" });
+    return silent(state);
   }
   const go = (
     patch: Partial<NonNullable<ChatState["draft"]["pending"]>>,
@@ -1450,20 +1465,22 @@ async function contactDialogue(text: string, state: ChatState, deps: ChatDeps, n
   switch (step) {
     case "name": {
       const n = parseSpokenName(said);
-      if (!n || NO_RE.test(said)) return retry(V.nameAgain);
+      if (!n || !n.firstName || NO_RE.test(said)) return retry(V.nameAgain);
       if (!n.lastName) return go({ firstName: n.firstName }, "lastName", V.askLastName(n.firstName));
       return go({ firstName: n.firstName, lastName: n.lastName }, "email", V.askEmail);
     }
     case "lastName": {
       const n = parseSpokenName(said);
-      // „Nein, ich heiße Max Mustermann“ – ein voller Name ersetzt beides.
-      if (n?.lastName) return go({ firstName: n.firstName, lastName: n.lastName }, "email", V.askEmail);
       // Ein „Nein“ heißt: der Vorname war schon falsch – von vorn.
       if (!n || NO_RE.test(said)) {
         if (state.failures >= 1) return toForm(V.typeInstead);
         return say({ ...state, failures: state.failures + 1, draft: { ...d, contactStep: "name", pending: null } }, V.nameAgain);
       }
-      return go({ lastName: n.firstName }, "email", V.askEmail);
+      // „Ich heiße Max Mustermann“ – mit Einleitung ersetzt ein voller Name beides.
+      if (n.lead && n.firstName && n.lastName) return go({ firstName: n.firstName, lastName: n.lastName }, "email", V.askEmail);
+      // Sonst ist alles Gesagte der Nachname: „Müller Lüdenscheidt“, „von der Heide“.
+      const lastName = n.lastName ? (n.firstName ? `${n.firstName} ${n.lastName}` : n.lastName) : n.firstName;
+      return go({ lastName }, "email", V.askEmail);
     }
     case "email": {
       const email = normalizeSpokenEmail(said);
@@ -1488,13 +1505,17 @@ async function contactDialogue(text: string, state: ChatState, deps: ChatDeps, n
       return retry(V.confirmEmail(pending.email ?? ""), { quick: quick(lang, ["correct", "wrong"]) });
     }
     case "phone": {
-      if (isSkip(said)) return go({}, "note", V.askNote);
-      const phone = parseSpokenPhone(said);
-      if (!phone) {
-        if (state.failures >= 1) return go({}, "note", `${V.phoneSkipped} ${V.askNote}`);
-        return retry(V.phoneAgain);
+      if (isSkip(said)) return go({ phonePart: undefined }, "note", V.askNote);
+      // Eine Nummer kommt oft in zwei Anläufen: Vorwahl – Pause – Rest.
+      const combined = pending.phonePart ? `${pending.phonePart} ${said}` : said;
+      const phone = parseSpokenPhone(combined);
+      if (phone) return go({ phone, phonePart: undefined }, "note", V.askNote);
+      const part = spokenDigits(combined);
+      if (part && part.replace(/^\+/u, "").length < 6) {
+        return say({ ...state, failures: 0, draft: { ...d, pending: { ...pending, phonePart: part } } }, V.phoneMore(part));
       }
-      return go({ phone }, "note", V.askNote);
+      if (state.failures >= 1) return go({ phonePart: undefined }, "note", `${V.phoneSkipped} ${V.askNote}`);
+      return retry(V.phoneAgain);
     }
     case "note": {
       // „Ja“ auf „Möchten Sie noch etwas mitteilen?“ ist keine Mitteilung.

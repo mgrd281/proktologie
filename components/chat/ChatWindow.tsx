@@ -68,7 +68,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
   const meterStopRef = useRef<(() => void) | null>(null);
   const liveRef = useRef<LiveSession | null>(null);
   /** Der laufende Zug kam aus dem Mikrofon – dann keine Tipp-Blase, und Stille ist erlaubt. */
-  const voiceTurnRef = useRef(false);
+  const spokenTurnRef = useRef(false);
   /** Der Mikrofonknopf pulst beim ersten Öffnen einmal kurz – danach nie wieder. */
   const [pulse, setPulse] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -197,14 +197,26 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
     let seen = false;
     try {
       seen = window.sessionStorage.getItem("pe-chat-voice-hint") === "1";
-      window.sessionStorage.setItem("pe-chat-voice-hint", "1");
     } catch {
       // Ohne Speicher pulst es eben bei jedem Öffnen – harmlos.
     }
     if (seen) return;
     setPulse(true);
-    const id = window.setTimeout(() => setPulse(false), 4_000);
-    return () => window.clearTimeout(id);
+    // Der Merker wird erst gesetzt, wenn der Puls vorbei ist: So überlebt
+    // der Effekt einen doppelten Lauf (StrictMode), ohne dass der Knopf für
+    // immer pulst – das Aufräumen nimmt den Puls immer mit.
+    const id = window.setTimeout(() => {
+      setPulse(false);
+      try {
+        window.sessionStorage.setItem("pe-chat-voice-hint", "1");
+      } catch {
+        // s. o.
+      }
+    }, 4_000);
+    return () => {
+      window.clearTimeout(id);
+      setPulse(false);
+    };
   }, [voice]);
 
   /**
@@ -235,22 +247,33 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
   }, [draft]);
 
   const talk = useCallback(
-    async (payload: { message?: string; action?: Parameters<typeof sendChat>[1]["action"] }, echo?: string) => {
+    async (payload: { message?: string; action?: Parameters<typeof sendChat>[1]["action"] }, echo?: string, opts: { spoken?: boolean } = {}) => {
       if (pending) return;
-      // Solange das Mikrofon offen ist, kommt jeder Zug „aus der Stimme" – auch
-      // ein Knopfdruck oder ein Formular. Der Automat führt dann das Gespräch
-      // weiter, statt auf ein Formular zurückzufallen.
-      const voiceTurn = liveRef.current !== null;
-      voiceTurnRef.current = voiceTurn;
-      const keep = { quick, form, links };
+      // Drei Arten von Zügen, solange das Mikrofon offen ist:
+      //  - gesprochen (aus dem Mikrofon): Sprachkanal, Echo erst nach der
+      //    Antwort, Stille erlaubt, keine Tipp-Blase;
+      //  - geklickt (Knopf, Formular): Sprachkanal, damit das Gespräch
+      //    weitergeht statt auf ein Formular zurückzufallen – aber sofort
+      //    sichtbar wie immer;
+      //  - getippt: Textkanal, auch bei offenem Mikrofon. Wer schreibt,
+      //    bekommt immer eine Antwort – ein getippter Satz darf nie
+      //    „nicht an uns gerichtet" sein und verschwinden.
+      const live = liveRef.current !== null;
+      const spoken = live && opts.spoken === true;
+      const voiceTurn = live && (spoken || payload.action !== undefined);
+      spokenTurnRef.current = spoken;
+      const keep = { quick, links };
       setPending(true);
       setQuick([]);
-      setForm(null);
+      // Ein stehendes Formular bleibt während eines gesprochenen Zugs stehen:
+      // Ein Fetzen, der still übergangen wird, darf nicht löschen, was schon
+      // eingetippt ist. Ein Aus- und Einblenden würde die Felder leeren.
+      if (!spoken) setForm(null);
       setLinks([]);
       let next = session;
       // Gesprochenes wird erst gezeigt, wenn klar ist, dass es uns galt: Ein
       // Wortfetzen, den der Automat still übergeht, soll keine Blase hinterlassen.
-      if (echo && !voiceTurn) {
+      if (echo && !spoken) {
         next = append(next, "user", echo, Date.now());
         setSession(next);
       }
@@ -262,7 +285,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
         ...payload,
       });
       if (!result.ok) {
-        if (echo && voiceTurn) next = append(next, "user", echo, Date.now());
+        if (echo && spoken) next = append(next, "user", echo, Date.now());
         setSession(append(next, "assistant", copy.errors[result.error], Date.now()));
         setQuick(copy.quickStart);
         setPending(false);
@@ -275,13 +298,12 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
         // Zustand übernehmen, Knöpfe und Formular stehen lassen, weiter zuhören.
         setSession({ ...next, state: a.state });
         setQuick(keep.quick);
-        setForm(keep.form);
         setLinks(keep.links);
         setPending(false);
         liveRef.current?.answered();
         return;
       }
-      if (echo && voiceTurn) next = append(next, "user", echo, Date.now());
+      if (echo && spoken) next = append(next, "user", echo, Date.now());
       // Die Sprache der Oberfläche folgt dem Server nur, wenn er sie aus dem
       // Text erkannt hat – nie gegen eine ausdrückliche Wahl.
       const follow = a.flags.langDetected === true && !langChosen && a.lang !== lang;
@@ -308,7 +330,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
       }
       liveRef.current?.answered();
     },
-    [pending, session, copy, lang, onLang, langChosen, closeVoice, quick, form, links],
+    [pending, session, copy, lang, onLang, langChosen, closeVoice, quick, links],
   );
 
   const submitDraft = () => {
@@ -327,7 +349,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
   // Der Automat antwortet, das Mikrofon hört nur zu. Diese Weiche liegt in
   // einer Referenz, damit die Sprachsitzung nicht bei jedem Zug neu gebaut
   // werden muss – ein neu gebautes Mikrofon würde mitten im Satz abreißen.
-  talkRef.current = (text: string) => void talk({ message: text }, text);
+  talkRef.current = (text: string) => void talk({ message: text }, text, { spoken: true });
 
   /**
    * Zuhören an oder aus.
@@ -498,7 +520,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
                 </div>
               </li>
             ))}
-              {pending && !voiceTurnRef.current && (
+              {pending && !spokenTurnRef.current && (
                 <li className="flex justify-start">
                   <p className="rounded-2xl rounded-bl-sm bg-mist px-3.5 py-2.5 text-sm text-ink/70">{copy.typing}</p>
                 </li>

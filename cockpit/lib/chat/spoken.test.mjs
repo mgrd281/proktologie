@@ -6,25 +6,57 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { parseSpokenName, normalizeSpokenEmail, parseSpokenPhone, isSkip, spokenYesNo } = await import("./spoken.ts");
+const { parseSpokenName, normalizeSpokenEmail, parseSpokenPhone, spokenDigits, isSkip, spokenYesNo } = await import("./spoken.ts");
 
 // ---------------------------------------------------------------- Name
 
+const name = (text) => {
+  const n = parseSpokenName(text);
+  return n && { firstName: n.firstName, lastName: n.lastName };
+};
+
 test("Name: Einleitungen fallen weg, Vor- und Nachname werden getrennt", () => {
-  assert.deepEqual(parseSpokenName("Ich heiße Max Mustermann."), { firstName: "Max", lastName: "Mustermann" });
-  assert.deepEqual(parseSpokenName("Mein Name ist Erika Musterfrau"), { firstName: "Erika", lastName: "Musterfrau" });
-  assert.deepEqual(parseSpokenName("My name is John Smith"), { firstName: "John", lastName: "Smith" });
-  assert.deepEqual(parseSpokenName("Anna-Lena Müller"), { firstName: "Anna-Lena", lastName: "Müller" });
+  assert.deepEqual(parseSpokenName("Ich heiße Max Mustermann."), { firstName: "Max", lastName: "Mustermann", lead: true });
+  assert.deepEqual(name("Mein Name ist Erika Musterfrau"), { firstName: "Erika", lastName: "Musterfrau" });
+  assert.deepEqual(name("My name is John Smith"), { firstName: "John", lastName: "Smith" });
+  assert.deepEqual(parseSpokenName("Anna-Lena Müller"), { firstName: "Anna-Lena", lastName: "Müller", lead: false });
 });
 
 test("Name: Anreden sind kein Namensteil, Doppelvornamen bleiben zusammen", () => {
-  assert.deepEqual(parseSpokenName("Herr Dr. Kai Kunstreich"), { firstName: "Kai", lastName: "Kunstreich" });
-  assert.deepEqual(parseSpokenName("Frau Maria Anna Schmidt"), { firstName: "Maria Anna", lastName: "Schmidt" });
+  assert.deepEqual(name("Herr Dr. Kai Kunstreich"), { firstName: "Kai", lastName: "Kunstreich" });
+  assert.deepEqual(name("Frau Maria Anna Schmidt"), { firstName: "Maria Anna", lastName: "Schmidt" });
 });
 
 test("Name: ein einzelnes Wort ist ein Vorname ohne Nachname – der Automat fragt nach", () => {
-  assert.deepEqual(parseSpokenName("Max"), { firstName: "Max", lastName: null });
-  assert.deepEqual(parseSpokenName("ich bin max"), { firstName: "Max", lastName: null });
+  assert.deepEqual(name("Max"), { firstName: "Max", lastName: null });
+  assert.deepEqual(name("ich bin max"), { firstName: "Max", lastName: null });
+});
+
+test("Name: Füllwörter, Artikel, Höflichkeit und Zusätze – nichts davon ist ein Namensteil", () => {
+  assert.deepEqual(name("Ja, Erika Musterfrau."), { firstName: "Erika", lastName: "Musterfrau" });
+  assert.deepEqual(name("ich bin die Erika"), { firstName: "Erika", lastName: null });
+  assert.deepEqual(name("Max Mustermann, bitte."), { firstName: "Max", lastName: "Mustermann" });
+  assert.deepEqual(name("Max von der Heide"), { firstName: "Max", lastName: "von der Heide" });
+  assert.deepEqual(name("von der Heide"), { firstName: "", lastName: "von der Heide" });
+  assert.deepEqual(name("Der Nachname ist Musterfrau"), { firstName: "Musterfrau", lastName: null });
+  for (const s of ["Lieber am Mittwoch", "Ich möchte abbrechen.", "Wochen.", "Wie bitte?", "Schatz, komm mal", "keine Ahnung"]) assert.equal(name(s), null, s);
+});
+
+test("E-Mail: Füllwörter vorn und hinten gehören nicht zur Adresse", () => {
+  assert.equal(normalizeSpokenEmail("erika ät gmx punkt de, bitte."), "erika@gmx.de");
+  assert.equal(normalizeSpokenEmail("Ja, erika at gmx punkt de"), "erika@gmx.de");
+  assert.equal(normalizeSpokenEmail("max@gmx.de bitte"), "max@gmx.de");
+  assert.equal(normalizeSpokenEmail("max at gmx punkt de danke"), "max@gmx.de");
+  assert.equal(normalizeSpokenEmail("meine adresse ist max at gmx punkt de"), "max@gmx.de");
+  assert.equal(normalizeSpokenEmail("Nein, es ist erika punkt m at example punkt invalid"), "erika.m@example.invalid");
+  assert.equal(normalizeSpokenEmail("erika at gmx punkt de, richtig?"), "erika@gmx.de");
+});
+
+test("Telefon: Ziffern auch in Teilen – und keine Prototyp-Schlüssel", () => {
+  assert.equal(parseSpokenPhone("__proto__"), null);
+  assert.equal(parseSpokenPhone("constructor"), null);
+  assert.equal(spokenDigits("Null eins sieben sechs."), "0176");
+  assert.equal(spokenDigits("Termin"), null);
 });
 
 test("Name: Unsinn ist kein Name", () => {
