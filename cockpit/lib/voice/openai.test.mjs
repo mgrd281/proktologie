@@ -169,6 +169,53 @@ test("Eine Fehlantwort des Anbieters wird lesbar gemacht, statt als nackte Zahl 
   }
 });
 
+test("Eine echte, lange Anbieter-Fehlermeldung bleibt lesbar", async () => {
+  // Der teuerste Fehler dieser Datei war, vor dem Auswerten zu kürzen: Eine
+  // echte 401-Antwort von OpenAI ist mit maskiertem Schlüssel und Hilfe-Link
+  // rund 320 Zeichen lang. Nach einem Schnitt bei 300 wäre das JSON kaputt –
+  // und der Betreiber läse „keine lesbare Antwort" ausgerechnet dann, wenn
+  // sein Schlüssel falsch ist.
+  const koerper = JSON.stringify(
+    {
+      error: {
+        message:
+          "Incorrect API key provided: sk-proj-**********************************************************************************. You can find your API key at https://platform.openai.com/account/api-keys.",
+        type: "invalid_request_error",
+        param: null,
+        code: "invalid_api_key",
+      },
+    },
+    null,
+    2,
+  );
+  assert.ok(koerper.length > 300, "der Fall ist nur echt, wenn der Körper wirklich länger ist");
+  const echt = globalThis.fetch;
+  globalThis.fetch = async () => new Response(koerper, { status: 401 });
+  try {
+    await assert.rejects(
+      () => withKey("sk-falsch", () => mod.mintListenSecret("de")),
+      /client_secrets 401: Incorrect API key provided/,
+    );
+  } finally {
+    globalThis.fetch = echt;
+  }
+});
+
+test("Ein zurückgespiegelter Schlüssel verlässt die Datei unkenntlich", async () => {
+  const echt = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ error: { message: "Bad key sk-livegeheim1234567890abcdef used" } }), { status: 401 });
+  try {
+    await withKey("sk-test", () => mod.synthesize("Hallo", "de"));
+    assert.fail("hätte werfen müssen");
+  } catch (error) {
+    assert.match(error.message, /sk-…/);
+    assert.doesNotMatch(error.message, /livegeheim/, "kein Schlüssel im Protokoll");
+  } finally {
+    globalThis.fetch = echt;
+  }
+});
+
 test("Auch eine unlesbare Fehlantwort bringt den Aufruf nicht zum Absturz", async () => {
   const echt = globalThis.fetch;
   globalThis.fetch = async () => new Response("<html>502</html>", { status: 502 });

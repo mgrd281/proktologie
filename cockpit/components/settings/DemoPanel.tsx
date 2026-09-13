@@ -170,10 +170,16 @@ export function DemoPanel({
               disabled={!canEdit}
             />
             {/* Ohne diese Zeile ist „Sprache ist aus" unsichtbar: Die Website zeigt
-                einfach kein Mikrofon, und niemand erfährt, warum. */}
+                einfach kein Mikrofon, und niemand erfährt, warum.
+
+                Die Plakette rechnet dieselbe Formel wie die Website
+                (`public.ts`: voice = chatEnabled && voiceConfigured). Ein grüner
+                Haken hier, während draußen kein Mikrofon steht, wäre schlimmer
+                als gar keine Anzeige: Er sagt dem Betreiber, alles sei in
+                Ordnung, während er dasselbe Problem hat wie vorher. */}
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className={`rounded-full px-3 py-1 text-[12px] font-medium ${voiceConfigured ? "bg-ok/12 text-ok" : "bg-surface-sunken text-text-muted"}`}>
-                Sprechen statt tippen: {voiceConfigured ? "eingerichtet" : "nicht eingerichtet"}
+              <span className={`rounded-full px-3 py-1 text-[12px] font-medium ${voiceConfigured && s.chatEnabled ? "bg-ok/12 text-ok" : "bg-surface-sunken text-text-muted"}`}>
+                Sprechen statt tippen: {!voiceConfigured ? "nicht eingerichtet" : s.chatEnabled ? "eingerichtet" : "aus, weil der Chat aus ist"}
               </span>
             </div>
           </div>

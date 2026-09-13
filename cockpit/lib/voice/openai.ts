@@ -66,18 +66,38 @@ function key(): string {
  * Der Grund einer Fehlantwort, kurz und ohne Geheimnisse.
  *
  * Ohne ihn steht im Protokoll nur „502" – und der Betreiber sucht einen
- * Abend lang, obwohl der Anbieter „unknown model" geantwortet hat. Der
- * Schlüssel steht nie in einer Fehlermeldung des Anbieters; hier wird
- * trotzdem gekürzt, damit nichts Langes ins Protokoll läuft.
+ * Abend lang, obwohl der Anbieter „unknown model" geantwortet hat.
+ *
+ * Erst lesen und auswerten, **dann** kürzen. Die umgekehrte Reihenfolge sah
+ * sparsamer aus und war der teuerste Fehler dieser Datei: Eine echte
+ * 401-Antwort von OpenAI ist mit ihrem maskierten Schlüssel und dem
+ * Hilfe-Link rund 320 Zeichen lang. Nach einem Schnitt bei 300 ist das
+ * JSON kaputt, `JSON.parse` wirft, und herauskommt „keine lesbare
+ * Antwort" – ausgerechnet im wichtigsten Fall, dem falschen Schlüssel.
+ *
+ * Gekürzt wird darum nur noch der herausgelöste Satz. Der Schlüssel steht
+ * nie in einer Anbieter-Fehlermeldung; er wird trotzdem maskiert, falls ein
+ * Anbieter ihn je zurückspiegelt.
  */
 async function reason(res: Response): Promise<string> {
   try {
-    const text = (await res.text()).slice(0, 300);
-    const parsed = JSON.parse(text) as { error?: { message?: string; code?: string } };
-    return parsed.error?.message ?? parsed.error?.code ?? text;
+    const raw = await res.text();
+    let satz = raw;
+    try {
+      const parsed = JSON.parse(raw) as { error?: { message?: string; code?: string } };
+      satz = parsed.error?.message ?? parsed.error?.code ?? raw;
+    } catch {
+      // Kein JSON – dann eben der rohe Text, gekürzt wie alles andere.
+    }
+    return maskKeys(satz).slice(0, 300) || "leere Antwort";
   } catch {
     return "keine lesbare Antwort";
   }
+}
+
+/** Alles, was wie ein Schlüssel aussieht, verlässt diese Datei unkenntlich. */
+function maskKeys(text: string): string {
+  return text.replace(/\b(sk|ek)-[A-Za-z0-9_-]{8,}/g, "$1-…");
 }
 
 export interface VoiceSecret {
