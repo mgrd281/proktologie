@@ -141,7 +141,11 @@ export class LiveSession {
     this.set("connecting");
     let stream: MediaStream | null = null;
     try {
-      const secret = await this.ports.token();
+      // Das Mikrofon ZUERST, und ausdrücklich vor jedem Netzaufruf: `start()`
+      // wird synchron aus dem Klick gerufen, also fällt `getUserMedia` in die
+      // Nutzergeste. Holte man erst den Ausweis (ein fetch), wäre die Geste
+      // abgelaufen – und Safari/iOS lehnt die Mikrofon-Erlaubnis dann ohne
+      // jede Abfrage ab. Genau das war der Fehler „es fragt gar nicht".
       stream = await this.ports.microphone();
       if (this.stopping) {
         stopTracks(stream);
@@ -149,6 +153,13 @@ export class LiveSession {
         return;
       }
       this.stream = stream;
+      const secret = await this.ports.token();
+      if (this.stopping) {
+        stopTracks(stream);
+        this.stream = null;
+        this.set("idle");
+        return;
+      }
       this.conn = await this.ports.connect(secret, stream, {
         speechStart: () => {
           this.armIdle();

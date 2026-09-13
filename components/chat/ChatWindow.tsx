@@ -337,24 +337,18 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
     liveRef.current = session;
     setListening("connecting");
     setReason(null);
-    // Aus der Klick-Geste heraus einmal abspielen: Danach darf dieses
-    // Audio-Element auch nach einem Netzaufruf sprechen – iOS und Safari
-    // verlangen genau das. Der stille Anstoß ist synchron, hängt also nicht
-    // am Begrüßungssatz.
+    // Zwei Dinge, beide synchron aus dem Klick – sonst versagt das Mikrofon:
+    //  1. Der stille Anstoß schaltet die spätere Sprachausgabe auf iOS frei.
+    //  2. session.start() öffnet das Mikrofon SOFORT (getUserMedia als erster
+    //     Schritt), solange die Nutzergeste noch gilt. Kein Netzaufruf, kein
+    //     Vorlesen davor – das hatte die Erlaubnis-Abfrage um Sekunden nach
+    //     hinten geschoben, bis der Browser gar nicht mehr fragte.
+    // Kein gesprochener Begrüßungssatz: Er stünde ohnehin sichtbar in der
+    // LIVE-Leiste, und ihn zu sprechen, während das Mikrofon offen ist, ließe
+    // den Automaten die eigene Stimme hören. Gesprochen werden die Antworten.
     unlockAudio(audioRef);
-    void (async () => {
-      // Erst der Satz, dann das Mikrofon. Andersherum hörte das Mikrofon den
-      // Assistenten und hielte ihn für die Patientin. Nach jedem `await`
-      // prüfen, ob die Sitzung überhaupt noch die aktuelle ist – sonst wurde
-      // zwischenzeitlich geschlossen, und weder Wiedergabe noch Start dürfen
-      // noch laufen.
-      const greeting = await voiceSpeak(site.cockpitApiUrl, sessionIdRef.current, lang, copy.voice.listening);
-      if (liveRef.current !== session) return;
-      if (greeting) await playOnce(audioRef, greeting);
-      if (liveRef.current !== session) return;
-      await session.start();
-    })();
-  }, [lang, copy, closeVoice]);
+    void session.start();
+  }, [lang, closeVoice]);
 
   // Tab weg, Fenster zu: Ein offenes Mikrofon darf nichts überleben – und die
   // Referenz muss mit, sonst startet der verzögerte Begrüßungs-Ablauf das
