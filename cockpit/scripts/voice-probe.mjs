@@ -513,7 +513,10 @@ async function main() {
     //     Sprache: Die Sprach-Erkennung des Anbieters wertet eine
     //     synthetische Nachbildung nicht als Sprache. Mit `--wav` einer
     //     echten Aufnahme oder im Browser wird auch das grün.
-    const gate = args.wav ? audioOk : seen.configOk;
+    // Ein Anbieterfehler färbt das Tor immer rot – auch im Standardlauf, wo
+    // synthetisches Audio ohnehin kein Satzende erzeugt. Sonst wäre „grün mit
+    // einem error daneben" möglich, und das Messgerät belöge den nächsten Merge.
+    const gate = (args.wav ? audioOk : seen.configOk) && !seen.error && !seen.failed;
     console.log("\n──────── Ergebnis ────────");
     console.log(`Ende: ${why}`);
     console.log(`Sitzung konfiguriert:  ${seen.configOk ? "ja – " + seen.config : "NEIN"}`);

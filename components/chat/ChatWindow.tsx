@@ -102,6 +102,25 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
     if (session.messages.length > 0) save(storeRef.current, { ...session, lang, open: true, quick, form, emergency, langChosen });
   }, [session, lang, quick, form, emergency, langChosen]);
 
+  // Ein einziger Weg nach draußen: Sitzung schließen, Referenz und Messgerät
+  // lösen, Oberfläche zurücksetzen. Jeder Ausstieg (Aus-Knopf, Notfall,
+  // „Neues Gespräch", Tab weg, Fenster zu) geht hier durch – sonst hängt die
+  // Leiste auf „connecting" oder ein Mikrofon bleibt unbemerkt offen. Die
+  // Oberfläche wird hier direkt zurückgesetzt, nicht über `onState`: Schließt
+  // man eine Sitzung, die noch gar nicht gestartet ist, meldet `live.ts`
+  // keinen Zustandswechsel.
+  const closeVoice = useCallback((reason: string) => {
+    const running = liveRef.current;
+    liveRef.current = null;
+    if (running) void running.stop(reason);
+    meterStopRef.current?.();
+    meterStopRef.current = null;
+    setListening("idle");
+    setReason(null);
+    setPartial("");
+    setLevel(0);
+  }, []);
+
   /**
    * Neues Gespräch: Verlauf und Zustand weg, neue Sitzungskennung, frische
    * Begrüßung. Das ist auch der Weg aus dem Notfallmodus – die Sperre bleibt
@@ -111,9 +130,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
     // Zuerst das Mikrofon, dann der Rest: „Neues Gespräch" blendet Knopf und
     // Banner neu auf – eine noch laufende Zuhör-Sitzung wäre ab hier
     // unsichtbar und liefe weiter.
-    void liveRef.current?.stop("restart");
-    liveRef.current = null;
-    setListening("idle");
+    closeVoice("restart");
     clear(storeRef.current);
     const fresh = newSession(lang);
     setSession(append(fresh, "assistant", chatCopy[lang].greeting(hoursLine(lang)), Date.now()));
@@ -124,7 +141,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
     setPending(false);
     setDraft("");
     window.setTimeout(() => inputRef.current?.focus(), 0);
-  }, [lang]);
+  }, [lang, closeVoice]);
 
   /**
    * Sprachwechsel durch die Patientin: ab jetzt gilt diese Sprache, sie geht
@@ -229,9 +246,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
         // dahinter weiterläuft, wäre unsichtbar offen – die teuerste und die
         // unheimlichste Art von Fehler. Es geht vor dem Vorlesen zu, damit
         // auch nichts mehr gesprochen wird.
-        void liveRef.current?.stop("emergency");
-        liveRef.current = null;
-        setListening("idle");
+        closeVoice("emergency");
       }
       setPending(false);
       // Wer gesprochen hat, bekommt gesprochen zurück. Beim Notfall wird
@@ -243,7 +258,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
       }
       liveRef.current?.answered();
     },
-    [pending, session, copy, lang, onLang, langChosen],
+    [pending, session, copy, lang, onLang, langChosen, closeVoice],
   );
 
   const submitDraft = () => {
@@ -272,16 +287,20 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
    * Notfallpfad und Gesundheitsfilter. Gesprochen wird nur die Antwort.
    */
   const toggleVoice = useCallback(() => {
-    const running = liveRef.current;
-    if (running) {
-      void running.stop();
-      liveRef.current = null;
+    if (liveRef.current) {
+      closeVoice("user");
       return;
     }
     const session = new LiveSession({
       token: () => voiceToken(site.cockpitApiUrl, sessionIdRef.current, lang),
       microphone: async () => {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+        // Wer zwischen Knopfdruck und Erlaubnis schon wieder geschlossen hat,
+        // bekommt kein offenes Mikrofon und kein laufendes Messgerät.
+        if (liveRef.current !== session) {
+          for (const track of stream.getTracks()) track.stop();
+          throw new DOMException("abgebrochen", "AbortError");
+        }
         meterStopRef.current?.();
         meterStopRef.current = startMeter(stream, setLevel);
         return stream;
@@ -291,50 +310,65 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
         return connectWebRtc(secret, stream, on);
       },
       onTranscript: (text) => talkRef.current?.(text),
-      onPartial: setPartial,
+      onPartial: (text) => {
+        if (liveRef.current === session) setPartial(text);
+      },
       // Dazwischenreden: Die Patientin hat Vorrang, der Assistent verstummt.
       onInterrupt: () => audioRef.current?.pause(),
       onState: (state, detail) => {
+        // Nur die aktuelle Sitzung darf die Oberfläche bewegen. Ein
+        // verwaister Wecker einer alten Fehler-Sitzung soll die frische
+        // nicht auf „idle" reißen und ihr Mikrofon verlieren.
+        if (liveRef.current !== session) return;
         setListening(state);
         setReason(detail?.reason ?? null);
-        // „error" und „denied" sind genauso Endstationen wie „idle": Die
-        // Spur ist in `live.ts` schon geschlossen. Ließe man die Sitzung
-        // stehen, würde der nächste Knopfdruck sie nur stoppen statt neu
-        // zu starten – und der Knopf wirkte kaputt.
+        // „error" und „denied" sind Endstationen wie „idle": Die Spur ist in
+        // `live.ts` schon geschlossen. Ließe man die Sitzung stehen, stoppte
+        // der nächste Knopfdruck sie nur, statt neu zu starten.
         if (state === "idle" || state === "error" || state === "denied") {
           liveRef.current = null;
           meterStopRef.current?.();
           meterStopRef.current = null;
           setPartial("");
+          setLevel(0);
         }
       },
     });
     liveRef.current = session;
     setListening("connecting");
+    setReason(null);
     // Aus der Klick-Geste heraus einmal abspielen: Danach darf dieses
     // Audio-Element auch nach einem Netzaufruf sprechen – iOS und Safari
-    // verlangen genau das.
+    // verlangen genau das. Der stille Anstoß ist synchron, hängt also nicht
+    // am Begrüßungssatz.
     unlockAudio(audioRef);
     void (async () => {
-      // Erst der Satz, dann das Mikrofon. Andersherum hörte das Mikrofon
-      // den Assistenten und hielte ihn für die Patientin.
+      // Erst der Satz, dann das Mikrofon. Andersherum hörte das Mikrofon den
+      // Assistenten und hielte ihn für die Patientin. Nach jedem `await`
+      // prüfen, ob die Sitzung überhaupt noch die aktuelle ist – sonst wurde
+      // zwischenzeitlich geschlossen, und weder Wiedergabe noch Start dürfen
+      // noch laufen.
       const greeting = await voiceSpeak(site.cockpitApiUrl, sessionIdRef.current, lang, copy.voice.listening);
-      if (greeting && liveRef.current === session) await playOnce(audioRef, greeting);
-      if (liveRef.current === session) await session.start();
+      if (liveRef.current !== session) return;
+      if (greeting) await playOnce(audioRef, greeting);
+      if (liveRef.current !== session) return;
+      await session.start();
     })();
-  }, [lang, copy]);
+  }, [lang, copy, closeVoice]);
 
-  // Tab weg, Fenster zu: Ein offenes Mikrofon darf nichts überleben.
+  // Tab weg, Fenster zu: Ein offenes Mikrofon darf nichts überleben – und die
+  // Referenz muss mit, sonst startet der verzögerte Begrüßungs-Ablauf das
+  // Mikrofon noch nach dem Schließen.
   useEffect(() => {
     const away = () => {
-      if (document.visibilityState === "hidden") void liveRef.current?.stop("hidden");
+      if (document.visibilityState === "hidden") closeVoice("hidden");
     };
     document.addEventListener("visibilitychange", away);
     return () => {
       document.removeEventListener("visibilitychange", away);
-      void liveRef.current?.stop("unmount");
+      closeVoice("unmount");
     };
-  }, []);
+  }, [closeVoice]);
 
   const title = useMemo(() => `${copy.windowTitle} · ${copy.windowSubtitle}`, [copy]);
 
@@ -744,8 +778,12 @@ async function playOnce(ref: React.RefObject<HTMLAudioElement | null>, blob: Blo
     await audio.play().catch(() => {});
     await new Promise<void>((resolve) => {
       const done = () => resolve();
+      // Auch „pause" löst auf: Redet die Patientin dazwischen (onInterrupt →
+      // audio.pause()), soll dieses Warten enden, statt bis zum natürlichen
+      // Satzende zu hängen und die Objekt-URL zu halten.
       audio.addEventListener("ended", done, { once: true });
       audio.addEventListener("error", done, { once: true });
+      audio.addEventListener("pause", done, { once: true });
     });
   } finally {
     URL.revokeObjectURL(url);
