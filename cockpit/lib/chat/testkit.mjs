@@ -112,6 +112,8 @@ export function stateAt(stage, lang = "de", draft = {}) {
       date: draft.date ?? DIENSTAG,
       time: inConfirm ? (draft.time ?? "09:00") : null,
       contact: inConfirm ? { firstName: "Erika", lastName: "Musterfrau", email: "erika@example.invalid", phone: "040 123456" } : null,
+      // Wie im Betrieb: Kontaktdaten kommen nur mit Einwilligung in den Entwurf.
+      consent: inConfirm ? "form" : null,
       window: draft.window ?? null,
       page: draft.page ?? 1,
     },

@@ -34,9 +34,18 @@ export interface ChatCopy {
   logLabel: string;
   composerLabel: string;
   composerPlaceholder: string;
+  /** Derselbe Platzhalter, wenn man auch sprechen kann. */
+  composerPlaceholderVoice: string;
   /** Beschriftungen des Mikrofons. */
   voice: {
     start: string;
+    /** Was der Knopf kann – als Tooltip, damit man es weiß, bevor man drückt. */
+    startTitle: string;
+    /** Eine Zeile unter der Begrüßung: Man kann hier auch sprechen. */
+    intro: string;
+    /** Neben dem Mikrofon, wenn ein Formular steht. */
+    formHint: string;
+    formHintLive: string;
     stop: string;
     /** Die Plakette, solange zugehört wird. */
     live: string;
@@ -82,8 +91,13 @@ const de: ChatCopy = {
   logLabel: "Gesprächsverlauf",
   composerLabel: "Ihre Nachricht",
   composerPlaceholder: "Frage oder Terminwunsch schreiben …",
+  composerPlaceholderVoice: "Schreiben – oder Mikrofon antippen und sprechen …",
   voice: {
     start: "Sprechen",
+    startTitle: "Termin per Sprache vereinbaren: Mikrofon antippen und sprechen – ich frage nach Termin, Name und E-Mail.",
+    intro: "Sie können auch sprechen: Mikrofon antippen und zum Beispiel „Ich hätte gern einen Termin nächste Woche“ sagen. Ich frage dann alles Weitere nach.",
+    formHint: "Oder Mikrofon antippen und die Angaben sagen.",
+    formHintLive: "Sie können die Angaben auch sagen – ich höre zu.",
     stop: "Zuhören beenden",
     live: "LIVE",
     connecting: "Einen Moment, ich schalte das Mikrofon ein …",
@@ -138,8 +152,13 @@ const en: ChatCopy = {
   logLabel: "Conversation",
   composerLabel: "Your message",
   composerPlaceholder: "Ask a question or name a time …",
+  composerPlaceholderVoice: "Type – or tap the microphone and speak …",
   voice: {
     start: "Speak",
+    startTitle: "Book by voice: tap the microphone and speak – I will ask for the date, your name and e-mail.",
+    intro: "You can also speak: tap the microphone and say, for example, “I would like an appointment next week”. I will ask for everything else.",
+    formHint: "Or tap the microphone and say your details.",
+    formHintLive: "You can also say your details – I am listening.",
     stop: "Stop listening",
     live: "LIVE",
     connecting: "One moment, turning on the microphone …",

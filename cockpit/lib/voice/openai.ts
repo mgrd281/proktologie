@@ -65,8 +65,8 @@ const SECRET_TTL_SEC = 600;
  * einem Gespräch – nur das, was auch auf dem Praxisschild steht.
  */
 const STT_PROMPT = {
-  de: "Terminvereinbarung in einer proktologischen Praxis in Hamburg-Eimsbüttel: Termin, Kontrolltermin, Vorsorge, Überweisung, Proktologie.",
-  en: "Booking an appointment at a proctology practice in Hamburg-Eimsbüttel: appointment, check-up, screening, referral, proctology.",
+  de: "Terminvereinbarung per Sprache in einer proktologischen Praxis in Hamburg-Eimsbüttel. Typische Sätze: Ich hätte gern einen Termin. Nächste Woche, in zwei Wochen, vormittags, nachmittags, so früh wie möglich, dringend. Ich heiße … Meine E-Mail ist … punkt … at … punkt de. Meine Handynummer ist null eins sieben … Ja, bitte buchen. Nein. Kontrolltermin, Vorsorge, Überweisung.",
+  en: "Booking an appointment by voice at a proctology practice in Hamburg-Eimsbüttel. Typical sentences: I would like an appointment. Next week, in two weeks, in the morning, in the afternoon, as soon as possible, urgent. My name is … My email is … dot … at … dot com. My mobile number is zero one seven … Yes, please book. No. Check-up, screening, referral.",
 } as const;
 // `keywords` und `delay` gehören zum Live-Modell; `gpt-transcribe` lehnt sie
 // ab („The 'delay' parameter is not supported for this model" – gemessen).
@@ -176,7 +176,11 @@ export async function mintListenSecret(lang: "de" | "en", signal?: AbortSignal):
               language: lang,
               prompt: STT_PROMPT[lang],
             },
-            turn_detection: { type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 1100 },
+            // 1300 ms: Wer einen Satz mit einer Denkpause spricht („… einen
+            // Termin … in zwei Wochen“), wird nicht in „Wochen." zerlegt –
+            // live so beobachtet. Der Preis ist gut eine Sekunde mehr bis zur
+            // Antwort; bei Sprache ist das die richtige Seite des Fehlers.
+            turn_detection: { type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 1300 },
           },
         },
       },

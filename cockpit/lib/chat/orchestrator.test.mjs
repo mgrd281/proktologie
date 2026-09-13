@@ -634,3 +634,177 @@ test("Die Termindauer kommt aus der Datenbank, nicht aus einem festen Satz", asy
   assert.match(r.reply, /\d+ bis \d+ Minuten/);
   assert.notEqual(r.state.intent, "booking");
 });
+
+// ---------------------------------------------------------- Sprachkanal
+
+const voice = (state, message) => msg(state, message, { channel: "voice" });
+const vclick = (state, id) => ({ ...click(state, id), channel: "voice" });
+
+test("Sprachkanal: ein Wortfetzen bleibt still – der Textkanal antwortet darauf wie immer", async () => {
+  const { deps, calls } = makeDeps();
+  let r = await o.runTurn(voice(null, "Wochen."), deps);
+  assert.equal(r.flags.silent, true);
+  assert.equal(r.reply, "");
+  assert.equal(r.state.failures, 1);
+  assert.ok(calls.audit.some(([e]) => e === "chat.voice_aside"));
+  r = await o.runTurn(voice(r.state, "In Freiburg online."), deps);
+  assert.equal(r.flags.silent, true);
+  assert.equal(r.state.failures, 2);
+  // Nach zwei stillen Runden sagt der Automat wieder etwas.
+  r = await o.runTurn(voice(r.state, "Und dann noch."), deps);
+  assert.notEqual(r.flags.silent, true);
+  assert.ok(r.reply.length > 0);
+  // Ein echter Wunsch war nie still.
+  const wish = await o.runTurn(voice(null, "Ich hätte gern einen Termin am Dienstag"), deps);
+  assert.notEqual(wish.flags.silent, true);
+  // Getippt bekommt derselbe Fetzen sofort eine Antwort.
+  const typed = await o.runTurn(msg(null, "Wochen."), deps);
+  assert.notEqual(typed.flags.silent, true);
+  assert.ok(typed.reply.length > 0);
+});
+
+test("Sprachkanal: die ganze Buchung im Gespräch – Fenster, Name, E-Mail zurückgelesen, Telefon, Notiz, klares Ja", async () => {
+  const { deps, calls } = makeDeps();
+  let r = await o.runTurn(voice(null, "Ich hätte gern einen Kontrolltermin am Dienstag"), deps);
+  assert.match(r.reply, /Dienstag, 14\. Juli 2026 – lieber vormittags oder nachmittags\?/);
+  assert.deepEqual(r.quick?.map((q) => q.id), ["vormittags", "nachmittags", "egal"]);
+  assert.equal(r.state.stage, "time");
+
+  r = await o.runTurn(voice(r.state, "Vormittags bitte."), deps);
+  assert.doesNotMatch(r.reply, /vormittags oder nachmittags/);
+  assert.match(r.reply, /07:00/);
+
+  r = await o.runTurn(voice(r.state, "Um 8 Uhr bitte."), deps);
+  assert.equal(r.state.stage, "contact");
+  assert.equal(r.state.draft.contactStep, "name");
+  assert.equal(r.form, undefined, "gesprochen gibt es kein Formular");
+  assert.match(r.reply, /Wie heißen Sie – Vor- und Nachname\?/);
+
+  r = await o.runTurn(voice(r.state, "Ich heiße Erika Musterfrau."), deps);
+  assert.equal(r.state.draft.contactStep, "email");
+  assert.deepEqual(r.state.draft.pending, { firstName: "Erika", lastName: "Musterfrau" });
+  assert.match(r.reply, /E-Mail-Adresse/);
+
+  r = await o.runTurn(voice(r.state, "erika ät example punkt invalid"), deps);
+  assert.equal(r.state.draft.contactStep, "emailConfirm");
+  assert.match(r.reply, /erika@example\.invalid – ist das richtig\?/);
+  assert.deepEqual(r.quick?.map((q) => q.id), ["correct", "wrong"]);
+
+  // „Nein" – noch einmal; dann der Knopf „Richtig".
+  r = await o.runTurn(voice(r.state, "Nein."), deps);
+  assert.equal(r.state.draft.contactStep, "email");
+  r = await o.runTurn(voice(r.state, "Erika at example punkt invalid."), deps);
+  assert.equal(r.state.draft.contactStep, "emailConfirm");
+  r = await o.runTurn(vclick(r.state, "correct"), deps);
+  assert.equal(r.state.draft.contactStep, "phone");
+  assert.match(r.reply, /Handynummer/);
+
+  r = await o.runTurn(voice(r.state, "Null vier null, eins zwei drei vier fünf sechs."), deps);
+  assert.equal(r.state.draft.contactStep, "note");
+  assert.equal(r.state.draft.pending.phone, "040123456");
+
+  r = await o.runTurn(voice(r.state, "Es ist ein Erstbesuch."), deps);
+  assert.equal(r.state.stage, "confirm");
+  assert.equal(r.state.draft.contactStep, null);
+  assert.equal(r.state.draft.consent, "voice", "die Zusammenfassung trägt den Einwilligungssatz");
+  assert.equal(r.state.draft.note, "Es ist ein Erstbesuch.");
+  assert.match(r.reply, /Kontrolltermin am Dienstag, 14\. Juli 2026 um 08:00 Uhr für Erika Musterfrau \(erika@example\.invalid\)\./);
+  assert.match(r.reply, /Mit „Ja“ stimmen Sie zu/);
+  assert.equal(calls.book.length, 0);
+
+  // „Okay" ist kein Ja – gesprochen bucht nur die geschlossene Liste.
+  r = await o.runTurn(voice(r.state, "Okay."), deps);
+  assert.equal(calls.book.length, 0);
+  assert.match(r.reply, /deutlich „Ja“/);
+  assert.equal(r.state.stage, "confirm");
+
+  r = await o.runTurn(voice(r.state, "Ja bitte."), deps);
+  assert.equal(calls.book.length, 1);
+  assert.deepEqual(calls.book[0], {
+    typeId: "kontrolle",
+    date: DIENSTAG,
+    time: "08:00",
+    firstName: "Erika",
+    lastName: "Musterfrau",
+    email: "erika@example.invalid",
+    phone: "040123456",
+    locale: "de",
+    note: "Es ist ein Erstbesuch.",
+  });
+  assert.equal(r.state.stage, "done");
+  assert.equal(r.state.draft.consent, "voice", "die Einwilligung bleibt für einen zweiten Termin in derselben Sitzung");
+});
+
+test("Sprachkanal: eine zweimal unverständliche E-Mail-Adresse geht ehrlich ans Formular", async () => {
+  const { deps } = makeDeps();
+  const base = stateAt("contact");
+  const st = { ...base, draft: { ...base.draft, time: "09:00", contactStep: "email", pending: { firstName: "Erika", lastName: "Musterfrau" } } };
+  let r = await o.runTurn(voice(st, "keine Ahnung"), deps);
+  assert.equal(r.state.draft.contactStep, "email");
+  assert.equal(r.state.failures, 1);
+  assert.match(r.reply, /noch einmal langsam/);
+  r = await o.runTurn(voice(r.state, "irgendwas"), deps);
+  assert.equal(r.form?.id, "contact");
+  assert.equal(r.state.draft.contactStep, null);
+  assert.match(r.reply, /Tippen Sie/);
+});
+
+test("Sprachkanal: eine Notiz mit Gesundheitsangaben wird nicht gespeichert – gebucht wird trotzdem, ohne sie", async () => {
+  const { deps, calls } = makeDeps();
+  const base = stateAt("contact");
+  const st = {
+    ...base,
+    draft: { ...base.draft, time: "09:00", contactStep: "note", pending: { firstName: "Erika", lastName: "Musterfrau", email: "erika@example.invalid" } },
+  };
+  let r = await o.runTurn(voice(st, "Ich habe seit Wochen Blut im Stuhl."), deps);
+  assert.equal(r.state.stage, "confirm");
+  assert.equal(r.state.draft.note, null);
+  assert.match(r.reply, /nicht gespeichert/);
+  assert.ok(calls.audit.some(([e]) => e === "chat.note_dropped"));
+  r = await o.runTurn(voice(r.state, "Ja."), deps);
+  assert.equal(calls.book.length, 1);
+  assert.equal("note" in calls.book[0], false, "ohne Notiz sieht der Aufruf aus wie im Textkanal");
+});
+
+test("Sprachkanal: „egal“ auf die Fensterfrage listet den Tag – und fragt nicht noch einmal", async () => {
+  const { deps } = makeDeps();
+  let r = await o.runTurn(voice(null, "Ich hätte gern einen Kontrolltermin am Dienstag"), deps);
+  assert.match(r.reply, /vormittags oder nachmittags/);
+  r = await o.runTurn(voice(r.state, "Ist mir egal."), deps);
+  assert.doesNotMatch(r.reply, /vormittags oder nachmittags/);
+  assert.match(r.reply, /07:00/);
+  // Und als Knopf.
+  let k = await o.runTurn(voice(null, "Ich hätte gern einen Kontrolltermin am Dienstag"), deps);
+  k = await o.runTurn(vclick(k.state, "egal"), deps);
+  assert.doesNotMatch(k.reply, /vormittags oder nachmittags/);
+  assert.match(k.reply, /07:00/);
+});
+
+test("Sprachkanal: steht schon das Formular und die Patientin spricht, beginnt das Gespräch beim Namen", async () => {
+  const { deps } = makeDeps();
+  const st = stateAt("contact");
+  // Ein Fetzen wird nicht zum Vornamen – es wird gefragt.
+  let r = await o.runTurn(voice(st, "Wochen."), deps);
+  assert.equal(r.state.draft.contactStep, "name");
+  assert.equal(r.form, undefined);
+  assert.match(r.reply, /Wie heißen Sie/);
+  // Ein voller Name gilt sofort.
+  r = await o.runTurn(voice(st, "Ich heiße Erika Musterfrau"), deps);
+  assert.equal(r.state.draft.contactStep, "email");
+  // Getippt bleibt das Formular der Weg.
+  const typed = await o.runTurn(msg(st, "Erika Musterfrau"), deps);
+  assert.equal(typed.state.draft.contactStep ?? null, null);
+});
+
+test("Ohne aufgezeichnete Einwilligung wird nicht gebucht – die Kontaktdaten werden neu erfragt", async () => {
+  const { deps, calls } = makeDeps();
+  const st = stateAt("confirm");
+  st.draft.consent = null;
+  const r = await o.runTurn(msg(st, "ja"), deps);
+  assert.equal(calls.book.length, 0);
+  assert.equal(r.form?.id, "contact");
+  assert.match(r.reply, /Einwilligung/);
+  // Das Formular zeichnet sie auf.
+  const summary = await bisZurBestaetigung(deps);
+  assert.equal(summary.state.draft.consent, "form");
+});

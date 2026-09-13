@@ -145,6 +145,8 @@ export interface BookSlotInput {
   phone?: string;
   /** Sprache der Patienten-Mails zu diesem Termin */
   locale?: Locale;
+  /** Freiwillige Anmerkung – der Gesundheitsfilter läuft vorher, im Chat wie im Formular. */
+  note?: string;
 }
 
 export interface BookSlotContext {
@@ -182,6 +184,7 @@ export async function bookPublicSlot(v: BookSlotInput, ctx: BookSlotContext): Pr
       typeId: v.typeId,
       startsAt: slot.startsAt,
       pii: { firstName: v.firstName, lastName: v.lastName, email: v.email, phone: v.phone },
+      note: v.note?.trim() || undefined,
       source: ctx.source,
       locale: v.locale ?? "de",
       status: "booked",
