@@ -1020,26 +1020,6 @@ test("„Wann habt ihr?“ ist mehrdeutig – also kommen Sprechzeit und frühes
   assert.equal(calls.classify.length, 0, "geraten wurde das früher vom Modell – jetzt nicht mehr");
 });
 
-test("Zweimal wortgleich dieselbe Rückfrage: der Automat macht anders weiter", async () => {
-  const { deps } = makeDeps();
-  const first = await o.runTurn(msg(null, "Ich hätte gern einen Termin"), deps);
-  assert.match(first.reply, /Worum geht es/);
-  const again = await o.runTurn(msg(first.state, "Ich hätte gern einen Termin"), deps);
-  assert.doesNotMatch(again.reply, /^Gern\. Worum geht es/);
-  assert.match(again.reply, /im Kreis/);
-  assert.match(again.reply, /früheste freie Termin/);
-  // Und die Eskalation eskaliert nicht noch einmal sich selbst.
-  assert.equal(again.state.lastReply, null);
-});
-
-test("Dieselbe Auskunft darf wiederholt werden – nur Rückfragen zählen als Schleife", async () => {
-  const { deps } = makeDeps();
-  const first = await o.runTurn(msg(null, "Wann haben Sie geöffnet?"), deps);
-  const second = await o.runTurn(msg(first.state, "Wann haben Sie geöffnet?"), deps);
-  assert.equal(second.reply, first.reply, "eine Sachfrage bekommt zweimal dieselbe Antwort");
-  assert.doesNotMatch(second.reply, /im Kreis/);
-});
-
 test("Was die Praxis nicht hinterlegt hat, endet nicht in einer Sackgasse", async () => {
   const { deps } = makeDeps();
   const r = await o.runTurn(msg(null, "Haben Sie Parkplätze?"), deps);
@@ -1050,11 +1030,33 @@ test("Was die Praxis nicht hinterlegt hat, endet nicht in einer Sackgasse", asyn
   );
 });
 
-test("Ein alter Zustand ohne das Merkfeld bleibt gültig", async () => {
-  const { deps } = makeDeps();
-  const alt = stateAt("date");
-  delete alt.lastReply;
-  const r = await o.runTurn(msg(alt, "Wann habt ihr Termine frei?"), deps);
-  assert.match(r.reply, /früheste freie Termin/);
-  assert.equal(typeof r.state.lastReply, "string");
+test("Gepflegtes Wissen gewinnt gegen die schlichte Verfügbarkeitsfrage", async () => {
+  // Befunde der eigenen Gegenprüfung: „opening" steckt in „opening hours",
+  // „noch einen" in „noch einen anderen Arzt". Beides sind Fragen an die
+  // Praxis – der Automat darf sie nicht in eine Terminsuche umdeuten.
+  const { deps, calls } = makeDeps();
+  const faelle = [
+    ["What are your opening hours?", /Opening hours|Sprechzeiten/],
+    ["Wie komme ich am schnellsten zu Ihnen?", /Christuskirche|Schäferkampsallee/],
+    ["Gibt es noch einen anderen Arzt?", /Kunstreich/],
+  ];
+  for (const [satz, erwartet] of faelle) {
+    const r = await o.runTurn(msg(null, satz), deps);
+    assert.match(r.reply, erwartet, satz);
+    assert.doesNotMatch(r.reply, /früheste freie Termin|earliest available/, satz);
+  }
+  assert.equal(calls.nextFree.length, 0, "keine einzige Terminsuche für drei Wissensfragen");
+  // Ausdrücklich bleibt ausdrücklich: „so früh wie möglich" gewinnt weiterhin.
+  const wunsch = await o.runTurn(msg(null, "Ich möchte so früh wie möglich einen Termin"), deps);
+  assert.equal(calls.nextFree.length, 1);
+  assert.match(wunsch.reply, /früheste freie Termin/);
+});
+
+test("„Haben Sie noch etwas Späteres?“ bleibt eine Bitte um spätere Zeiten", async () => {
+  const { deps, calls } = makeDeps();
+  let r = await o.runTurn(msg(null, "Ich hätte gern einen Kontrolltermin am Dienstag"), deps);
+  assert.match(r.reply, /07:00/);
+  r = await o.runTurn(msg(r.state, "Haben Sie noch etwas Späteres am selben Tag?"), deps);
+  assert.equal(calls.nextFree.length, 0, "kein Sprung auf den frühesten Termin überhaupt");
+  assert.equal(r.state.draft.date, DIENSTAG, "der gewählte Tag bleibt");
 });

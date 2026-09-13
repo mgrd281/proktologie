@@ -147,14 +147,6 @@ export const chatStateSchema = z.object({
   callbackKind: z.enum(["rueckruf", "folgerezept", "ueberweisung", "befundkopie", "sonstiges"]).nullable(),
   failures: z.number().int().min(0).max(9),
   turns: z.number().int().min(0).max(500),
-  /**
-   * Kurzzeichen der zuletzt gesendeten Antwort – einzig, um zu merken, wenn
-   * der Automat dieselbe Rückfrage zweimal hintereinander stellt. Kein
-   * Verlauf und kein Personenbezug: Es ist die eigene Frage, nie das, was
-   * die Patientin geschrieben hat, und aus dem Zeichen ist der Satz nicht
-   * wiederherstellbar.
-   */
-  lastReply: z.string().max(16).nullable().default(null),
 });
 export type ChatState = z.infer<typeof chatStateSchema>;
 
@@ -303,7 +295,6 @@ export function freshState(lang: Lang = "de"): ChatState {
     callbackKind: null,
     failures: 0,
     turns: 0,
-    lastReply: null,
   };
 }
 
@@ -558,6 +549,13 @@ interface When {
   window: Window | null;
   /** „so früh wie möglich" – der früheste freie Platz. */
   earliest: boolean;
+  /**
+   * Der früheste Platz kam aus der **schlichten** Frage („Habt ihr was
+   * frei?"), nicht aus einer ausdrücklichen Wendung („so früh wie
+   * möglich"). Der Unterschied zählt: Die schlichte Form tritt hinter das
+   * gepflegte Wissen zurück, die ausdrückliche gewinnt gegen jedes Thema.
+   */
+  askedFree: boolean;
   /** Samstag oder Sonntag: Da ist geschlossen. */
   weekend: boolean;
   /** Ein Zeitraum („nächste Woche", „Anfang Oktober"), von … bis. */
@@ -565,7 +563,7 @@ interface When {
   to: string | null;
 }
 
-const NO_WHEN: When = { date: null, time: null, window: null, earliest: false, weekend: false, from: null, to: null };
+const NO_WHEN: When = { date: null, time: null, window: null, earliest: false, askedFree: false, weekend: false, from: null, to: null };
 
 /**
  * Erst der geschriebene Satz, dann – falls der nichts hergibt – der
@@ -589,6 +587,7 @@ function readWhen(text: string, now: Date, lang: Lang): When {
     time: h?.kind === "exact" ? (h.time ?? null) : null,
     window,
     earliest: h?.kind === "earliest" || availability,
+    askedFree: availability,
     weekend: d?.kind === "weekend",
     from: d?.kind === "range" ? (d.from ?? null) : null,
     to: d?.kind === "range" ? (d.to ?? null) : null,
@@ -689,8 +688,7 @@ export async function runTurn(req: ChatRequest, deps0: ChatDeps): Promise<ChatRe
 
   const text = (req.message ?? "").trim();
   if (!text) return say(state, t(state.lang).notUnderstood, { quick: quick(state.lang, ["book", "hours", "directions"]) });
-  const res = await handleMessage(text, state, deps, now, { explicitLang: Boolean(req.lang), fresh: req.state == null });
-  return repeatGuard(res, state, deps, now);
+  return handleMessage(text, state, deps, now, { explicitLang: Boolean(req.lang), fresh: req.state == null });
 }
 
 // -------------------------------------------------------- Freier Text
@@ -738,6 +736,13 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
   // gegen eine kleine Wortliste korrigiert. Er dient ausschließlich dem
   // Erkennen – angezeigt und gespeichert wird immer das Geschriebene.
   const norm = normalize(text);
+  // Trifft der Satz ein gepflegtes Thema? Dann tritt die schlichte
+  // Verfügbarkeitsfrage dahinter zurück. Die eigene Gegenprüfung hat
+  // gezeigt, warum das nötig ist: „What are your opening hours?" enthält
+  // „opening", „Gibt es noch einen anderen Arzt?" enthält „noch einen" –
+  // beides sind Fragen an die Praxis, keine Terminsuche. Ein ausdrückliches
+  // „so früh wie möglich" bleibt dagegen ein Wunsch und gewinnt.
+  const topicHit = topicsFor(text, norm, lang).length > 0;
   const named = matchType(text, types, lang) ?? matchType(norm, types, lang);
   const namedType = named && types.some((x) => x.id === named) ? named : null;
   // Die Frageform entscheidet mit, was als Gesundheitsangabe gilt.
@@ -894,7 +899,7 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
       if (when.date) {
         return checkSlot(ready, deps, now, when.date, when.time, { window: windowFor(when, state.draft), page: 1 });
       }
-      if (when.earliest || when.from) return askEarliest(ready, deps, now, when);
+      if ((when.earliest && !(when.askedFree && topicHit)) || when.from) return askEarliest(ready, deps, now, when);
       // Nachfragen vor der Fenster-Erkennung – „zu früh" ist kein Vormittag.
       if (state.draft.date && LATER_RE.test(text)) {
         return checkSlot(ready, deps, now, state.draft.date, null, { page: state.draft.page + 1, wanted: state.draft.page + 1 });
@@ -952,7 +957,7 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
   if (when.weekend) return weekendReply({ ...state, failures: 0 }, deps);
   // „So früh wie möglich“ ist ein Wunsch, keine Wissensfrage – auch wenn
   // er als Frage formuliert ist („Was ist das Früheste, was Sie haben?“).
-  if (when.earliest) {
+  if (when.earliest && !(when.askedFree && topicHit)) {
     const res = await startBooking({ ...state, failures: 0 }, deps, now, text, when);
     return acute ? prefixed(res, T.acute) : res;
   }
@@ -1705,34 +1710,6 @@ async function book(state: ChatState, deps: ChatDeps, now: Date): Promise<ChatRe
 // ------------------------------------------------- Nicht verstanden
 
 /**
- * Kurzzeichen einer Antwort, nur zum Vergleich mit der vorigen. Über den
- * **ganzen** Satz, nicht über sein Ende: „Diese Zeit wurde gerade vergeben.
- * Am Dienstag ist frei: … Welche Uhrzeit passt Ihnen?" und die blanke Liste
- * enden gleich, sind aber zwei verschiedene Antworten.
- */
-function replyMark(reply: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < reply.length; i += 1) {
-    h ^= reply.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (h >>> 0).toString(36);
-}
-
-/**
- * Ein Satz mit dem nächsten freien Termin – oder leer, wenn keiner da ist.
- * Kostet eine Abfrage (~45 ms) und ist damit billiger als jede Rückfrage.
- */
-async function earliestSentence(state: ChatState, deps: ChatDeps, now: Date): Promise<string> {
-  const lang = state.lang;
-  const types = await deps.types();
-  const art = types.find((x) => x.id === state.draft.typeId) ?? types.find((x) => x.id === "unklar") ?? types[0];
-  if (!art) return "";
-  const answer = await deps.nextFree({ art: art.id, fenster: state.draft.window, ab: null, bis: null }, { now, lang });
-  return answer.kind === "earliest" ? renderSlotAnswer(answer, lang, art.label, phone, now) : "";
-}
-
-/**
  * Nicht verstanden – aber nicht mit leeren Händen. Bisher endete der
  * langsamste Weg in einem Satz, der nichts anbot. Jetzt steht der nächste
  * freie Termin als Knopf daneben: ein Antippen statt einer weiteren Frage.
@@ -1750,30 +1727,6 @@ function unknownWithOffer(state: ChatState, flags: Partial<ChatResponse["flags"]
   });
 }
 
-/**
- * Zweimal wortgleich dieselbe Rückfrage ist keine Antwort mehr, sondern eine
- * Schleife – im Chat des Betreibers stand derselbe Satz zweimal untereinander.
- * Dann geht der Automat eine Stufe weiter: nächster freier Termin, Knöpfe,
- * Telefon. Nur bei Rückfragen: Eine zweimal gestellte Sachfrage darf
- * dieselbe Auskunft bekommen.
- */
-async function repeatGuard(res: ChatResponse, prev: ChatState, deps: ChatDeps, now: Date): Promise<ChatResponse> {
-  const reply = res.reply.trim();
-  const mark = reply ? replyMark(reply) : null;
-  const looped = mark !== null && mark === prev.lastReply && /\?$/u.test(reply);
-  if (!looped) return { ...res, state: { ...res.state, lastReply: mark } };
-  const T = t(res.state.lang);
-  const offer = await earliestSentence(res.state, deps, now);
-  return {
-    ...res,
-    // Der Merker wird zurückgesetzt: Die Eskalation selbst soll nicht
-    // beim nächsten Zug noch einmal eskalieren.
-    state: { ...res.state, lastReply: null },
-    reply: offer ? `${T.stuck} ${offer}` : T.stuck,
-    quick: quick(res.state.lang, ["nextfree", "book", "callback"]),
-    links: practiceLink(res.state.lang),
-  };
-}
 
 // --------------------------------------------------------- Praxisfragen
 

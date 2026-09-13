@@ -2031,5 +2031,41 @@
     "expectWindow": null,
     "expectTopic": "oeffnungszeiten",
     "note": "counter-check: opening hours, not a free slot"
+  },
+  {
+    "id": "en-157",
+    "text": "What are your opening hours?",
+    "stage": "idle",
+    "expect": "hours",
+    "expectDate": null,
+    "expectTime": null,
+    "expectTypeId": null,
+    "expectWindow": null,
+    "expectTopic": "oeffnungszeiten",
+    "note": "counter-check: 'opening' inside 'opening hours' is not a free slot"
+  },
+  {
+    "id": "en-158",
+    "text": "What are your opening times?",
+    "stage": "idle",
+    "expect": "hours",
+    "expectDate": null,
+    "expectTime": null,
+    "expectTypeId": null,
+    "expectWindow": null,
+    "expectTopic": "oeffnungszeiten",
+    "note": null
+  },
+  {
+    "id": "en-159",
+    "text": "Do you have any English speaking staff available?",
+    "stage": "idle",
+    "expect": "unknown_topic",
+    "expectDate": null,
+    "expectTime": null,
+    "expectTypeId": null,
+    "expectWindow": null,
+    "expectTopic": "sprachen",
+    "note": "counter-check: 'available' about staff, not slots"
   }
 ]

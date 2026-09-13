@@ -283,7 +283,7 @@ const DAYPARTS: Array<{ re: RegExp; from: string; to: string; label: string }> =
 ];
 
 const EARLIEST_RE =
-  /(?<!\p{L})(?:so\s+(?:früh|frueh|schnell|bald)\s+wie\s+möglich|so\s+(?:früh|frueh|schnell|bald)\s+wie\s+moeglich|schnellst(?:möglich|moeglich)|frühest\p{L}*|fruehest\p{L}*|kurzfristig(?:es|en|e)?|asap|so\s+bald\s+wie\s+möglich|möglichst\s+(?:bald|früh|schnell)|moeglichst\s+(?:bald|frueh|schnell)|n(?:ä|ae)chst(?:er|en|e)\s+freie[rn]?\s+termin|erste[rn]?\s+freie[rn]?\s+termin|n(?:ä|ae)chstm(?:ö|oe)glich\p{L}*|am\s+(?:schnellsten|ehesten|fr(?:ü|ue)hesten)|earliest(?:\s+possible)?|as\s+soon\s+as\s+possible|first\s+available|next\s+available|next\s+free|soonest)(?!\p{L})/iu;
+  /(?<!\p{L})(?:so\s+(?:früh|frueh|schnell|bald)\s+wie\s+möglich|so\s+(?:früh|frueh|schnell|bald)\s+wie\s+moeglich|schnellst(?:möglich|moeglich)|frühest\p{L}*|fruehest\p{L}*|kurzfristig(?:es|en|e)?|asap|so\s+bald\s+wie\s+möglich|möglichst\s+(?:bald|früh|schnell)|moeglichst\s+(?:bald|frueh|schnell)|n(?:ä|ae)chst(?:er|en|e)\s+freie[rn]?\s+termin|erste[rn]?\s+freie[rn]?\s+termin|n(?:ä|ae)chstm(?:ö|oe)glich\p{L}*|earliest(?:\s+possible)?|as\s+soon\s+as\s+possible|first\s+available|next\s+available|next\s+free|soonest)(?!\p{L})/iu;
 
 /** Dieselbe Wendung, aber zum Herausschneiden. */
 const EARLIEST_G = new RegExp(EARLIEST_RE.source, "giu");
@@ -304,12 +304,27 @@ const EARLIEST_G = new RegExp(EARLIEST_RE.source, "giu");
  * Was bewusst **nicht** genügt: „Termin" oder „Zeit" allein – „Was ist ein
  * Kontrolltermin?" ist eine Wissensfrage, keine Terminsuche. Und „offen"
  * steht bewusst nicht dabei: „Wann habt ihr offen?" sind die Sprechzeiten.
+ *
+ * Jede Ausnahme unten ist ein Satz, den die eigene Gegenprüfung gefunden hat:
+ * „opening" nicht vor „hours" (sonst wären die englischen Sprechzeiten eine
+ * Terminfrage), „free" nicht vor „time/parking/of charge", „Platz" nur nach
+ * „noch" (sonst wäre „Wie viele Plätze hat das Wartezimmer?" eine Buchung),
+ * und das blanke „any" gar nicht – es trägt für sich genommen keine
+ * Bedeutung von „noch zu haben".
  */
 const ASK_RE =
-  /(?<!\p{L})(?:wann|was|welche[rnms]?|wie\s+viele|gibt\s+e?s|hab(?:t|en)\s+(?:ihr|sie)|h(?:ä|ae)tt(?:et|en)\s+(?:ihr|sie)|k(?:ö|oe)nnt(?:et|en)?\s+(?:ihr|sie)|ist\s+(?:bei\s+)?(?:euch|ihnen|noch)|sind\s+noch|w(?:ä|ae)re|when|what|which|do\s+you\s+have|have\s+you\s+got|are\s+there|any)(?!\p{L})/iu;
+  /(?<!\p{L})(?:wann|was|welche[rnms]?|wie\s+viele|gibt\s+e?s|hab(?:t|en)\s+(?:ihr|sie)|h(?:ä|ae)tt(?:et|en)\s+(?:ihr|sie)|k(?:ö|oe)nnt(?:et|en)?\s+(?:ihr|sie)|ist\s+(?:bei\s+)?(?:euch|ihnen|noch)|sind\s+noch|w(?:ä|ae)re|when|what|which|do\s+you\s+have|have\s+you\s+got|are\s+there)(?!\p{L})/iu;
+
+/** „any openings", „any free slots" – „any doctor available" dagegen nicht. */
+const EN_ANY_RE =
+  /(?<!\p{L})any\s+(?:(?:free|available|open)\s+)?(?:slots?|openings?|appointments?|availability)(?!\p{L})/iu;
+
+/** „Wann kann ich am schnellsten kommen?" – nur in einer Wann-Frage. */
+const AM_EHESTEN_RE =
+  /(?<!\p{L})wann(?!\p{L})[^?!.]{0,60}(?<!\p{L})am\s+(?:schnellsten|ehesten|fr(?:ü|ue)hesten)(?!\p{L})/iu;
 
 const FREE_RE =
-  /(?<!\p{L})(?:frei(?:e[nrs]?|es)?|free|verf(?:ü|ue)gbar|unbelegt|pl(?:a|ä|ae)tze?|platz|l(?:ü|ue)cke|slots?|openings?|available|availability)(?!\p{L})|(?<!\p{L})noch\s+(?:etwas|was|einen?|eine|freie[nr]?|termine?|pl(?:ä|ae)tze|platz)(?!\p{L})/iu;
+  /(?<!\p{L})(?:frei(?:e[nrs]?|es)?|free(?!\s+(?:time|of\s+charge|parking))|verf(?:ü|ue)gbar|unbelegt|l(?:ü|ue)cke|slots?|availability|opening(?!\s+(?:hours?|times?))s?)(?!\p{L})|(?<!\p{L})noch\s+(?:(?:eine[nr]?|ein)\s+)?(?:freie[nr]?|termine?|pl(?:ä|ae)tze|platz|l(?:ü|ue)cke)(?!\p{L})/iu;
 
 /** „Wann hättet ihr Zeit?" – das Idiom meint freie Zeiten, nicht die Uhr. */
 const ZEIT_IDIOM_RE =
@@ -323,7 +338,7 @@ const ZEIT_IDIOM_RE =
  * was frei?" ist der Dienstag, nicht „der früheste Termin überhaupt".
  */
 export function asksAvailability(text: string): boolean {
-  return (ASK_RE.test(text) && FREE_RE.test(text)) || ZEIT_IDIOM_RE.test(text);
+  return (ASK_RE.test(text) && FREE_RE.test(text)) || ZEIT_IDIOM_RE.test(text) || EN_ANY_RE.test(text) || AM_EHESTEN_RE.test(text);
 }
 
 /** Zahlwörter für Uhrzeiten – „halb drei", „viertel nach zwei". */

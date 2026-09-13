@@ -3819,5 +3819,77 @@
     "expectWindow": null,
     "expectTopic": "oeffnungszeiten",
     "note": "„freitags“ ist kein „frei“"
+  },
+  {
+    "id": "de-298",
+    "text": "Wie komme ich am schnellsten zu Ihnen?",
+    "stage": "idle",
+    "expect": "directions",
+    "expectDate": null,
+    "expectTime": null,
+    "expectTypeId": null,
+    "expectWindow": null,
+    "expectTopic": null,
+    "note": "Gegenprüfung: „am schnellsten“ ist hier die Anfahrt, kein Terminwunsch"
+  },
+  {
+    "id": "de-299",
+    "text": "Wie komme ich am schnellsten zur Praxis?",
+    "stage": "idle",
+    "expect": "directions",
+    "expectDate": null,
+    "expectTime": null,
+    "expectTypeId": null,
+    "expectWindow": null,
+    "expectTopic": null,
+    "note": null
+  },
+  {
+    "id": "de-300",
+    "text": "Gibt es noch einen anderen Arzt?",
+    "stage": "idle",
+    "expect": "doctor",
+    "expectDate": null,
+    "expectTime": null,
+    "expectTypeId": null,
+    "expectWindow": null,
+    "expectTopic": "arzt",
+    "note": "Gegenprüfung: „noch einen“ ist keine freie Zeit"
+  },
+  {
+    "id": "de-301",
+    "text": "Haben Sie einen Parkplatz frei?",
+    "stage": "idle",
+    "expect": "unknown_topic",
+    "expectDate": null,
+    "expectTime": null,
+    "expectTypeId": null,
+    "expectWindow": null,
+    "expectTopic": "parken",
+    "note": "Gegenprüfung: „frei“ meint hier den Parkplatz"
+  },
+  {
+    "id": "de-302",
+    "text": "Gibt es noch freie Parkplätze?",
+    "stage": "idle",
+    "expect": "unknown_topic",
+    "expectDate": null,
+    "expectTime": null,
+    "expectTypeId": null,
+    "expectWindow": null,
+    "expectTopic": "parken",
+    "note": null
+  },
+  {
+    "id": "de-303",
+    "text": "Wie viele Plätze hat das Wartezimmer?",
+    "stage": "idle",
+    "expect": "discretion",
+    "expectDate": null,
+    "expectTime": null,
+    "expectTypeId": null,
+    "expectWindow": null,
+    "expectTopic": "diskretion",
+    "note": "Gegenprüfung: „Plätze“ ist kein freier Termin"
   }
 ]
