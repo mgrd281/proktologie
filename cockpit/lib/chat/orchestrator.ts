@@ -1379,6 +1379,15 @@ async function contactDialogue(text: string, state: ChatState, deps: ChatDeps, n
   if (CANCEL_RE.test(said)) {
     return say({ ...state, stage: "date", failures: 0, draft: { ...d, contactStep: null, pending: null } }, T.whatToChange, { quick: changeQuick(lang) });
   }
+  // Eine Gesundheitsangabe ist nie ein Name, keine Adresse, keine Nummer.
+  // Sie wird nicht übernommen, nicht gespeichert, nicht zurückgelesen – es
+  // kommt derselbe Hinweis wie beim Tippen (bei Akutem: erst anrufen), und
+  // die offene Frage wird noch einmal gestellt. Die Notiz filtert ihr Schritt.
+  if (step !== "note" && detectHealthData(said) !== null) {
+    deps.audit("chat.health_filtered", { medicalQuestion: false });
+    const hint = isAcuteConcern(said, true) ? T.acute : T.healthHintShort;
+    return say(state, `${hint} ${questionFor(step, pending, V)}`, step === "emailConfirm" ? { quick: quick(lang, ["correct", "wrong"]) } : {});
+  }
   const go = (
     patch: Partial<NonNullable<ChatState["draft"]["pending"]>>,
     nextStep: ChatState["draft"]["contactStep"],
@@ -1434,9 +1443,12 @@ async function contactDialogue(text: string, state: ChatState, deps: ChatDeps, n
     case "note": {
       let note: string | null = null;
       let dropped = false;
+      let acute = false;
       if (!isSkip(said)) {
         if (detectHealthData(said) !== null) {
           dropped = true;
+          // Akut ist kein Notfall, aber auch keine Notiz: erst anrufen.
+          acute = isAcuteConcern(said, true);
           deps.audit("chat.note_dropped");
         } else {
           note = said.slice(0, 300);
@@ -1455,11 +1467,27 @@ async function contactDialogue(text: string, state: ChatState, deps: ChatDeps, n
         // Ja darauf ist die Einwilligung – wie das Häkchen im Formular.
         draft: { ...d, contact: { firstName, lastName, email, phone }, note, contactStep: null, pending: null, consent: "voice" },
       };
-      const head = dropped ? `${V.noteDropped} ` : "";
+      const head = dropped ? `${V.noteDropped} ${acute ? `${T.acute} ` : ""}` : "";
       return say(next, `${head}${await summarySentence(next, deps)} ${V.consentLine}`, { quick: quick(lang, ["yes", "no"]) });
     }
     default:
       return askContact(state, deps);
+  }
+}
+
+/** Die offene Frage eines Schritts – um sie nach einem Hinweis noch einmal zu stellen. */
+function questionFor(step: ChatState["draft"]["contactStep"], pending: NonNullable<ChatState["draft"]["pending"]>, V: ReturnType<typeof t>["voice"]): string {
+  switch (step) {
+    case "lastName":
+      return V.askLastName(pending.firstName ?? "");
+    case "email":
+      return V.askEmail;
+    case "emailConfirm":
+      return V.confirmEmail(pending.email ?? "");
+    case "phone":
+      return V.askPhone;
+    default:
+      return V.askName;
   }
 }
 
@@ -1495,6 +1523,11 @@ async function book(state: ChatState, deps: ChatDeps, now: Date): Promise<ChatRe
     deps.audit("chat.daily_limit");
     return say({ ...state, stage: "done" }, T.dailyLimit, { links: practiceLink(lang) });
   }
+  // Der Zustand kommt aus dem Browser. Der Gesundheitsfilter läuft darum
+  // hier, an der Grenze zur Speicherung – nicht nur dort, wo die Notiz
+  // entsteht. Was auch immer sie hergebracht hat: Gespeichert wird sie nur sauber.
+  const note = d.note && detectHealthData(d.note) === null ? d.note : undefined;
+  if (d.note && !note) deps.audit("chat.note_dropped");
 
   const outcome = await deps.book({
     typeId: d.typeId,
@@ -1507,7 +1540,7 @@ async function book(state: ChatState, deps: ChatDeps, now: Date): Promise<ChatRe
     locale: lang,
     // Nur mitgeben, wenn es eine gibt: Der Textkanal kennt keine Notiz, und
     // sein Aufruf soll genau so aussehen wie vor dem Sprachkanal.
-    ...(d.note ? { note: d.note } : {}),
+    ...(note ? { note } : {}),
   });
 
   if (outcome.ok) {

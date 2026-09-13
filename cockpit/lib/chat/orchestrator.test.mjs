@@ -808,3 +808,48 @@ test("Ohne aufgezeichnete Einwilligung wird nicht gebucht – die Kontaktdaten w
   const summary = await bisZurBestaetigung(deps);
   assert.equal(summary.state.draft.consent, "form");
 });
+
+test("Sprachkanal: eine Gesundheitsangabe wird nie zum Namen – Hinweis, und die Frage kommt noch einmal", async () => {
+  const { deps, calls } = makeDeps();
+  const base = stateAt("contact");
+  const st = { ...base, draft: { ...base.draft, time: "09:00", contactStep: "name", pending: null } };
+  let r = await o.runTurn(voice(st, "Ich habe starke Schmerzen."), deps);
+  assert.equal(r.state.draft.contactStep, "name");
+  assert.equal(r.state.draft.pending, null, "nichts davon wird übernommen");
+  assert.match(r.reply, /rufen Sie bitte zuerst an/);
+  assert.match(r.reply, /Wie heißen Sie/);
+  assert.ok(calls.audit.some(([e]) => e === "chat.health_filtered"));
+  // Auch beim Nachnamen.
+  r = await o.runTurn(voice({ ...st, draft: { ...st.draft, contactStep: "lastName", pending: { firstName: "Erika" } } }, "Hämorrhoiden"), deps);
+  assert.equal(r.state.draft.contactStep, "lastName");
+  assert.deepEqual(r.state.draft.pending, { firstName: "Erika" });
+  assert.match(r.reply, /Ihr Nachname/);
+});
+
+test("Sprachkanal: Akutes in der Notiz wird verworfen – und der Anruf-Hinweis kommt dazu", async () => {
+  const { deps } = makeDeps();
+  const base = stateAt("contact");
+  const st = { ...base, draft: { ...base.draft, time: "09:00", contactStep: "note", pending: { firstName: "Erika", lastName: "Musterfrau", email: "erika@example.invalid" } } };
+  const r = await o.runTurn(voice(st, "Ich habe seit gestern sehr starke Schmerzen, es ist dringend."), deps);
+  assert.equal(r.state.stage, "confirm");
+  assert.equal(r.state.draft.note, null);
+  assert.match(r.reply, /nicht gespeichert/);
+  assert.match(r.reply, /rufen Sie bitte zuerst an/);
+});
+
+test("Eine Notiz im mitgeschickten Zustand wird an der Speichergrenze gefiltert – nicht nur dort, wo sie entsteht", async () => {
+  const { deps, calls } = makeDeps();
+  const st = stateAt("confirm");
+  st.draft.note = "Ich habe seit Wochen Blut im Stuhl";
+  const r = await o.runTurn(msg(st, "ja"), deps);
+  assert.equal(calls.book.length, 1);
+  assert.equal("note" in calls.book[0], false);
+  assert.ok(calls.audit.some(([e]) => e === "chat.note_dropped"));
+  assert.equal(r.state.stage, "done");
+  // Eine saubere Notiz kommt an.
+  const { deps: d2, calls: c2 } = makeDeps();
+  const ok = stateAt("confirm");
+  ok.draft.note = "Erstbesuch";
+  await o.runTurn(msg(ok, "ja"), d2);
+  assert.equal(c2.book[0].note, "Erstbesuch");
+});
