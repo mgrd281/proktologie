@@ -40,12 +40,35 @@ const VOICE = "alloy";
  * Richtung passiert.
  */
 const TTS_MODEL = "gpt-4o-mini-tts";
-/** Das Zuhör-Modell. Von OpenAI für Echtzeit-Transkription empfohlen. */
-const STT_MODEL = "gpt-live-transcribe";
+/**
+ * Das Zuhör-Modell.
+ *
+ * Nicht `gpt-live-transcribe`, und das ist gemessen, nicht gemeint: Der
+ * Anbieter antwortete auf die Sitzungsanfrage mit dem Live-Modell wörtlich
+ * „400: Turn detection is not supported for this transcription model."
+ * Dieses Modell erkennt kein Satzende – es streamt Wörter und schließt
+ * einen Satz erst, wenn der Browser ihm `input_audio_buffer.commit`
+ * schickt. Der Zuhör-Automat in `lib/voice/live.ts` ist um das Gegenteil
+ * gebaut: Der Anbieter meldet Sprechbeginn und fertigen Satz. Dazu passt
+ * `gpt-transcribe`: Satzende-Erkennung auf dem Server, Zwischentext als
+ * Deltas, und mit 0,0045 $/min ein Viertel des Preises. Genau das stand
+ * schon am 8. 9. als Startempfehlung im Rechercheprotokoll
+ * (`docs/sprachkanal-openai.md`) – heute Vormittag habe ich dagegen gebaut.
+ */
+const STT_MODEL = "gpt-transcribe";
 /** Abtastrate, mit der Browser und Anbieter rechnen. */
 export const SAMPLE_RATE = 24_000;
 /** So lange gilt ein Ausweis. Kurz genug, dass ein Diebstahl nichts nützt. */
 const SECRET_TTL_SEC = 600;
+/**
+ * Der Rahmen, den das Zuhör-Modell bekommt. Kein Personenbezug, nichts aus
+ * einem Gespräch – nur das, was auch auf dem Praxisschild steht.
+ */
+const STT_PROMPT = {
+  de: "Terminvereinbarung in einer proktologischen Praxis in Hamburg-Eimsbüttel.",
+  en: "Booking an appointment at a proctology practice in Hamburg-Eimsbüttel.",
+} as const;
+const STT_KEYWORDS = ["Termin", "Proktologie", "Überweisung", "Vorsorge", "Kontrolltermin", "Eimsbüttel", "Kunstreich"];
 /** Länger als ein Antwortsatz braucht niemand – ein Riegel gegen Missbrauch. */
 export const MAX_SPEAK_CHARS = 600;
 
@@ -112,30 +135,27 @@ export interface VoiceSecret {
 /**
  * Einen Ausweis für genau eine Zuhör-Sitzung ausstellen.
  *
- * `turn_detection`: Der Kommentar hier behauptete früher, `server_vad` sei
- * der Grund, warum ältere Anrufer nicht mitten im Satz abgeschnitten
- * werden. Das ist die Umkehrung der Wahrheit – `server_vad` misst nur
- * Stille und schneidet langsame Sprecher genau deshalb ab.
+ * Die Sitzungsanfrage folgt dem belegten Beispiel im Rechercheprotokoll
+ * (`docs/sprachkanal-openai.md`, Abschnitt 2):
  *
- * Der ehrliche Umgang damit ist nicht, auf `semantic_vad` zu wechseln:
- * Die Referenz des Anbieters sagt an drei Stellen, in Transkriptions-
- * Sitzungen sei „only `server_vad` is currently supported"; nur der
- * VAD-Leitfaden sagt das Gegenteil. Dieser Widerspruch steht seit Monaten
- * ungeklärt (siehe `docs/sprachkanal-openai.md`, Abschnitt „VAD-Wahl"), und
- * eine abgelehnte Einstellung wäre ein 400 – der Knopf erschiene und
- * verbände nie. Eine unbelegte Verbesserung ist keine Verbesserung.
+ *  - `turn_detection: server_vad` mit `silence_duration_ms` deutlich über
+ *    dem Auslieferungswert von 700 ms. Wer nach Worten sucht oder mitten im
+ *    Satz Luft holt, bekommt gut eine Sekunde Pause zugestanden, statt
+ *    abgeschnitten zu werden. (`semantic_vad` wird als eigene Messung
+ *    probiert, sobald dieser Pfad läuft – nicht vorher, nicht ungemessen.)
+ *  - `languages` als Liste: Das ist die Form, die die neueren Modelle
+ *    kennen; `language` in der Einzahl daneben wäre verboten.
+ *  - `prompt` und `keywords` geben dem Modell den Rahmen einer Praxis –
+ *    Fachwörter, Ortsname, Terminbegriffe. Kein Personenbezug, nichts, was
+ *    aus einem Gespräch stammt.
+ *  - `noise_reduction: near_field`: Laptop oder Telefon vor dem Gesicht.
+ *  - **Kein `format`.** Über WebRTC handelt der Browser das Audio selbst
+ *    aus; das Feld gilt für WebSocket-Verbindungen, und dort ist
+ *    PCM 16 bit / 24 kHz ohnehin der Auslieferungswert.
  *
- * Stattdessen dieselbe Absicht mit einem Feld, das sicher unterstützt ist:
- * `silence_duration_ms` deutlich über dem Auslieferungswert von 700 ms.
- * Wer nach Worten sucht oder mitten im Satz Luft holt, bekommt damit
- * anderthalb Sekunden Pause zugestanden, statt abgeschnitten zu werden.
- * `semantic_vad` bleibt das, was es ist: eine zu messende Option, sobald
- * ein Schlüssel existiert – keine Planungsgrundlage.
- *
- * `languages` mit einem Eintrag, nicht `language`: Das Zuhör-Modell kennt
- * nur die Mehrzahlform, und beide zusammen zu schicken ist verboten. Ein
- * falscher Feldname hier bedeutet nicht „etwas schlechter", sondern 400 –
- * der Knopf erscheint und die Verbindung kommt nie zustande.
+ * Jede Zeile hiervon hat den Messkreis durchlaufen: Ausweis-Route aufrufen,
+ * Vercel-Runtime-Log lesen. Steht dort ein 400, sagt der Anbieter, welches
+ * Feld – und genau dieses wird geändert, nicht drei andere dazu.
  */
 export async function mintListenSecret(lang: "de" | "en", signal?: AbortSignal): Promise<VoiceSecret> {
   const res = await fetch(`${BASE_URL}/realtime/client_secrets`, {
@@ -148,8 +168,14 @@ export async function mintListenSecret(lang: "de" | "en", signal?: AbortSignal):
         type: "transcription",
         audio: {
           input: {
-            format: { type: "audio/pcm", rate: SAMPLE_RATE },
-            transcription: { model: STT_MODEL, languages: [lang] },
+            noise_reduction: { type: "near_field" },
+            transcription: {
+              model: STT_MODEL,
+              languages: [lang],
+              delay: "low",
+              prompt: STT_PROMPT[lang],
+              keywords: STT_KEYWORDS,
+            },
             turn_detection: { type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 1100 },
           },
         },

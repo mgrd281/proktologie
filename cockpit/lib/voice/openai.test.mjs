@@ -95,7 +95,7 @@ test("Die Modellnamen sind die, die es wirklich gibt", async () => {
   } finally {
     globalThis.fetch = echt;
   }
-  assert.equal(stt, "gpt-live-transcribe", "das von OpenAI empfohlene Echtzeit-Modell");
+  assert.equal(stt, "gpt-transcribe", "das Modell mit Satzende-Erkennung – gpt-live-transcribe hat keine (gemessen: 400)");
   assert.equal(tts, "gpt-4o-mini-tts", "nur dieses Modell kennt instructions");
 });
 
@@ -136,6 +136,29 @@ test("Die Pause vor dem Satzende ist länger als der Auslieferungswert", async (
   }
   assert.equal(input.turn_detection.type, "server_vad");
   assert.ok(input.turn_detection.silence_duration_ms >= 1000, "mehr Luft als die 700 ms des Anbieters");
+});
+
+test("Die Sitzungsanfrage trägt keinen Personenbezug und kein WebSocket-Format", async () => {
+  // Über WebRTC handelt der Browser das Audio aus; `format` gilt für
+  // WebSocket. Und der Rahmen fürs Modell darf nur enthalten, was auch auf
+  // dem Praxisschild steht – nie etwas aus einem Gespräch.
+  let input = null;
+  const echt = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    input = JSON.parse(init.body).session.audio.input;
+    return new Response(JSON.stringify({ value: "ek_a", expires_at: 1 }), { status: 200 });
+  };
+  try {
+    await withKey("sk-test", () => mod.mintListenSecret("de"));
+  } finally {
+    globalThis.fetch = echt;
+  }
+  assert.equal("format" in input, false, "kein format über WebRTC");
+  assert.equal(input.noise_reduction.type, "near_field");
+  assert.equal(input.transcription.delay, "low");
+  assert.match(input.transcription.prompt, /Praxis/);
+  assert.doesNotMatch(input.transcription.prompt, /@|\d{3,}/, "keine Adresse, keine Nummer");
+  assert.ok(Array.isArray(input.transcription.keywords) && input.transcription.keywords.includes("Termin"));
 });
 
 test("Der Sprechtext wird gekürzt, statt eine offene Vorlesemaschine zu sein", async () => {
