@@ -99,6 +99,13 @@ test("Einladung annehmen, Passkey und TOTP einrichten", async ({ page }) => {
   // Live-Schalter ist gesperrt, solange Demo-Daten existieren
   await expect(page.getByRole("switch", { name: /Website-Buchung live/ })).toBeDisabled();
 
+  // Der Sprachkanal sagt hier, ob er eingerichtet ist – im Testlauf ist kein
+  // OPENAI_API_KEY gesetzt, also muss genau der Zustand stehen, in dem der
+  // Betreiber steckte: aus, mit dem konkreten nächsten Schritt daneben.
+  await expect(page.getByText("Sprechen statt tippen: nicht eingerichtet")).toBeVisible();
+  await expect(page.getByText(/OPENAI_API_KEY/)).toBeVisible();
+  await expect(page.getByText(/neu deployen/)).toBeVisible();
+
   // Screenshots hell + dunkel, Desktop + Mobil
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");

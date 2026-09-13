@@ -3,6 +3,7 @@ import { countDemo, getSettings, recentMessages, unknownChatTopics } from "@/lib
 import { TOPIC_LABELS } from "@/content/praxis-wissen";
 import { pendingCount } from "@/lib/jobs/queue";
 import { emailChannel } from "@/lib/messaging/email";
+import { voiceConfigured } from "@/lib/voice/openai";
 import { DemoPanel } from "@/components/settings/DemoPanel";
 
 export const metadata = { title: "Demo & Betrieb" };
@@ -35,6 +36,7 @@ export default async function DemoPage() {
       messages={messages}
       pendingJobs={pendingJobs}
       cronConfigured={Boolean(process.env.CRON_SECRET)}
+      voiceConfigured={voiceConfigured()}
       unknownTopics={openTopics.map((r) => ({
         ...r,
         label: TOPIC_LABELS[r.topic as keyof typeof TOPIC_LABELS] ?? r.topic,

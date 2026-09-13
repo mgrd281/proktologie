@@ -37,6 +37,7 @@ export function DemoPanel({
   messages,
   pendingJobs,
   cronConfigured,
+  voiceConfigured,
   unknownTopics,
 }: {
   canEdit: boolean;
@@ -46,6 +47,8 @@ export function DemoPanel({
   messages: MessageLogRow[];
   pendingJobs: number;
   cronConfigured: boolean;
+  /** Ist ein Sprachanbieter eingerichtet? Ohne ihn zeigt die Website kein Mikrofon. */
+  voiceConfigured: boolean;
   unknownTopics: Array<{ topic: string; label: string; count: number }>;
 }) {
   const router = useRouter();
@@ -166,8 +169,32 @@ export function DemoPanel({
               description="Aus: Das Chat-Symbol zeigt nur Telefonnummer und Sprechzeiten. Buchungen über die Terminkarte laufen weiter."
               disabled={!canEdit}
             />
+            {/* Ohne diese Zeile ist „Sprache ist aus" unsichtbar: Die Website zeigt
+                einfach kein Mikrofon, und niemand erfährt, warum. */}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className={`rounded-full px-3 py-1 text-[12px] font-medium ${voiceConfigured ? "bg-ok/12 text-ok" : "bg-surface-sunken text-text-muted"}`}>
+                Sprechen statt tippen: {voiceConfigured ? "eingerichtet" : "nicht eingerichtet"}
+              </span>
+            </div>
           </div>
           {!settings.bookingLive && <Notice tone="info">Solange die Buchung nicht live ist, zeigt die Website Wunschtermine zur Anfrage. Die Website muss zusätzlich mit NEXT_PUBLIC_BOOKING_PROVIDER=cockpit gebaut sein (siehe README).</Notice>}
+          {!voiceConfigured && (
+            <Notice tone="info">
+              Im Chatfenster erscheint kein Mikrofon, solange kein Sprachanbieter eingerichtet ist – ein Knopf,
+              hinter dem nichts passiert, wäre schlimmer als keiner. Zum Einschalten in Vercel im
+              <strong> Cockpit-Projekt</strong> die Variable <strong>OPENAI_API_KEY</strong> für
+              <strong> Production</strong> setzen und anschließend <strong>neu deployen</strong> – eine
+              Umgebungsvariable wirkt erst im nächsten Deployment. Die Website muss dafür nicht neu gebaut
+              werden; sie fragt den Zustand bei jedem Laden hier ab. Bis zu sechs Minuten kann es dauern,
+              bis die zwischengespeicherte Antwort umschlägt.
+            </Notice>
+          )}
+          {voiceConfigured && !s.chatEnabled && (
+            <Notice tone="warn">
+              Der Sprachanbieter ist eingerichtet, aber der Chat-Assistent ist aus – damit ist auch das
+              Mikrofon aus. Wer den Chat abschaltet, hat auch das Mikrofon abgeschaltet.
+            </Notice>
+          )}
           {canEdit && (
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => { setS(settings); setOffsets(settings.reminderOffsetsH.join(", ")); }} disabled={!dirty}>Zurücksetzen</Button>
