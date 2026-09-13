@@ -176,11 +176,13 @@ export async function mintListenSecret(lang: "de" | "en", signal?: AbortSignal):
               language: lang,
               prompt: STT_PROMPT[lang],
             },
-            // 1300 ms: Wer einen Satz mit einer Denkpause spricht („… einen
-            // Termin … in zwei Wochen“), wird nicht in „Wochen." zerlegt –
-            // live so beobachtet. Der Preis ist gut eine Sekunde mehr bis zur
-            // Antwort; bei Sprache ist das die richtige Seite des Fehlers.
-            turn_detection: { type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 1300 },
+            // 1100 ms: Wer einen Satz mit einer Denkpause spricht („… einen
+            // Termin … in zwei Wochen“), soll nicht in „Wochen." zerlegt
+            // werden – darum nicht weniger. Mehr aber auch nicht: Jede
+            // Zehntelsekunde hier ist Stille, die die Patientin als Zögern
+            // hört. Wortfetzen, die trotzdem durchkommen, fängt der
+            // Stille-Wächter im Automaten ab, ohne zu antworten.
+            turn_detection: { type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 1100 },
           },
         },
       },

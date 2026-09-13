@@ -33,7 +33,7 @@ export const TYPES = [
 export const KONTAKT = { firstName: "Erika", lastName: "Musterfrau", email: "erika@example.invalid", phone: "040 123456", consent: "true" };
 
 export function makeDeps(over = {}) {
-  const calls = { classify: [], phrase: [], book: [], callback: [], audit: [], availability: [], nextFree: [] };
+  const calls = { classify: [], book: [], callback: [], audit: [], availability: [], nextFree: [] };
   const deps = {
     now: () => NOW,
     types: async () => TYPES,
@@ -73,10 +73,6 @@ export function makeDeps(over = {}) {
     info: async (lang) => ({ hoursText: lang === "de" ? HOURS_DE : HOURS_EN, banner: null }),
     classify: async (call) => {
       calls.classify.push(call);
-      return null;
-    },
-    phrase: async (call) => {
-      calls.phrase.push(call);
       return null;
     },
     book: async (input) => {

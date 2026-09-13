@@ -174,3 +174,42 @@ test("Protokoll nennt Anbieter und Dauer, aber nie den Inhalt", async () => {
   assert.ok(!lines[0].includes("Erika"), lines[0]);
   assert.ok(!lines[0].includes("Geheimer"), lines[0]);
 });
+
+// ---- Die harte Leine (Lieferung 6) ----
+
+test("Ein hängender Anbieter wird mit dem Restbudget abgebrochen, nicht mit der vollen Einzelfrist", async () => {
+  // Vorher wurde je Versuch die volle Einzelfrist gewartet, auch wenn das
+  // Gesamtbudget längst aufgebraucht war: Aus 8 s Frist wurden so 16 s
+  // Wartezeit – live gemessen. Jetzt gilt das Kürzere von beidem.
+  let aborts = 0;
+  const fetchImpl = (_url, init) =>
+    new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => {
+        aborts += 1;
+        reject(new Error("abgebrochen"));
+      });
+    });
+  const t0 = Date.now();
+  const r = await complete(call, {
+    env: { NVIDIA_API_KEY: "nv", OPENROUTER_API_KEY: "or", CHAT_LLM_BUDGET_MS: "300", CHAT_LLM_TIMEOUT_MS: "5000" },
+    fetchImpl,
+  });
+  const ms = Date.now() - t0;
+  assert.equal(r.ok, false);
+  assert.ok(aborts >= 1, "der Versuch wurde abgebrochen");
+  assert.ok(ms < 1500, `spätestens mit dem Budget zu Ende, war ${ms} ms`);
+});
+
+test("Die Vorgabe ist kurz genug für ein Gespräch – auch ohne gesetzte Umgebungsschalter", async () => {
+  // Kein CHAT_LLM_* gesetzt, genau wie in der Produktion: Eine tote Kette
+  // darf die Patientin nicht länger als ein paar Sekunden aufhalten.
+  const fetchImpl = (_url, init) =>
+    new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => reject(new Error("abgebrochen")));
+    });
+  const t0 = Date.now();
+  const r = await complete(call, { env: { NVIDIA_API_KEY: "nv", OPENROUTER_API_KEY: "or" }, fetchImpl });
+  const ms = Date.now() - t0;
+  assert.equal(r.ok, false);
+  assert.ok(ms < 4000, `Vorgabe muss unter vier Sekunden bleiben, war ${ms} ms`);
+});

@@ -334,19 +334,28 @@ test("Ohne erreichbares Modell bleibt der Chat auskunftsfähig", async ({ reques
   await llmMode(request, "ok");
 });
 
-test("Erfindet das Modell etwas, gilt der Faktentext", async ({ request }) => {
+test("Eine Wissensfrage erreicht das Modell gar nicht mehr – auch ein erfindendes nicht", async ({ request }) => {
+  // Früher wurde der fertige Faktentext noch einmal vom Modell umformuliert
+  // und nur dann verworfen, wenn es dabei etwas erfand. Live gemessen kostete
+  // dieser Umweg 9 bis 16 Sekunden – für einen Satz, den der Server schon
+  // hatte. Jetzt gibt es ihn nicht mehr: Ein erfindendes Modell kann die
+  // Auskunft nicht einmal berühren.
   await llmMode(request, "hallucinate");
+  await llmReset(request);
   const r = await conversation(request, ["Wann haben Sie geöffnet?"]);
   expect(r.answer.reply).not.toContain("19:30");
   expect(r.answer.reply).not.toContain("Parkplätze");
   expect(r.answer.reply).toMatch(/Sprechzeiten: /);
-  expect(r.answer.flags.llm).toBe("fallback");
+  expect(r.answer.flags.llm).toBe("none");
+  expect(await llmCalls(request), "kein Umformulieren mehr").toEqual([]);
   await llmMode(request, "ok");
 });
 
 test("Ein Anbieter ohne Schlüssel wird nie aufgerufen", async ({ request }) => {
   await llmReset(request);
-  await conversation(request, ["Wann haben Sie geöffnet?"]);
+  // Ein Satz, den keine eigene Regel trifft – nur dann wird überhaupt noch
+  // eingeordnet. Auskünfte kommen inzwischen ohne jeden Modellaufruf aus.
+  await conversation(request, ["Sagen Sie Herrn Meier viele Grüße."]);
   const calls = await llmCalls(request);
   expect(calls.length, "das Modell wurde gefragt").toBeGreaterThan(0);
   expect(calls.every((c) => c.model === "fake/one"), JSON.stringify(calls)).toBeTruthy();
@@ -453,8 +462,7 @@ test("„Ist ein Notfalltermin möglich?“ ist kein Notfall; „Guten Morgen“
   const verwaltung = await conversation(request, ["Wann ist mein Termin?"]);
   expect(verwaltung.answer.reply).toMatch(/Bestätigungs-E-Mail/);
   expect(verwaltung.answer.quick?.some((q) => q.id.startsWith("type:")), "keine neue Buchung").toBeFalsy();
-  // Der Faktentext darf umformuliert werden (nur Fakten, nichts Persönliches);
-  // eingeordnet hat das Modell hier nichts – die Regeln haben entschieden.
+  // Eingeordnet hat das Modell hier nichts – die Regeln haben entschieden.
   const calls = await llmCalls(request);
   expect(calls.map((c) => c.task), "keine Einordnung durch das Modell").not.toContain("classify");
 });

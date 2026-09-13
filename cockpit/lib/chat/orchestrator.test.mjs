@@ -149,7 +149,6 @@ test("Medizinische Frage: der vorgegebene Satz, kein Modellaufruf", async () => 
   const r = await o.runTurn(msg(null, "Ich habe Schmerzen beim Stuhlgang, ist das normal?"), deps);
   assert.equal(r.reply, "Dazu kann ich nichts sagen, das bespricht Dr. Kunstreich mit Ihnen persönlich. Soll ich Ihnen einen Termin suchen?");
   assert.equal(calls.classify.length, 0);
-  assert.equal(calls.phrase.length, 0);
 });
 
 test("Gesundheitsangaben: Hinweis, kein Modellaufruf, keine Weitergabe", async () => {
@@ -158,7 +157,6 @@ test("Gesundheitsangaben: Hinweis, kein Modellaufruf, keine Weitergabe", async (
   assert.match(r.reply, /keine gesundheitlichen Details/);
   assert.match(r.reply, /nicht weitergegeben/);
   assert.equal(calls.classify.length, 0);
-  assert.equal(calls.phrase.length, 0);
 });
 
 test("Terminart im Freitext genannt: keine Ermahnung, die Terminart gilt", async () => {
@@ -216,7 +214,7 @@ test("Kanarienvogel: der erfasste Kontakt taucht in keinem Modellaufruf auf", as
   const done = await o.runTurn(msg(summary.state, "ja"), deps);
   await o.runTurn(msg(done.state, "Sagen Sie Herrn Meier viele Grüße."), deps);
   assert.ok(done.state.draft.contact, "der Kontakt steht im Zustand");
-  const sent = JSON.stringify(calls.classify) + JSON.stringify(calls.phrase);
+  const sent = JSON.stringify(calls.classify);
   for (const secret of ["Erika", "Musterfrau", "erika@example.invalid", "040 123456"]) {
     assert.ok(!sent.includes(secret), `„${secret}“ darf das Modell nicht erreichen`);
   }
@@ -225,41 +223,30 @@ test("Kanarienvogel: der erfasste Kontakt taucht in keinem Modellaufruf auf", as
 // ------------------------------------------------------ Praxisfragen
 
 test("Öffnungszeiten kommen aus den Fakten, auch ohne Modell", async () => {
-  const { deps, calls } = makeDeps();
+  const { deps } = makeDeps();
   const r = await o.runTurn(click(null, "hours"), deps);
   assert.match(r.reply, new RegExp(HOURS_DE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.equal(r.flags.llm, "none", "Schaltflächen brauchen kein Modell");
-  assert.equal(calls.phrase.length, 0);
 });
 
-test("Freie Frage: das Modell formuliert nur, wenn es bei den Fakten bleibt", async () => {
-  const { deps } = makeDeps({ phrase: async () => "Wir haben Mo, Mi, Fr 07:00–12:00 Uhr für Sie da." });
-  const r = await o.runTurn(msg(null, "Wann haben Sie geöffnet?"), deps);
-  assert.equal(r.reply, "Wir haben Mo, Mi, Fr 07:00–12:00 Uhr für Sie da.");
-  assert.equal(r.flags.llm, "model");
-});
-
-test("Erfundene Uhrzeit wird verworfen – die Fakten gelten", async () => {
-  const { deps } = makeDeps({ phrase: async () => "Wir haben täglich bis 19:30 Uhr geöffnet." });
-  const r = await o.runTurn(msg(null, "Wann haben Sie geöffnet?"), deps);
-  assert.ok(!r.reply.includes("19:30"));
-  assert.match(r.reply, /Sprechzeiten: /);
-  assert.equal(r.flags.llm, "fallback");
-});
-
-test("Ohne erreichbares Modell antwortet die Frage trotzdem", async () => {
-  const { deps } = makeDeps({ phrase: async () => null });
+test("Eine Wissensfrage wird sofort aus den eigenen Fakten beantwortet – ohne jedes Modell", async () => {
+  // Früher lief hier ein Umformulierungsaufruf, der diesen fertigen Satz nur
+  // noch einmal in andere Worte fassen sollte: live gemessen 9 bis 16
+  // Sekunden, danach meist verworfen. Die Zusage lautet jetzt: Was der
+  // Automat weiß, sagt er sofort.
+  const { deps, calls } = makeDeps();
   const r = await o.runTurn(msg(null, "Wann haben Sie geöffnet?"), deps);
   assert.match(r.reply, /Sprechzeiten: /);
-  assert.equal(r.flags.llm, "fallback");
+  assert.equal(r.flags.llm, "none", "kein Modell auf der Antwortstrecke");
+  assert.equal(calls.classify.length, 0);
+  assert.equal(deps.phrase, undefined, "es gibt keine Umformulierung mehr");
 });
 
 test("Was die Praxis nicht hinterlegt hat, wird nicht erfunden", async () => {
-  const { deps, calls } = makeDeps();
+  const { deps } = makeDeps();
   const r = await o.runTurn(msg(null, "Haben Sie Parkplätze?"), deps);
   assert.match(r.reply, /Das weiß ich leider nicht/);
   assert.match(r.reply, /040 490 80 21/);
-  assert.equal(calls.phrase.length, 0, "ohne Fakten wird nichts formuliert");
 });
 
 test("„Brauche ich eine Überweisung?“ ist eine Frage, keine Weiterleitung", async () => {
@@ -468,7 +455,6 @@ test("Starke Beschwerden ohne Frage: Anruf-Hinweis statt Ermahnung, kein Modell"
   assert.match(r.reply, /^Bei akuten Beschwerden rufen Sie bitte zuerst an/);
   assert.doesNotMatch(r.reply, /gesundheitlichen Details/);
   assert.equal(calls.classify.length, 0);
-  assert.equal(calls.phrase.length, 0);
 });
 
 test("„Guten Morgen, ich hätte gern einen Termin“ fragt nach der Terminart, nicht nach morgen", async () => {
@@ -506,7 +492,6 @@ test("Fremdsprache: fester Satz in der Sprache, kein Modellaufruf, Schaltfläche
   assert.deepEqual(r.quick?.map((q) => q.id), ["book", "hours"]);
   assert.equal(r.quick?.[0].label, "Randevu al");
   assert.equal(calls.classify.length, 0);
-  assert.equal(calls.phrase.length, 0);
 
   // Notfall auf Türkisch → Notfallantwort auf Türkisch
   const e = await o.runTurn(msg(null, "Göğsümde şiddetli ağrı var, nefes alamıyorum"), deps);
@@ -617,7 +602,6 @@ test("Eine Leistungsfrage wird beantwortet, erreicht aber kein Modell", async ()
   const r = await o.runTurn(msg(null, "Machen Sie eine komplette Darmspiegelung?"), deps);
   assert.match(r.reply, /Darmspiegelung kooperieren wir/);
   assert.equal(calls.classify.length, 0, "keine Einordnung");
-  assert.equal(calls.phrase.length, 0, "und kein Umformulieren – der Satz nennt ein Verfahren");
   assert.equal(r.flags.llm, "none");
 });
 
@@ -988,4 +972,89 @@ test("Sprachkanal: „Ja“ auf die Notizfrage ist keine Notiz – es wird nach 
   r = await o.runTurn(voice(r.state, "Es ist ein Erstbesuch."), deps);
   assert.equal(r.state.stage, "confirm");
   assert.equal(r.state.draft.note, "Es ist ein Erstbesuch.");
+});
+
+// ------------------------------- Lieferung 6: verstehen und nicht warten
+
+test("„Wann habt ihr Termine frei?“ bekommt freie Zeiten – nicht die Gegenfrage nach einem Tag", async () => {
+  // Der Befund aus dem Chat des Betreibers: Mit einer längst bekannten
+  // Terminart antwortete der Automat „Notiert: Analfistel. Für welchen Tag
+  // darf ich nachsehen?“ – zweimal wortgleich.
+  const { deps, calls } = makeDeps();
+  const base = stateAt("date");
+  const st = { ...base, draft: { ...base.draft, typeId: "analfistel", date: null } };
+  const r = await o.runTurn(msg(st, "Wann habt ihr Termine frei?"), deps);
+  assert.doesNotMatch(r.reply, /Notiert:/, "was längst bekannt ist, wird nicht noch einmal vorgelesen");
+  assert.doesNotMatch(r.reply, /Für welchen Tag/, "die Frage war nach freien Zeiten, nicht nach einem Tag");
+  assert.match(r.reply, /früheste freie Termin/);
+  assert.equal(calls.nextFree.length, 1);
+  assert.equal(calls.nextFree[0].art, "analfistel", "und zwar für die bekannte Terminart");
+  assert.equal(calls.classify.length, 0, "ohne Modell");
+  assert.equal(r.flags.llm, "none");
+});
+
+test("Dieselbe Frage ohne bekannte Terminart: erst die früheste Zeit, dann die Terminart", async () => {
+  const { deps, calls } = makeDeps();
+  for (const satz of ["Habt ihr was frei?", "Was habt ihr frei?", "Wann hättet ihr Zeit?", "Gibt es noch Termine?"]) {
+    const r = await o.runTurn(msg(null, satz), deps);
+    assert.match(r.reply, /früheste freie Termin/, satz);
+    assert.match(r.reply, /Worum geht es/, satz);
+    assert.equal(r.flags.llm, "none", satz);
+  }
+  assert.equal(calls.classify.length, 0, "kein einziger Modellaufruf für vier Sätze");
+});
+
+test("Ein genannter Tag gewinnt gegen die Verfügbarkeitsfrage", async () => {
+  const { deps, calls } = makeDeps();
+  await o.runTurn(msg(null, "Habt ihr am Dienstag was frei?"), deps);
+  assert.equal(calls.nextFree.length, 0, "kein „frühester Termin überhaupt“");
+  assert.ok(calls.availability.length > 0);
+  assert.equal(calls.availability[0].datum, DIENSTAG);
+});
+
+test("„Wann habt ihr?“ ist mehrdeutig – also kommen Sprechzeit und früheste Zeit", async () => {
+  const { deps, calls } = makeDeps();
+  const r = await o.runTurn(msg(null, "Wann habt ihr?"), deps);
+  assert.match(r.reply, new RegExp(HOURS_DE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(r.reply, /früheste freie Termin/);
+  assert.equal(calls.classify.length, 0, "geraten wurde das früher vom Modell – jetzt nicht mehr");
+});
+
+test("Zweimal wortgleich dieselbe Rückfrage: der Automat macht anders weiter", async () => {
+  const { deps } = makeDeps();
+  const first = await o.runTurn(msg(null, "Ich hätte gern einen Termin"), deps);
+  assert.match(first.reply, /Worum geht es/);
+  const again = await o.runTurn(msg(first.state, "Ich hätte gern einen Termin"), deps);
+  assert.doesNotMatch(again.reply, /^Gern\. Worum geht es/);
+  assert.match(again.reply, /im Kreis/);
+  assert.match(again.reply, /früheste freie Termin/);
+  // Und die Eskalation eskaliert nicht noch einmal sich selbst.
+  assert.equal(again.state.lastReply, null);
+});
+
+test("Dieselbe Auskunft darf wiederholt werden – nur Rückfragen zählen als Schleife", async () => {
+  const { deps } = makeDeps();
+  const first = await o.runTurn(msg(null, "Wann haben Sie geöffnet?"), deps);
+  const second = await o.runTurn(msg(first.state, "Wann haben Sie geöffnet?"), deps);
+  assert.equal(second.reply, first.reply, "eine Sachfrage bekommt zweimal dieselbe Antwort");
+  assert.doesNotMatch(second.reply, /im Kreis/);
+});
+
+test("Was die Praxis nicht hinterlegt hat, endet nicht in einer Sackgasse", async () => {
+  const { deps } = makeDeps();
+  const r = await o.runTurn(msg(null, "Haben Sie Parkplätze?"), deps);
+  assert.match(r.reply, /Das weiß ich leider nicht/);
+  assert.ok(
+    r.quick.some((q) => q.id === "nextfree"),
+    "der nächste freie Termin steht als Knopf daneben",
+  );
+});
+
+test("Ein alter Zustand ohne das Merkfeld bleibt gültig", async () => {
+  const { deps } = makeDeps();
+  const alt = stateAt("date");
+  delete alt.lastReply;
+  const r = await o.runTurn(msg(alt, "Wann habt ihr Termine frei?"), deps);
+  assert.match(r.reply, /früheste freie Termin/);
+  assert.equal(typeof r.state.lastReply, "string");
 });

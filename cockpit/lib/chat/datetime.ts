@@ -283,10 +283,48 @@ const DAYPARTS: Array<{ re: RegExp; from: string; to: string; label: string }> =
 ];
 
 const EARLIEST_RE =
-  /(?<!\p{L})(?:so\s+(?:früh|frueh|schnell|bald)\s+wie\s+möglich|so\s+(?:früh|frueh|schnell|bald)\s+wie\s+moeglich|schnellst(?:möglich|moeglich)|frühest\p{L}*|fruehest\p{L}*|kurzfristig(?:es|en|e)?|asap|so\s+bald\s+wie\s+möglich|möglichst\s+(?:bald|früh|schnell)|moeglichst\s+(?:bald|frueh|schnell)|n(?:ä|ae)chst(?:er|en|e)\s+freie[rn]?\s+termin|erste[rn]?\s+freie[rn]?\s+termin|earliest(?:\s+possible)?|as\s+soon\s+as\s+possible|first\s+available|next\s+available)(?!\p{L})/iu;
+  /(?<!\p{L})(?:so\s+(?:früh|frueh|schnell|bald)\s+wie\s+möglich|so\s+(?:früh|frueh|schnell|bald)\s+wie\s+moeglich|schnellst(?:möglich|moeglich)|frühest\p{L}*|fruehest\p{L}*|kurzfristig(?:es|en|e)?|asap|so\s+bald\s+wie\s+möglich|möglichst\s+(?:bald|früh|schnell)|moeglichst\s+(?:bald|frueh|schnell)|n(?:ä|ae)chst(?:er|en|e)\s+freie[rn]?\s+termin|erste[rn]?\s+freie[rn]?\s+termin|n(?:ä|ae)chstm(?:ö|oe)glich\p{L}*|am\s+(?:schnellsten|ehesten|fr(?:ü|ue)hesten)|earliest(?:\s+possible)?|as\s+soon\s+as\s+possible|first\s+available|next\s+available|next\s+free|soonest)(?!\p{L})/iu;
 
 /** Dieselbe Wendung, aber zum Herausschneiden. */
 const EARLIEST_G = new RegExp(EARLIEST_RE.source, "giu");
+
+/**
+ * Die schlichte Frage nach freien Zeiten: „Wann habt ihr Termine frei?",
+ * „Habt ihr noch was frei?", „Do you have any openings?".
+ *
+ * `EARLIEST_RE` oben kennt nur die **superlativische** Form („der früheste
+ * Termin", „schnellstmöglich"). Die weitaus häufigere Form ist aber die
+ * schlichte – und sie fiel bis hierher durch jedes Muster: Der Automat
+ * fragte zurück, statt zu antworten, oder schickte den Satz an ein Modell.
+ *
+ * Zwei kleine Wortmengen, die im selben Satz zusammentreffen müssen: eine
+ * Frageform und ein Wort, das „noch zu haben" bedeutet. Ein einziges
+ * Ungetüm aus Alternativen wäre weder lesbar noch prüfbar.
+ *
+ * Was bewusst **nicht** genügt: „Termin" oder „Zeit" allein – „Was ist ein
+ * Kontrolltermin?" ist eine Wissensfrage, keine Terminsuche. Und „offen"
+ * steht bewusst nicht dabei: „Wann habt ihr offen?" sind die Sprechzeiten.
+ */
+const ASK_RE =
+  /(?<!\p{L})(?:wann|was|welche[rnms]?|wie\s+viele|gibt\s+e?s|hab(?:t|en)\s+(?:ihr|sie)|h(?:ä|ae)tt(?:et|en)\s+(?:ihr|sie)|k(?:ö|oe)nnt(?:et|en)?\s+(?:ihr|sie)|ist\s+(?:bei\s+)?(?:euch|ihnen|noch)|sind\s+noch|w(?:ä|ae)re|when|what|which|do\s+you\s+have|have\s+you\s+got|are\s+there|any)(?!\p{L})/iu;
+
+const FREE_RE =
+  /(?<!\p{L})(?:frei(?:e[nrs]?|es)?|free|verf(?:ü|ue)gbar|unbelegt|pl(?:a|ä|ae)tze?|platz|l(?:ü|ue)cke|slots?|openings?|available|availability)(?!\p{L})|(?<!\p{L})noch\s+(?:etwas|was|einen?|eine|freie[nr]?|termine?|pl(?:ä|ae)tze|platz)(?!\p{L})/iu;
+
+/** „Wann hättet ihr Zeit?" – das Idiom meint freie Zeiten, nicht die Uhr. */
+const ZEIT_IDIOM_RE =
+  /(?<!\p{L})(?:hab(?:t|en)|h(?:ä|ae)tt(?:et|en))\s+(?:ihr|sie|du)\s+(?:(?:denn|noch|mal|eventuell|vielleicht|irgendwann|kurzfristig)\s+)*zeit(?!\p{L})/iu;
+
+/**
+ * Fragt dieser Satz nach freien Zeiten, ohne einen Tag zu nennen?
+ *
+ * Die Einschränkung „ohne einen Tag" prüft der Aufrufer (`readWhen`): Steht
+ * ein Tag oder eine Uhrzeit im Satz, gilt der Tag – „Habt ihr am Dienstag
+ * was frei?" ist der Dienstag, nicht „der früheste Termin überhaupt".
+ */
+export function asksAvailability(text: string): boolean {
+  return (ASK_RE.test(text) && FREE_RE.test(text)) || ZEIT_IDIOM_RE.test(text);
+}
 
 /** Zahlwörter für Uhrzeiten – „halb drei", „viertel nach zwei". */
 const CLOCK_WORDS: Record<string, number> = {

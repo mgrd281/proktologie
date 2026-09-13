@@ -47,8 +47,19 @@ const KEY_ENV: Record<Provider, keyof LlmEnv> = {
   openrouter: "OPENROUTER_API_KEY",
 };
 
-const DEFAULT_TIMEOUT_MS = 8000;
-const DEFAULT_BUDGET_MS = 20000;
+/**
+ * Die harte Leine. Gemessen am 13.09.2026 gegen die Produktionsroute: Mit
+ * 8 s je Versuch und 20 s Budget brauchte eine einzige Frage 8,7 bis 16,5
+ * Sekunden – und lieferte danach trotzdem nichts, weil die freien
+ * Reasoning-Modelle in dieser Zeit nicht fertig werden. Der Patient wartete
+ * also eine Viertelminute auf einen Satz, den der Automat selbst schon hatte.
+ *
+ * Ehrlich benannt: Mit 2,5 s Gesamtbudget verlieren diese Modelle meistens.
+ * Genau das ist die Absicht. Sie sind ein Bonus für den Fall, dass kein
+ * eigenes Muster greift – nie eine Bedingung für eine Antwort.
+ */
+const DEFAULT_TIMEOUT_MS = 1500;
+const DEFAULT_BUDGET_MS = 2500;
 
 /**
  * Riegel 1: Beim Lesen der Kette. Fehlformen und jede kostenpflichtige
@@ -126,7 +137,11 @@ export async function complete(
     const label = `${ref.provider}:${ref.model}`;
     tried.push(label);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    // Nie länger als das, was vom Gesamtbudget übrig ist: Sonst hängt der
+    // zweite Versuch die volle Einzelfrist an, obwohl das Budget schon
+    // aufgebraucht ist – so entstanden aus 8 s Frist 16 s Wartezeit.
+    const left = budgetMs - (now() - started);
+    const timer = setTimeout(() => controller.abort(), Math.max(250, Math.min(timeoutMs, left)));
     const t0 = now();
     try {
       const res = await fetchImpl(`${baseUrl(ref.provider, env)}/chat/completions`, {

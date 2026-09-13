@@ -1947,5 +1947,89 @@
     "expectWindow": null,
     "expectTopic": null,
     "note": "typo"
+  },
+  {
+    "id": "en-150",
+    "text": "When do you have something free?",
+    "stage": "idle",
+    "expect": "earliest",
+    "expectDate": null,
+    "expectTime": null,
+    "expectTypeId": null,
+    "expectWindow": null,
+    "expectTopic": null,
+    "note": null
+  },
+  {
+    "id": "en-151",
+    "text": "What is your next free slot?",
+    "stage": "idle",
+    "expect": "earliest",
+    "expectDate": null,
+    "expectTime": null,
+    "expectTypeId": null,
+    "expectWindow": null,
+    "expectTopic": null,
+    "note": null
+  },
+  {
+    "id": "en-152",
+    "text": "Do you have any openings?",
+    "stage": "idle",
+    "expect": "earliest",
+    "expectDate": null,
+    "expectTime": null,
+    "expectTypeId": null,
+    "expectWindow": null,
+    "expectTopic": null,
+    "note": null
+  },
+  {
+    "id": "en-153",
+    "text": "Any free slots soon?",
+    "stage": "idle",
+    "expect": "earliest",
+    "expectDate": null,
+    "expectTime": null,
+    "expectTypeId": null,
+    "expectWindow": null,
+    "expectTopic": null,
+    "note": null
+  },
+  {
+    "id": "en-154",
+    "text": "Are there any available appointments?",
+    "stage": "idle",
+    "expect": "earliest",
+    "expectDate": null,
+    "expectTime": null,
+    "expectTypeId": null,
+    "expectWindow": null,
+    "expectTopic": null,
+    "note": null
+  },
+  {
+    "id": "en-155",
+    "text": "When can I come in soonest?",
+    "stage": "idle",
+    "expect": "earliest",
+    "expectDate": null,
+    "expectTime": null,
+    "expectTypeId": null,
+    "expectWindow": null,
+    "expectTopic": null,
+    "note": null
+  },
+  {
+    "id": "en-156",
+    "text": "When are you open?",
+    "stage": "idle",
+    "expect": "hours",
+    "expectDate": null,
+    "expectTime": null,
+    "expectTypeId": null,
+    "expectWindow": null,
+    "expectTopic": "oeffnungszeiten",
+    "note": "counter-check: opening hours, not a free slot"
   }
 ]

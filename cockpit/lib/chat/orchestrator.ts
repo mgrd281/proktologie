@@ -2,13 +2,13 @@ import { z } from "zod";
 import { PRACTICE } from "../practice.ts";
 import { addDays, fmtLongDateLocale } from "../time.ts";
 import { detectForeign, detectForeignEmergency, FOREIGN_TEXTS, type ForeignLang } from "./foreign.ts";
-import { answerFromFacts, findTopics, groundingCheck, SERVICE_TERMS, type LiveFacts, type Topic } from "./knowledge.ts";
+import { answerFromFacts, findTopics, SERVICE_TERMS, type LiveFacts, type Topic } from "./knowledge.ts";
 import { detectLanguage, type Lang } from "./language.ts";
 import type { LlmCall } from "./llm.ts";
-import { classifyPrompt, groundPrompt, parseClassification, type ModelView } from "./prompts.ts";
+import { classifyPrompt, parseClassification, type ModelView } from "./prompts.ts";
 import { detectEmergency, detectHealthData, isAcuteConcern, maskPii } from "./safety.ts";
 import { matchType, renderSlotAnswer, typeTerms, type SlotAnswer, type ToolContext } from "./tools.ts";
-import { parseDate, parseTime } from "./datetime.ts";
+import { asksAvailability, parseDate, parseTime } from "./datetime.ts";
 import { normalize } from "./normalize.ts";
 import { t } from "./texts.ts";
 import { isSkip, normalizeSpokenEmail, parseSpokenName, parseSpokenPhone, spokenDigits, spokenYesNo } from "./spoken.ts";
@@ -147,6 +147,14 @@ export const chatStateSchema = z.object({
   callbackKind: z.enum(["rueckruf", "folgerezept", "ueberweisung", "befundkopie", "sonstiges"]).nullable(),
   failures: z.number().int().min(0).max(9),
   turns: z.number().int().min(0).max(500),
+  /**
+   * Kurzzeichen der zuletzt gesendeten Antwort – einzig, um zu merken, wenn
+   * der Automat dieselbe Rückfrage zweimal hintereinander stellt. Kein
+   * Verlauf und kein Personenbezug: Es ist die eigene Frage, nie das, was
+   * die Patientin geschrieben hat, und aus dem Zeichen ist der Satz nicht
+   * wiederherstellbar.
+   */
+  lastReply: z.string().max(16).nullable().default(null),
 });
 export type ChatState = z.infer<typeof chatStateSchema>;
 
@@ -268,7 +276,6 @@ export interface ChatDeps {
   nextFree(args: { art: string; fenster?: Window | null; ab?: string | null; bis?: string | null }, ctx: ToolContext): Promise<SlotAnswer>;
   info(lang: Lang): Promise<LiveFacts>;
   classify(call: LlmCall): Promise<string | null>;
-  phrase(call: LlmCall): Promise<string | null>;
   book(input: BookInput): Promise<BookOutcome>;
   callback(input: CallbackFormInput): Promise<CallbackOutcome>;
   /** false = für diese Adresse ist das Tageslimit erreicht. */
@@ -296,6 +303,7 @@ export function freshState(lang: Lang = "de"): ChatState {
     callbackKind: null,
     failures: 0,
     turns: 0,
+    lastReply: null,
   };
 }
 
@@ -571,11 +579,16 @@ function readWhen(text: string, now: Date, lang: Lang): When {
   const d = parseDate(text, now, lang) ?? (second ? parseDate(second, now, lang) : null);
   const h = parseTime(text, lang) ?? (second ? parseTime(second, lang) : null);
   const window = h && h.from && h.to ? { from: h.from, to: h.to } : null;
+  // „Wann habt ihr Termine frei?" – die schlichte Frage nach freien Zeiten.
+  // Sie zählt nur, wenn sonst nichts Zeitliches im Satz steht: „Habt ihr am
+  // Dienstag was frei?" ist der Dienstag, nicht der früheste Termin
+  // überhaupt, und „Habt ihr um acht was frei?" ist acht Uhr.
+  const availability = !d && !h && (asksAvailability(text) || (second !== null && asksAvailability(second)));
   return {
     date: d?.kind === "day" ? (d.date ?? null) : null,
     time: h?.kind === "exact" ? (h.time ?? null) : null,
     window,
-    earliest: h?.kind === "earliest",
+    earliest: h?.kind === "earliest" || availability,
     weekend: d?.kind === "weekend",
     from: d?.kind === "range" ? (d.from ?? null) : null,
     to: d?.kind === "range" ? (d.to ?? null) : null,
@@ -613,6 +626,14 @@ const EGAL_RE =
 const CANCEL_RE =
   /(?<!\p{L})(?:abbrechen|abbruch|stopp?|zurück|zurueck|doch nicht|vergiss es|vergessen sie es|cancel|stop|never ?mind|forget it)(?!\p{L})/iu;
 const OTHER_DAY_RE = /(?<!\p{L})(?:ander(?:er|en|em) tag|anderes datum|another day|other day|different day)(?!\p{L})/iu;
+/**
+ * „Wann habt ihr?" – der halbe Satz. Er kann die Sprechzeit meinen oder den
+ * nächsten freien Platz; beim Betreiber wurde er einmal so und einmal so
+ * beantwortet, weil ein Modell ihn geraten hat. Beides ist je ein Satz,
+ * also kommt beides.
+ */
+const BARE_WHEN_RE =
+  /^(?:und\s+)?wann\s+(?:habt\s+ihr|haben\s+sie|hast\s+du|ist\s+(?:bei\s+)?(?:euch|ihnen)|geht(?:\s+(?:es|was))?)\s*\??$/iu;
 
 // -------------------------------------------------------------- Ablauf
 
@@ -668,7 +689,8 @@ export async function runTurn(req: ChatRequest, deps0: ChatDeps): Promise<ChatRe
 
   const text = (req.message ?? "").trim();
   if (!text) return say(state, t(state.lang).notUnderstood, { quick: quick(state.lang, ["book", "hours", "directions"]) });
-  return handleMessage(text, state, deps, now, { explicitLang: Boolean(req.lang), fresh: req.state == null });
+  const res = await handleMessage(text, state, deps, now, { explicitLang: Boolean(req.lang), fresh: req.state == null });
+  return repeatGuard(res, state, deps, now);
 }
 
 // -------------------------------------------------------- Freier Text
@@ -907,6 +929,16 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
     return manageStub({ ...state, failures: 0 }, deps);
   }
 
+  // Der halbe Satz „Wann habt ihr?": Sprechzeit und frühester Platz in einer
+  // Antwort. Raten wäre hier teurer als antworten – und ein Modell riete bei
+  // jedem Zug anders.
+  if (BARE_WHEN_RE.test(text.trim()) || BARE_WHEN_RE.test(norm.trim())) {
+    const ready: ChatState = { ...state, failures: 0 };
+    const info = await answerTopics(["oeffnungszeiten"], ready, deps);
+    const free = await startBooking(ready, deps, now, "", { ...NO_WHEN, earliest: true });
+    return { ...free, reply: `${info.reply} ${free.reply}` };
+  }
+
   // 6. Terminwunsch im freien Satz – und Fragen zuerst aus dem Wissen
   const when = readWhen(text, now, lang);
   // Eine genannte Terminart („Ich glaube, ich habe Hämorrhoiden“) ist ein
@@ -935,11 +967,11 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
       // die Antwort, dann der Termin. Eine der beiden Absichten fallen zu
       // lassen wäre in beide Richtungen falsch.
       if (BOOKING_WISH_RE.test(text) || BOOKING_WISH_RE.test(norm)) {
-        const info = await answerTopics(topics, { ...state, failures: 0 }, deps, askText);
+        const info = await answerTopics(topics, { ...state, failures: 0 }, deps);
         const res = await startBooking({ ...state, failures: 0 }, deps, now, text, when);
         return { ...res, reply: `${info.reply} ${res.reply}` };
       }
-      return answerTopics(topics, { ...state, failures: 0 }, deps, askText);
+      return answerTopics(topics, { ...state, failures: 0 }, deps);
     }
   }
   if (wantsBooking) {
@@ -949,7 +981,7 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
 
   // 7. Frage zur Praxis – aus gepflegten Fakten, notfalls vom Modell formuliert
   const topics = topicsFor(text, norm, lang);
-  if (topics.length) return answerTopics(topics, { ...state, failures: 0 }, deps, askText);
+  if (topics.length) return answerTopics(topics, { ...state, failures: 0 }, deps);
 
   // 8. Erst jetzt das Modell fragen – und nur als Hinweis. Enthält der Satz
   //    ein Fachwort, wird auch hier nicht gefragt: Dann ist die ehrliche
@@ -957,7 +989,7 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
   //    Satz das Haus verlassen müsste.
   if (askText === null) {
     deps.audit("chat.unknown_topic", { topic: "frage" });
-    return say({ ...state, failures: 0 }, T.unknownTopic, { quick: quick(lang, ["callback", "book"]), links: practiceLink(lang) });
+    return unknownWithOffer(state);
   }
   return classifyAndRoute(text, askText, state, deps, now, isQuestion);
 }
@@ -1006,7 +1038,7 @@ async function confirmStage(text: string, state: ChatState, deps: ChatDeps, now:
  * der ehrliche Weg: Link in der Bestätigungsmail oder Telefon.
  */
 async function manageStub(state: ChatState, deps: ChatDeps): Promise<ChatResponse> {
-  const res = await answerTopics(["absagen"], state, deps, null);
+  const res = await answerTopics(["absagen"], state, deps);
   return { ...res, quick: quick(state.lang, ["callback", "book"]), links: practiceLink(state.lang) };
 }
 
@@ -1031,7 +1063,7 @@ async function handleQuick(id: string, prev: ChatState, deps: ChatDeps, now: Dat
   if (id === "correct" || id === "wrong") return handleText(id === "correct" ? "ja" : "nein", state, deps, now);
   if (id === "hours" || id === "directions") {
     const topics: Topic[] = id === "hours" ? ["oeffnungszeiten"] : ["anfahrt", "adresse"];
-    return answerTopics(topics, state, deps, null);
+    return answerTopics(topics, state, deps);
   }
   if (id === "myAppointment") return manageStub(state, deps);
   if (id === "callback") {
@@ -1204,7 +1236,7 @@ async function startBooking(
     }
     return say({ ...next, stage: "type" }, t(lang).askType, { quick: typeQuick(types) });
   }
-  return afterType(typeId, next, deps, now, text, when);
+  return afterType(typeId, next, deps, now, text, when, typeId !== state.draft.typeId);
 }
 
 /**
@@ -1234,6 +1266,7 @@ async function afterType(
   now: Date,
   text: string,
   when: When = NO_WHEN,
+  announce = true,
 ): Promise<ChatResponse> {
   const lang = state.lang;
   const T = t(lang);
@@ -1247,8 +1280,11 @@ async function afterType(
   // Ein Fenster ohne Tag („nur nachmittags“) ist trotzdem eine Auskunft
   // wert: die nächsten Tage, die in dieses Fenster passen.
   if (window) return checkSlot(next, deps, now, null, null, { window, page: 1 });
-  // Aus freiem Text erkannt: kurz bestätigen, was verstanden wurde.
-  const label = text ? (await deps.types()).find((x) => x.id === typeId)?.label : undefined;
+  // Aus freiem Text erkannt: kurz bestätigen, was verstanden wurde – aber nur,
+  // wenn die Terminart in diesem Zug dazugekommen ist. Eine längst bekannte
+  // noch einmal vorzulesen klingt wie eine Schleife, und genau so las sich
+  // der Chat für den Betreiber: „Notiert: Analfistel." auf jede Nachricht.
+  const label = text && announce ? (await deps.types()).find((x) => x.id === typeId)?.label : undefined;
   const reply = label ? `${T.typeNoted} ${label}. ${T.askDate}` : T.askDate;
   return say({ ...next, stage: "date" }, reply, { quick: quick(lang, ["nextfree"]) });
 }
@@ -1666,9 +1702,82 @@ async function book(state: ChatState, deps: ChatDeps, now: Date): Promise<ChatRe
   }
 }
 
+// ------------------------------------------------- Nicht verstanden
+
+/**
+ * Kurzzeichen einer Antwort, nur zum Vergleich mit der vorigen. Über den
+ * **ganzen** Satz, nicht über sein Ende: „Diese Zeit wurde gerade vergeben.
+ * Am Dienstag ist frei: … Welche Uhrzeit passt Ihnen?" und die blanke Liste
+ * enden gleich, sind aber zwei verschiedene Antworten.
+ */
+function replyMark(reply: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < reply.length; i += 1) {
+    h ^= reply.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
+/**
+ * Ein Satz mit dem nächsten freien Termin – oder leer, wenn keiner da ist.
+ * Kostet eine Abfrage (~45 ms) und ist damit billiger als jede Rückfrage.
+ */
+async function earliestSentence(state: ChatState, deps: ChatDeps, now: Date): Promise<string> {
+  const lang = state.lang;
+  const types = await deps.types();
+  const art = types.find((x) => x.id === state.draft.typeId) ?? types.find((x) => x.id === "unklar") ?? types[0];
+  if (!art) return "";
+  const answer = await deps.nextFree({ art: art.id, fenster: state.draft.window, ab: null, bis: null }, { now, lang });
+  return answer.kind === "earliest" ? renderSlotAnswer(answer, lang, art.label, phone, now) : "";
+}
+
+/**
+ * Nicht verstanden – aber nicht mit leeren Händen. Bisher endete der
+ * langsamste Weg in einem Satz, der nichts anbot. Jetzt steht der nächste
+ * freie Termin als Knopf daneben: ein Antippen statt einer weiteren Frage.
+ *
+ * Bewusst als Knopf und nicht als Satz: Eine Antwort, die drei Sätze
+ * überschreitet, liest niemand mehr – und gesprochen liest `toSpeech` die
+ * Knopfliste ohnehin als Satz vor.
+ */
+function unknownWithOffer(state: ChatState, flags: Partial<ChatResponse["flags"]> = {}): ChatResponse {
+  const lang = state.lang;
+  return say({ ...state, failures: 0 }, t(lang).unknownTopic, {
+    quick: quick(lang, ["nextfree", "book", "hours", "directions"]),
+    links: practiceLink(lang),
+    flags,
+  });
+}
+
+/**
+ * Zweimal wortgleich dieselbe Rückfrage ist keine Antwort mehr, sondern eine
+ * Schleife – im Chat des Betreibers stand derselbe Satz zweimal untereinander.
+ * Dann geht der Automat eine Stufe weiter: nächster freier Termin, Knöpfe,
+ * Telefon. Nur bei Rückfragen: Eine zweimal gestellte Sachfrage darf
+ * dieselbe Auskunft bekommen.
+ */
+async function repeatGuard(res: ChatResponse, prev: ChatState, deps: ChatDeps, now: Date): Promise<ChatResponse> {
+  const reply = res.reply.trim();
+  const mark = reply ? replyMark(reply) : null;
+  const looped = mark !== null && mark === prev.lastReply && /\?$/u.test(reply);
+  if (!looped) return { ...res, state: { ...res.state, lastReply: mark } };
+  const T = t(res.state.lang);
+  const offer = await earliestSentence(res.state, deps, now);
+  return {
+    ...res,
+    // Der Merker wird zurückgesetzt: Die Eskalation selbst soll nicht
+    // beim nächsten Zug noch einmal eskalieren.
+    state: { ...res.state, lastReply: null },
+    reply: offer ? `${T.stuck} ${offer}` : T.stuck,
+    quick: quick(res.state.lang, ["nextfree", "book", "callback"]),
+    links: practiceLink(res.state.lang),
+  };
+}
+
 // --------------------------------------------------------- Praxisfragen
 
-async function answerTopics(topics: Topic[], state: ChatState, deps: ChatDeps, question: string | null): Promise<ChatResponse> {
+async function answerTopics(topics: Topic[], state: ChatState, deps: ChatDeps): Promise<ChatResponse> {
   const lang = state.lang;
   const T = t(lang);
   const live = await deps.info(lang);
@@ -1684,24 +1793,16 @@ async function answerTopics(topics: Topic[], state: ChatState, deps: ChatDeps, q
   // Was die Praxis nicht hinterlegt hat, wird gezählt – nur der Themenschlüssel, nie der Text.
   for (const topic of answer.unknown) deps.audit("chat.unknown_topic", { topic });
 
-  if (answer.facts.length === 0) {
-    return say(state, T.unknownTopic, { quick: quick(lang, ["callback", "book"]), links: practiceLink(lang) });
-  }
+  if (answer.facts.length === 0) return unknownWithOffer(state);
 
+  // Hier stand ein Modellaufruf, der diesen fertigen Satz nur umformulieren
+  // sollte. Gemessen: 9 bis 16 Sekunden, und danach meist verworfen, weil der
+  // Grounding-Check ihm nicht zustimmte – die Patientin wartete also eine
+  // Viertelminute auf genau den Satz, den der Server vorher schon in der Hand
+  // hatte. Der Aufruf ist weg; die Auskunft geht sofort hinaus.
   let reply = answer.text;
-  let llm: ChatResponse["flags"]["llm"] = "none";
-  if (question) {
-    const phrased = await deps.phrase(groundPrompt(question, answer.facts, lang));
-    if (phrased && groundingCheck(phrased, answer.facts)) {
-      reply = phrased.trim();
-      llm = "model";
-    } else {
-      // Kein Modell erreichbar oder Antwort nicht gedeckt – der Faktentext gilt.
-      llm = "fallback";
-    }
-  }
   if (answer.unknown.length) reply = `${reply} ${T.unknownTopic}`;
-  return say(state, reply, { quick: quick(lang, ["book", "hours", "directions"]), flags: { llm } });
+  return say(state, reply, { quick: quick(lang, ["book", "hours", "directions"]), flags: { llm: "none" } });
 }
 
 /**
@@ -1721,7 +1822,7 @@ function topicsFor(text: string, norm: string, lang: Lang): Topic[] {
  * und bietet gleich einen Werktag an, statt eine leere Liste zu zeigen.
  */
 async function weekendReply(state: ChatState, deps: ChatDeps): Promise<ChatResponse> {
-  const res = await answerTopics(["wochenende"], state, deps, null);
+  const res = await answerTopics(["wochenende"], state, deps);
   return { ...res, reply: `${res.reply} ${t(state.lang).weekendAsk}`, quick: quick(state.lang, ["nextfree", "book"]) };
 }
 
@@ -1743,7 +1844,7 @@ async function classifyAndRoute(
   // was gefragt wird (nur der Schlüssel, nie der Text).
   const unknownQuestion = () => {
     deps.audit("chat.unknown_topic", { topic: "frage" });
-    return say({ ...state, failures: 0 }, T.unknownTopic, { quick: quick(lang, ["callback", "book"]), links: practiceLink(lang), flags: { llm: "fallback" } });
+    return unknownWithOffer(state, { llm: "fallback" });
   };
   const view: ModelView = {
     stage: state.stage,
@@ -1785,9 +1886,9 @@ async function classifyAndRoute(
     case "booking":
       return withLlm(await startBooking(next, deps, now, cls.type ? `${text} ${cls.type}` : text, when), flags);
     case "hours":
-      return withLlm(await answerTopics(["oeffnungszeiten"], next, deps, masked), flags);
+      return withLlm(await answerTopics(["oeffnungszeiten"], next, deps), flags);
     case "directions":
-      return withLlm(await answerTopics(["anfahrt", "adresse"], next, deps, masked), flags);
+      return withLlm(await answerTopics(["anfahrt", "adresse"], next, deps), flags);
     case "handover":
       return say({ ...next, intent: "handover" }, T.handover, { quick: quick(lang, ["callback"]), links: practiceLink(lang), flags: { ...flags, handover: true } });
     case "forward": {
@@ -1803,9 +1904,9 @@ async function classifyAndRoute(
       return withLlm(next.stage === "confirm" ? say(next, T.whatToChange, { quick: changeQuick(lang) }) : notUnderstood(next), flags);
     case "info": {
       const topics = cls.topics.length ? findTopics(cls.topics.join(" "), lang) : [];
-      if (topics.length) return withLlm(await answerTopics(topics, next, deps, masked), flags);
+      if (topics.length) return withLlm(await answerTopics(topics, next, deps), flags);
       deps.audit("chat.unknown_topic", { topic: "frage" });
-      return say(next, T.unknownTopic, { quick: quick(lang, ["callback", "book"]), links: practiceLink(lang), flags });
+      return unknownWithOffer(next, flags);
     }
     default:
       if (question) return withLlm(unknownQuestion(), flags);

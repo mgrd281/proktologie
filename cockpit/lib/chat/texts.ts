@@ -60,6 +60,8 @@ export interface Texts {
   handover: string;
   forward: string;
   unknownTopic: string;
+  /** Zweimal dieselbe Rückfrage – dann anders weitermachen. */
+  stuck: string;
   notUnderstood: string;
   llmDown: string;
   rateLimited: string;
@@ -185,6 +187,7 @@ const de: Texts = {
   handover: `Gern verbinde ich Sie mit dem Team: Telefon ${P}. Oder soll ich einen Rückruf notieren?`,
   forward: `Rezepte, Krankschreibungen, Befunde und Überweisungen kann ich im Chat nicht klären. Ich leite Ihr Anliegen gern an die Praxis weiter – oder rufen Sie an: ${P}.`,
   unknownTopic: `Das weiß ich leider nicht. Rufen Sie uns gern an: ${P} – oder ich notiere einen Rückruf.`,
+  stuck: `Ich frage mich anscheinend im Kreis – lassen Sie es mich anders versuchen.`,
   notUnderstood: "Das habe ich nicht verstanden. Möchten Sie einen Termin vereinbaren, die Öffnungszeiten oder die Anfahrt wissen?",
   llmDown: `Das kann ich gerade nicht beantworten. Rufen Sie uns bitte an: ${P} – oder nutzen Sie die Schaltflächen unten.`,
   rateLimited: `Für heute ist hier Schluss – bitte rufen Sie uns an: ${P}.`,
@@ -306,6 +309,7 @@ const en: Texts = {
   handover: `I will gladly put you through to the team: phone ${P}. Or shall I note a callback?`,
   forward: `I cannot handle prescriptions, sick notes, findings or referrals in the chat. I will gladly pass your request on to the practice – or call us: ${P}.`,
   unknownTopic: `I am afraid I do not know that. Please call us: ${P} – or I can note a callback.`,
+  stuck: `I seem to be going in circles – let me try a different way.`,
   notUnderstood: "I did not understand that. Would you like to book an appointment, or know our opening hours or how to get here?",
   llmDown: `I cannot answer that right now. Please call us: ${P} – or use the buttons below.`,
   rateLimited: `That is all for today here – please call us: ${P}.`,

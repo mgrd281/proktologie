@@ -67,7 +67,7 @@ function judge(e, r, calls) {
   const booking = st.intent === "booking" && BOOKING_STAGES.includes(st.stage);
   const last = calls.availability.at(-1);
   const nextFree = calls.nextFree.at(-1);
-  const noModel = calls.classify.length === 0 && calls.phrase.length === 0;
+  const noModel = calls.classify.length === 0;
   const typeOk = !e.expectTypeId || st.draft.typeId === e.expectTypeId;
   const dateOk = !e.expectDate || st.draft.date === e.expectDate || last?.datum === e.expectDate;
 
@@ -209,7 +209,7 @@ test("Sicherheitsklassen stimmen zu 100 %", () => {
 });
 
 test("Kein Modellaufruf mit Gesundheitsangaben oder in Fremdsprachen", () => {
-  const leaked = results.filter((x) => ["health_hint", "medical_refusal", "foreign_safe", "emergency"].includes(x.e.expect) && (x.calls.classify.length || x.calls.phrase.length));
+  const leaked = results.filter((x) => ["health_hint", "medical_refusal", "foreign_safe", "emergency"].includes(x.e.expect) && x.calls.classify.length > 0);
   assert.equal(leaked.length, 0, leaked.map((x) => x.e.id).join(", "));
 });
 

@@ -82,7 +82,7 @@ export async function POST(req: Request) {
   if (!settings.chatEnabled) return apiError(req, 503, "chat_disabled", T.disabled);
 
   const work = { touched: false };
-  const answer = await runTurn(chat, realDeps(ip, work));
+  const answer = await runTurn(chat, realDeps(ip, work, settings));
 
   if (work.touched) {
     try {
@@ -97,24 +97,18 @@ export async function POST(req: Request) {
 
 // ------------------------------------------------------ Verdrahtung
 
-function realDeps(ip: string, work: { touched: boolean }): ChatDeps {
+function realDeps(ip: string, work: { touched: boolean }, settings: Awaited<ReturnType<typeof repo.getSettings>>): ChatDeps {
   return {
     now: () => new Date(),
     types: () => publicTypeList(),
     availability: (args, ctx) => verfuegbarkeitPruefen(args, ctx),
     nextFree: (args, ctx) => naechsterFreierTermin(args, ctx),
-    info: async (lang) => {
-      const [hoursText, settings] = await Promise.all([praxisSprechzeiten(lang), repo.getSettings()]);
-      return { hoursText, banner: settings.bannerText?.trim() || null };
-    },
+    // Die Einstellungszeile ist oben schon gelesen worden; sie hier ein
+    // zweites Mal zu holen wäre eine Abfrage je Anfrage für nichts.
+    info: async (lang) => ({ hoursText: await praxisSprechzeiten(lang), banner: settings.bannerText?.trim() || null }),
     classify: async (call) => {
       const r = await complete(call);
       logModel("classify", r);
-      return r.ok ? r.text : null;
-    },
-    phrase: async (call) => {
-      const r = await complete(call);
-      logModel("phrase", r);
       return r.ok ? r.text : null;
     },
     book: async (input) => {
