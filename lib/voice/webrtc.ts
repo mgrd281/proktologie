@@ -56,6 +56,11 @@ export async function connectWebRtc(secret: LiveSecret, stream: MediaStream, on:
       return;
     }
     if (data.type === "input_audio_buffer.speech_started") on.speechStart();
+    // Zwischentext: Wörter, während noch gesprochen wird. Die Patientin sieht,
+    // dass gehört wird – und was.
+    if (data.type === "conversation.item.input_audio_transcription.delta" && typeof data.delta === "string") {
+      on.partial(data.delta);
+    }
     if (data.type === "conversation.item.input_audio_transcription.completed" && typeof data.transcript === "string") {
       on.transcript(data.transcript);
     }
@@ -71,7 +76,10 @@ export async function connectWebRtc(secret: LiveSecret, stream: MediaStream, on:
   });
   if (!res.ok) {
     close();
-    throw new Error(`realtime/calls ${res.status}`);
+    const error = new Error(`realtime/calls ${res.status}`);
+    // Der Name ist die Sprache, in der `live.ts` Ursachen unterscheidet.
+    error.name = "ConnectError";
+    throw error;
   }
   await pc.setRemoteDescription({ type: "answer", sdp: await res.text() });
 

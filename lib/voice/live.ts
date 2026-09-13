@@ -39,6 +39,25 @@ export interface LiveSecret {
   sampleRate: number;
 }
 
+/**
+ * Warum es nicht geklappt hat – in Worten, die die Oberfläche in einen
+ * Satz übersetzen kann. „Fehler" allein sagt der Patientin nichts.
+ */
+export type LiveReason =
+  /** Die Mikrofon-Erlaubnis wurde verweigert. */
+  | "denied"
+  /** Es gibt kein Mikrofon, oder es ist belegt. */
+  | "no-mic"
+  /** Das Cockpit hat keinen Ausweis ausgestellt (Sprachdienst nicht erreichbar). */
+  | "service"
+  /** Zu viele Versuche in kurzer Zeit. */
+  | "busy"
+  /** Die Leitung zum Anbieter kam nicht zustande. */
+  | "connect"
+  /** Der Fehler ist von selbst wieder verschwunden. */
+  | "fallback"
+  | "unknown";
+
 export interface LivePorts {
   /** Ausweis beim Cockpit holen. */
   token: () => Promise<LiveSecret>;
@@ -49,12 +68,18 @@ export interface LivePorts {
   /** Ein fertiger Satz ist erkannt worden. */
   onTranscript: (text: string) => void;
   /** Der Zustand hat sich geändert – die Oberfläche zeichnet neu. */
-  onState: (state: LiveState, detail?: { reason?: string }) => void;
+  onState: (state: LiveState, detail?: { reason?: LiveReason | string }) => void;
+  /** Zwischentext, während noch gesprochen wird – leer, sobald der Satz fertig ist. */
+  onPartial?: (text: string) => void;
+  /** Die Patientin spricht, während der Assistent noch redet: sofort still sein. */
+  onInterrupt?: () => void;
 }
 
 export interface LiveEvents {
   /** Die Patientin hat zu sprechen begonnen. */
   speechStart: () => void;
+  /** Ein Stück Zwischentext ist erkannt. */
+  partial: (delta: string) => void;
   /** Ein Satz ist fertig erkannt. */
   transcript: (text: string) => void;
   /** Die Verbindung ist weg. */
@@ -69,6 +94,8 @@ export interface LiveConnection {
 const IDLE_MS = 90_000;
 /** Und so lange höchstens am Stück – Zuhören kostet je Minute. */
 const MAX_MS = 6 * 60_000;
+/** So lange bleibt ein Fehlersatz stehen, dann ist der Knopf wieder neutral. */
+const ERROR_MS = 6_000;
 
 /**
  * Eine Zuhör-Sitzung. Sie öffnet das Mikrofon erst auf Knopfdruck und
@@ -79,6 +106,9 @@ const MAX_MS = 6 * 60_000;
 export class LiveSession {
   private readonly ports: LivePorts;
   private state: LiveState = "idle";
+  /** Der Satz, wie er gerade wächst. */
+  private partial = "";
+  private fallbackTimer: ReturnType<typeof setTimeout> | null = null;
   private conn: LiveConnection | null = null;
   private stream: MediaStream | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -122,10 +152,21 @@ export class LiveSession {
       this.conn = await this.ports.connect(secret, stream, {
         speechStart: () => {
           this.armIdle();
+          // Wer dazwischenredet, hat Vorrang: Der Assistent verstummt sofort.
+          // Gleichzeitig zu reden ist die schnellste Art, unverständlich zu werden.
+          if (this.state === "answering") this.ports.onInterrupt?.();
           if (this.state === "listening" || this.state === "answering") this.set("hearing");
+          this.partial = "";
+        },
+        partial: (delta) => {
+          this.armIdle();
+          this.partial += delta;
+          this.ports.onPartial?.(this.partial);
         },
         transcript: (text) => {
           this.armIdle();
+          this.partial = "";
+          this.ports.onPartial?.("");
           const clean = text.trim();
           if (!clean) {
             this.set("listening");
@@ -150,10 +191,29 @@ export class LiveSession {
     } catch (error) {
       if (stream) stopTracks(stream);
       this.stream = null;
-      const name = error instanceof Error ? error.name : "unknown";
-      const denied = name === "NotAllowedError" || name === "SecurityError";
-      this.set(denied ? "denied" : "error", { reason: name });
+      const reason = classify(error);
+      this.set(reason === "denied" ? "denied" : "error", { reason });
+      this.armFallback();
     }
+  }
+
+  /**
+   * Ein Fehlersatz ist eine Auskunft, kein Zustand. Nach ein paar Sekunden
+   * ist der Knopf wieder neutral – wer es noch einmal versuchen will, sieht
+   * keinen roten Rest vom letzten Mal.
+   */
+  private armFallback(): void {
+    if (this.fallbackTimer) clearTimeout(this.fallbackTimer);
+    const timer = setTimeout(() => {
+      this.fallbackTimer = null;
+      if (this.state !== "error" && this.state !== "denied") return;
+      this.state = "idle";
+      this.ports.onState("idle", { reason: "fallback" });
+    }, ERROR_MS);
+    // Im Browser gibt es kein unref; in Node hält der Wecker sonst den
+    // Prüflauf am Leben.
+    (timer as unknown as { unref?: () => void }).unref?.();
+    this.fallbackTimer = timer;
   }
 
   /** Die Antwort ist gesprochen – ab jetzt wird wieder zugehört. */
@@ -166,8 +226,12 @@ export class LiveSession {
     this.stopping = true;
     if (this.idleTimer) clearTimeout(this.idleTimer);
     if (this.maxTimer) clearTimeout(this.maxTimer);
+    if (this.fallbackTimer) clearTimeout(this.fallbackTimer);
     this.idleTimer = null;
     this.maxTimer = null;
+    this.fallbackTimer = null;
+    this.partial = "";
+    this.ports.onPartial?.("");
     this.conn?.close();
     this.conn = null;
     if (this.stream) stopTracks(this.stream);
@@ -176,6 +240,21 @@ export class LiveSession {
     this.state = "idle";
     this.ports.onState("idle", { reason });
   }
+}
+
+/**
+ * Aus einer Ausnahme eine Ursache machen. Die Namen kommen aus drei
+ * Welten: dem Browser (`getUserMedia`), dem Cockpit (`VoiceTokenError` mit
+ * Statuscode) und der Leitung (`ConnectError`).
+ */
+function classify(error: unknown): LiveReason {
+  const name = error instanceof Error ? error.name : "";
+  const status = typeof (error as { status?: unknown })?.status === "number" ? (error as { status: number }).status : 0;
+  if (name === "NotAllowedError" || name === "SecurityError") return "denied";
+  if (name === "NotFoundError" || name === "OverconstrainedError" || name === "NotReadableError") return "no-mic";
+  if (name === "VoiceTokenError") return status === 429 ? "busy" : "service";
+  if (name === "ConnectError") return "connect";
+  return "unknown";
 }
 
 function stopTracks(stream: MediaStream): void {

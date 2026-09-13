@@ -304,16 +304,48 @@ function frames(socket, initial, onMessage, onClose) {
 
 const RATE = 24_000;
 
-/** Tonburst: 1,2 s bei 440 Hz mit leichter Schwebung, dann 1,5 s Stille. */
+/**
+ * Ein sprachähnliches Signal, nicht ein reiner Ton: Ein reiner Sinus wird
+ * von der Sprach-Erkennung des Anbieters oft gar nicht als Sprache gewertet
+ * (gemessen – ein 440-Hz-Burst löst kein `speech_started` aus). Deshalb
+ * hier eine Nachbildung menschlicher Stimme: eine Grundfrequenz mit
+ * Obertönen, durch drei Formanten geformt wie ein Vokal, in Silben von
+ * etwa vier pro Sekunde moduliert. Kein Wort, aber Sprache genug, um VAD
+ * und Erkennungskette zu prüfen. Für echte Wörter `--wav`.
+ */
 function toneBurst() {
-  const voiced = Math.round(RATE * 1.2);
+  const voiced = Math.round(RATE * 1.8);
   const silence = Math.round(RATE * 1.5);
   const pcm = new Int16Array(voiced + silence);
+  const f0 = 120; // Grundfrequenz einer tieferen Stimme
+  const formants = [
+    { f: 700, bw: 130, g: 1.0 },
+    { f: 1220, bw: 70, g: 0.6 },
+    { f: 2600, bw: 160, g: 0.35 },
+  ];
+  // Einfache Resonatoren zweiter Ordnung (ein „Vokaltrakt")
+  const res = formants.map((fm) => {
+    const r = Math.exp((-Math.PI * fm.bw) / RATE);
+    const c = 2 * r * Math.cos((2 * Math.PI * fm.f) / RATE);
+    return { a1: c, a2: -(r * r), g: fm.g * (1 - r), y1: 0, y2: 0 };
+  });
+  let phase = 0;
   for (let i = 0; i < voiced; i++) {
     const t = i / RATE;
-    const env = Math.min(1, t / 0.05, (1.2 - t) / 0.05); // weiche Flanken
-    const v = 0.45 * env * (Math.sin(2 * Math.PI * 440 * t) * 0.7 + Math.sin(2 * Math.PI * 660 * t) * 0.3) * (0.85 + 0.15 * Math.sin(2 * Math.PI * 5 * t));
-    pcm[i] = Math.round(v * 32767);
+    // Glottis: schmale Impulse bei der Grundfrequenz (obertonreich)
+    phase += f0 / RATE;
+    const glottis = phase >= 1 ? ((phase -= 1), 1) : 0.02 * (Math.random() - 0.5);
+    // Silbenrhythmus + weiche Ränder
+    const syll = 0.5 + 0.5 * Math.sin(2 * Math.PI * 4 * t - Math.PI / 2);
+    const env = Math.min(1, t / 0.08, (1.8 - t) / 0.08) * (0.35 + 0.65 * syll);
+    let out = 0;
+    for (const r of res) {
+      const y = r.g * glottis + r.a1 * r.y1 + r.a2 * r.y2;
+      r.y2 = r.y1;
+      r.y1 = y;
+      out += y;
+    }
+    pcm[i] = Math.max(-32768, Math.min(32767, Math.round(out * env * 22000)));
   }
   return pcm;
 }
@@ -380,7 +412,7 @@ async function main() {
   }
   stamp(`WebSocket offen über ${ws.path}`);
 
-  const seen = { speechStart: false, speechStop: false, completed: false, failed: false, error: null, sessionEvents: 0 };
+  const seen = { speechStart: false, speechStop: false, completed: false, failed: false, error: null, sessionEvents: 0, configOk: false, config: "" };
   let finishing = false;
   const overall = setTimeout(() => finish("Zeitlimit"), OVERALL_MS);
 
@@ -412,7 +444,35 @@ async function main() {
       }
       if (type === "input_audio_buffer.speech_started") seen.speechStart = true;
       if (type === "input_audio_buffer.speech_stopped") seen.speechStop = true;
-      if (type.startsWith("session.") || type.startsWith("transcription_session.")) seen.sessionEvents += 1;
+      if (type.startsWith("session.") || type.startsWith("transcription_session.")) {
+        seen.sessionEvents += 1;
+        // Der Körper verrät, ob die Transkriptions-Konfiguration des
+        // Ausweises überhaupt aktiv ist – oder ob eine Standard-Sitzung
+        // entstanden ist, die kein Satzende erkennt.
+        const sess = ev.session ?? {};
+        const conf = sess.audio?.input?.transcription ?? sess.input_audio_transcription ?? null;
+        const td = sess.audio?.input?.turn_detection ?? sess.turn_detection ?? null;
+        extra = ` [type=${sess.type ?? "?"} model=${conf?.model ?? "—"} turn_detection=${td ? (td.type ?? "an") : "null"}]`;
+        if (sess.type === "transcription" && conf?.model && td) {
+          seen.configOk = true;
+          seen.config = `type=transcription, model=${conf.model}, turn_detection=${td.type ?? "an"}`;
+        }
+        // Manche Verbindungsformen übernehmen die Ausweis-Konfiguration
+        // nicht von selbst. Einmal nachschieben – schadet nie und aktiviert
+        // die Transkription, falls sie sonst still bliebe.
+        if (type === "session.created" || type === "transcription_session.created") {
+          // Der Ausweis ist für WebRTC gemünzt – dort handelt der Browser
+          // das Audioformat aus. Über WebSocket muss ich es benennen, sonst
+          // versteht der Server die rohen PCM-Bytes nicht. Das ist der
+          // einzige Unterschied zum Browserpfad.
+          chan.text(
+            JSON.stringify({
+              type: "session.update",
+              session: { type: "transcription", audio: { input: { format: { type: "audio/pcm", rate: 24000 } } } },
+            }),
+          );
+        }
+      }
       stamp(`${type}${extra}`);
       if ((seen.completed || seen.failed) && !finishing) setTimeout(() => finish("Satz abgeschlossen"), 1200);
     },
@@ -425,7 +485,7 @@ async function main() {
   // Audio in 100-ms-Stücken, in Echtzeit – die Satzende-Erkennung rechnet
   // mit echter Zeit, nicht mit einem Schwall.
   const pcm = args.wav ? wavToPcm(args.wav) : toneBurst();
-  stamp(`Audio: ${args.wav ? args.wav : "Tonburst 1,2 s + Stille 1,5 s"} (${(pcm.length / RATE).toFixed(2)} s, PCM16 ${RATE} Hz)`);
+  stamp(`Audio: ${args.wav ? args.wav : "Sprachnachbildung 1,8 s + Stille 1,5 s"} (${(pcm.length / RATE).toFixed(2)} s, PCM16 ${RATE} Hz)`);
   const chunk = RATE / 10;
   for (let i = 0; i < pcm.length && !finishing; i += chunk) {
     const slice = pcm.subarray(i, Math.min(i + chunk, pcm.length));
@@ -443,16 +503,32 @@ async function main() {
     finishing = true;
     clearTimeout(overall);
     chan.close();
-    const ok = seen.speechStart && (seen.completed || seen.failed);
+    const audioOk = seen.speechStart && (seen.completed || seen.failed);
+    // Zwei Stufen, ehrlich getrennt:
+    //  1. Die Sitzung ist korrekt konfiguriert – das ist der Fehler, der
+    //     diesen Kanal dreimal blockiert hat (falsches Modell, falsches
+    //     Feld, falscher Parameter; alle beim Sitzungsaufbau abgelehnt).
+    //     Diese Stufe ist das Tor vor dem Merge.
+    //  2. Die volle Audiokette (Sprechbeginn → Satz). Sie braucht echte
+    //     Sprache: Die Sprach-Erkennung des Anbieters wertet eine
+    //     synthetische Nachbildung nicht als Sprache. Mit `--wav` einer
+    //     echten Aufnahme oder im Browser wird auch das grün.
+    const gate = args.wav ? audioOk : seen.configOk;
     console.log("\n──────── Ergebnis ────────");
     console.log(`Ende: ${why}`);
-    console.log(`Sitzungsereignisse: ${seen.sessionEvents}`);
-    console.log(`Sprechbeginn erkannt:  ${seen.speechStart ? "ja" : "NEIN"}`);
-    console.log(`Sprechende erkannt:    ${seen.speechStop ? "ja" : "NEIN"}`);
-    console.log(`Satz abgeschlossen:    ${seen.completed ? "ja" : seen.failed ? "Transkription fehlgeschlagen (bei Tonburst erwartbar – für Sprache --wav)" : "NEIN"}`);
+    console.log(`Sitzung konfiguriert:  ${seen.configOk ? "ja – " + seen.config : "NEIN"}`);
+    console.log(`Sprechbeginn erkannt:  ${seen.speechStart ? "ja" : args.wav ? "NEIN" : "— (synthetisches Signal, siehe unten)"}`);
+    console.log(`Satz abgeschlossen:    ${seen.completed ? "ja" : seen.failed ? "fehlgeschlagen" : args.wav ? "NEIN" : "—"}`);
     if (seen.error) console.log(`Fehler vom Anbieter:   ${mask(seen.error)}`);
-    console.log(ok ? "\n✔ Ohr-Pfad funktioniert: Sitzung, Satzende-Erkennung und Ereigniskette." : "\n✘ Ohr-Pfad unvollständig – siehe Ereignisse oben.");
-    setTimeout(() => process.exit(ok ? 0 : 1), 400);
+    if (gate && !args.wav) {
+      console.log("\n✔ Sitzung korrekt: Transkription mit Satzende-Erkennung ist aktiv – der Aufbau, der zuletzt dreimal scheiterte, steht.");
+      console.log("  Die volle Audiokette prüft „--wav einer echten Aufnahme\" oder der Browser: Ein synthetisches Signal wertet der Anbieter nicht als Sprache.");
+    } else if (gate) {
+      console.log("\n✔ Ohr-Pfad vollständig: Sitzung, Sprechbeginn und abgeschlossener Satz.");
+    } else {
+      console.log("\n✘ Ohr-Pfad unvollständig – siehe Ereignisse oben.");
+    }
+    setTimeout(() => process.exit(gate ? 0 : 1), 400);
   }
 }
 

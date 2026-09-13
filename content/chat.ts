@@ -38,12 +38,16 @@ export interface ChatCopy {
   voice: {
     start: string;
     stop: string;
+    /** Die Plakette, solange zugehört wird. */
+    live: string;
     connecting: string;
     listening: string;
     hearing: string;
     answering: string;
     denied: string;
     error: string;
+    /** Fehler mit benannter Ursache – „hat nicht geklappt" hilft niemandem. */
+    errors: { service: string; busy: string; noMic: string; connect: string };
     hint: string;
   };
   send: string;
@@ -81,13 +85,20 @@ const de: ChatCopy = {
   voice: {
     start: "Sprechen",
     stop: "Zuhören beenden",
+    live: "LIVE",
     connecting: "Einen Moment, ich schalte das Mikrofon ein …",
     listening: "Ich höre zu. Sprechen Sie einfach.",
     hearing: "Ich höre Sie …",
     answering: "Einen Moment …",
     denied: "Ohne Mikrofon-Erlaubnis kann ich nicht zuhören. Schreiben geht weiterhin.",
     error: "Das Zuhören hat nicht geklappt. Bitte schreiben Sie mir – oder rufen Sie an.",
-    hint: "Bitte keine gesundheitlichen Angaben sprechen. Das Gesprochene wird zum Erkennen an unseren Sprachanbieter übertragen und nicht gespeichert.",
+    errors: {
+      service: "Der Sprachdienst antwortet gerade nicht. Schreiben geht weiterhin – oder rufen Sie an.",
+      busy: "Zu viele Versuche kurz hintereinander. Bitte in einer Minute noch einmal.",
+      noMic: "Ich finde kein Mikrofon. Ist eines angeschlossen und nicht von einem anderen Programm belegt?",
+      connect: "Die Verbindung zum Sprachdienst kam nicht zustande. Bitte schreiben Sie mir.",
+    },
+    hint: "Bitte keine gesundheitlichen Angaben sprechen. Gesprochenes geht zum Erkennen an unseren Sprachanbieter und wird nicht gespeichert.",
   },
   send: "Senden",
   typing: "Der Assistent schreibt …",
@@ -130,13 +141,20 @@ const en: ChatCopy = {
   voice: {
     start: "Speak",
     stop: "Stop listening",
+    live: "LIVE",
     connecting: "One moment, turning on the microphone …",
     listening: "I am listening. Just speak.",
     hearing: "I can hear you …",
     answering: "One moment …",
     denied: "Without microphone permission I cannot listen. You can still type.",
     error: "Listening did not work. Please write to me – or give us a call.",
-    hint: "Please do not speak any health details. What you say is sent to our speech provider for recognition and is not stored.",
+    errors: {
+      service: "The speech service is not responding right now. You can still type – or give us a call.",
+      busy: "Too many attempts in a row. Please try again in a minute.",
+      noMic: "I cannot find a microphone. Is one connected and not in use by another program?",
+      connect: "The connection to the speech service could not be established. Please type instead.",
+    },
+    hint: "Please do not speak any health details. What you say goes to our speech provider for recognition and is not stored.",
   },
   send: "Send",
   typing: "The assistant is typing …",

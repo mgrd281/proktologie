@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
-import { chatCopy, hoursLine, type ChatLang } from "@/content/chat";
+import { chatCopy, hoursLine, type ChatLang, type ChatCopy } from "@/content/chat";
 import { site } from "@/content/site";
 import { sendChat, voiceSpeak, voiceToken, type ChatForm, type ChatQuick } from "@/lib/chat/api";
-import { LiveSession, type LiveState } from "@/lib/voice/live";
+import { LiveSession, type LiveReason, type LiveState } from "@/lib/voice/live";
+import { startMeter } from "@/lib/voice/meter";
 import { append, browserStore, clear, load, newSession, save, type SessionStore, type StoredSession } from "@/lib/chat/session";
 import { useLenis } from "@/providers/LenisProvider";
 
@@ -58,6 +59,13 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
   const logRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [listening, setListening] = useState<LiveState>("idle");
+  /** Warum es zuletzt nicht ging – übersetzt die Oberfläche in einen Satz. */
+  const [reason, setReason] = useState<LiveReason | string | null>(null);
+  /** Der Satz, wie er gerade wächst, während gesprochen wird. */
+  const [partial, setPartial] = useState("");
+  /** Aussteuerung 0–1: Wer spricht und nichts sieht, hat ein stummes Mikrofon. */
+  const [level, setLevel] = useState(0);
+  const meterStopRef = useRef<(() => void) | null>(null);
   const liveRef = useRef<LiveSession | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const talkRef = useRef<((text: string) => void) | null>(null);
@@ -272,24 +280,49 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
     }
     const session = new LiveSession({
       token: () => voiceToken(site.cockpitApiUrl, sessionIdRef.current, lang),
-      microphone: () => navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }),
+      microphone: async () => {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+        meterStopRef.current?.();
+        meterStopRef.current = startMeter(stream, setLevel);
+        return stream;
+      },
       connect: async (secret, stream, on) => {
         const { connectWebRtc } = await import("@/lib/voice/webrtc");
         return connectWebRtc(secret, stream, on);
       },
       onTranscript: (text) => talkRef.current?.(text),
-      onState: (state) => {
+      onPartial: setPartial,
+      // Dazwischenreden: Die Patientin hat Vorrang, der Assistent verstummt.
+      onInterrupt: () => audioRef.current?.pause(),
+      onState: (state, detail) => {
         setListening(state);
+        setReason(detail?.reason ?? null);
         // „error" und „denied" sind genauso Endstationen wie „idle": Die
         // Spur ist in `live.ts` schon geschlossen. Ließe man die Sitzung
         // stehen, würde der nächste Knopfdruck sie nur stoppen statt neu
         // zu starten – und der Knopf wirkte kaputt.
-        if (state === "idle" || state === "error" || state === "denied") liveRef.current = null;
+        if (state === "idle" || state === "error" || state === "denied") {
+          liveRef.current = null;
+          meterStopRef.current?.();
+          meterStopRef.current = null;
+          setPartial("");
+        }
       },
     });
     liveRef.current = session;
-    void session.start();
-  }, [lang]);
+    setListening("connecting");
+    // Aus der Klick-Geste heraus einmal abspielen: Danach darf dieses
+    // Audio-Element auch nach einem Netzaufruf sprechen – iOS und Safari
+    // verlangen genau das.
+    unlockAudio(audioRef);
+    void (async () => {
+      // Erst der Satz, dann das Mikrofon. Andersherum hörte das Mikrofon
+      // den Assistenten und hielte ihn für die Patientin.
+      const greeting = await voiceSpeak(site.cockpitApiUrl, sessionIdRef.current, lang, copy.voice.listening);
+      if (greeting && liveRef.current === session) await playOnce(audioRef, greeting);
+      if (liveRef.current === session) await session.start();
+    })();
+  }, [lang, copy]);
 
   // Tab weg, Fenster zu: Ein offenes Mikrofon darf nichts überleben.
   useEffect(() => {
@@ -441,18 +474,25 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
           )}
 
           {!emergency && voice && listening !== "idle" && (
-            <div role="status" className="border-t border-mist bg-primary/5 px-4 py-2.5">
-              <p className="flex items-center gap-2 text-[13px] font-medium text-primary-deep">
-                <span className={`inline-block size-2 shrink-0 rounded-full bg-primary ${listening === "hearing" ? "animate-pulse" : ""}`} />
-                {listening === "connecting" && copy.voice.connecting}
-                {listening === "listening" && copy.voice.listening}
-                {listening === "hearing" && copy.voice.hearing}
-                {listening === "answering" && copy.voice.answering}
-                {listening === "denied" && copy.voice.denied}
-                {listening === "error" && copy.voice.error}
-              </p>
-              {(listening === "listening" || listening === "hearing") && (
-                <p className="mt-1 text-[11px] leading-snug text-ink/60">{copy.voice.hint}</p>
+            <div role="status" aria-live="polite" className="border-t border-mist bg-primary/5 px-4 py-2.5">
+              <div className="flex items-center gap-2">
+                {(listening === "listening" || listening === "hearing" || listening === "answering") && (
+                  <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold tracking-wider text-white">
+                    <span className={`inline-block size-1.5 rounded-full bg-white ${listening === "hearing" ? "animate-pulse" : ""}`} />
+                    {copy.voice.live}
+                  </span>
+                )}
+                <p className="min-w-0 flex-1 text-[13px] font-medium text-primary-deep">{voiceStateText(listening, reason, copy.voice)}</p>
+                {(listening === "listening" || listening === "hearing") && <LevelMeter level={level} />}
+              </div>
+              {partial ? (
+                <p className="mt-1 text-[13px] italic leading-snug text-ink/70">
+                  &bdquo;{partial} &hellip;&ldquo;
+                </p>
+              ) : (
+                (listening === "listening" || listening === "hearing") && (
+                  <p className="mt-1 text-[11px] leading-snug text-ink/60">{copy.voice.hint}</p>
+                )
               )}
             </div>
           )}
@@ -469,7 +509,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
                   className={`flex size-11 shrink-0 items-center justify-center rounded-xl transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
                     listening === "idle"
                       ? "border-2 border-primary/25 bg-white text-primary-deep hover:bg-mist"
-                      : "bg-primary text-cream hover:bg-primary-deep"
+                      : "bg-red-600 text-white hover:bg-red-700"
                   }`}
                 >
                   <Icon name={listening === "idle" ? "mic" : "mic-off"} size={18} />
@@ -509,6 +549,58 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
       )}
     </div>
   );
+}
+
+/** Der Satz zum Zustand – Fehler mit Ursache, nicht nur „hat nicht geklappt". */
+function voiceStateText(state: LiveState, reason: LiveReason | string | null, t: ChatCopy["voice"]): string {
+  switch (state) {
+    case "connecting":
+      return t.connecting;
+    case "listening":
+      return t.listening;
+    case "hearing":
+      return t.hearing;
+    case "answering":
+      return t.answering;
+    case "denied":
+      return t.denied;
+    case "error":
+      if (reason === "service") return t.errors.service;
+      if (reason === "busy") return t.errors.busy;
+      if (reason === "no-mic") return t.errors.noMic;
+      if (reason === "connect") return t.errors.connect;
+      return t.error;
+    default:
+      return "";
+  }
+}
+
+/** Fünf Balken Aussteuerung. Rein dekorativ – der Zustandstext trägt die Aussage. */
+function LevelMeter({ level }: { level: number }) {
+  const steps = [0.12, 0.28, 0.45, 0.62, 0.8];
+  return (
+    <span aria-hidden className="flex h-4 shrink-0 items-end gap-0.5">
+      {steps.map((t, i) => (
+        <span key={t} className={`w-1 rounded-sm transition-colors ${level >= t ? "bg-primary" : "bg-primary/20"}`} style={{ height: `${6 + i * 2.5}px` }} />
+      ))}
+    </span>
+  );
+}
+
+/** Ein Rahmen Stille, damit ein Abspielen aus der Klick-Geste heraus stattfindet. */
+const SILENT_WAV = "data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQIAAABceDAwXHgwMA==";
+
+/**
+ * iOS und Safari lassen ein Audio-Element nur sprechen, wenn es einmal aus
+ * einer Nutzergeste heraus gespielt hat. Das hier ist diese eine Geste –
+ * danach darf dasselbe Element die Antworten abspielen, auch nach einem
+ * Netzaufruf.
+ */
+function unlockAudio(ref: React.RefObject<HTMLAudioElement | null>): void {
+  const audio = ref.current ?? new Audio();
+  ref.current = audio;
+  audio.src = SILENT_WAV;
+  void audio.play().catch(() => {});
 }
 
 /** Ohne Cockpit oder mit abgeschaltetem Chat: nur Telefon und Sprechzeiten. */

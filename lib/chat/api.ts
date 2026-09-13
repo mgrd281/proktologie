@@ -154,13 +154,27 @@ export interface VoiceSecret {
  * Anbieters bleibt im Cockpit; hierher kommt nur ein Geheimnis, das nach
  * Minuten verfällt und für genau eine Sitzung gilt.
  */
+/**
+ * Die Ausweis-Route hat nein gesagt – mit Statuscode, damit die Oberfläche
+ * „zu viele Versuche" von „Sprachdienst nicht erreichbar" unterscheiden
+ * kann, statt beides „hat nicht geklappt" zu nennen.
+ */
+export class VoiceTokenError extends Error {
+  status: number;
+  constructor(status: number) {
+    super(`voice/token ${status}`);
+    this.name = "VoiceTokenError";
+    this.status = status;
+  }
+}
+
 export async function voiceToken(base: string, sessionId: string, lang: ChatLang): Promise<VoiceSecret> {
   const res = await fetch(`${base}/api/public/v1/voice/token`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ v: 1, sessionId, lang }),
   });
-  if (!res.ok) throw new Error(`voice/token ${res.status}`);
+  if (!res.ok) throw new VoiceTokenError(res.status);
   const body = (await res.json()) as { value?: string; expiresAt?: number; sampleRate?: number };
   if (!body.value) throw new Error("voice/token ohne Ausweis");
   return { value: body.value, expiresAt: body.expiresAt ?? 0, sampleRate: body.sampleRate ?? 24_000 };
