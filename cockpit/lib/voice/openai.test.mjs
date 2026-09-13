@@ -44,7 +44,7 @@ test("Der Ausweis ist eine Transkriptions-Sitzung – sie kann strukturell nicht
 
     const body = JSON.parse(gesehen.init.body);
     assert.equal(body.session.type, "transcription", "keine Sprache-zu-Sprache-Sitzung");
-    assert.deepEqual(body.session.audio.input.transcription.languages, ["de"]);
+    assert.equal(body.session.audio.input.transcription.language, "de");
     assert.equal(body.session.audio.input.turn_detection.type, "server_vad");
     assert.match(gesehen.url, /\/realtime\/client_secrets$/);
     assert.equal(gesehen.init.headers.authorization, "Bearer sk-geheim");
@@ -99,10 +99,11 @@ test("Die Modellnamen sind die, die es wirklich gibt", async () => {
   assert.equal(tts, "gpt-4o-mini-tts", "nur dieses Modell kennt instructions");
 });
 
-test("Die Sprache steht als Liste im Ausweis, nicht als Einzelwert", async () => {
-  // Das Zuhör-Modell kennt nur `languages`; beide Felder zusammen sind
-  // ausdrücklich verboten. Ein falscher Name hier heißt nicht „etwas
-  // schlechter", sondern 400 – der Knopf erscheint und verbindet nie.
+test("Die Sprache steht in der Einzahl im Ausweis – und nichts vom Live-Modell", async () => {
+  // `languages`, `delay`, `keywords` gehören zu gpt-live-transcribe; das
+  // Modell mit Satzende-Erkennung lehnt sie ab – gemessen, je ein 400.
+  // Ein falsches Feld hier heißt nicht „etwas schlechter", sondern: der
+  // Knopf erscheint und verbindet nie.
   let input = null;
   const echt = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
@@ -114,8 +115,10 @@ test("Die Sprache steht als Liste im Ausweis, nicht als Einzelwert", async () =>
   } finally {
     globalThis.fetch = echt;
   }
-  assert.deepEqual(input.transcription.languages, ["en"]);
-  assert.equal("language" in input.transcription, false, "beide zusammen sind verboten");
+  assert.equal(input.transcription.language, "en");
+  assert.equal("languages" in input.transcription, false, "Listenform gehört zum Live-Modell");
+  assert.equal("delay" in input.transcription, false, "delay gehört zum Live-Modell");
+  assert.equal("keywords" in input.transcription, false, "keywords gehört zum Live-Modell");
 });
 
 test("Die Pause vor dem Satzende ist länger als der Auslieferungswert", async () => {
@@ -155,10 +158,8 @@ test("Die Sitzungsanfrage trägt keinen Personenbezug und kein WebSocket-Format"
   }
   assert.equal("format" in input, false, "kein format über WebRTC");
   assert.equal(input.noise_reduction.type, "near_field");
-  assert.equal(input.transcription.delay, "low");
   assert.match(input.transcription.prompt, /Praxis/);
   assert.doesNotMatch(input.transcription.prompt, /@|\d{3,}/, "keine Adresse, keine Nummer");
-  assert.ok(Array.isArray(input.transcription.keywords) && input.transcription.keywords.includes("Termin"));
 });
 
 test("Der Sprechtext wird gekürzt, statt eine offene Vorlesemaschine zu sein", async () => {

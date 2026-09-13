@@ -65,10 +65,12 @@ const SECRET_TTL_SEC = 600;
  * einem Gespräch – nur das, was auch auf dem Praxisschild steht.
  */
 const STT_PROMPT = {
-  de: "Terminvereinbarung in einer proktologischen Praxis in Hamburg-Eimsbüttel.",
-  en: "Booking an appointment at a proctology practice in Hamburg-Eimsbüttel.",
+  de: "Terminvereinbarung in einer proktologischen Praxis in Hamburg-Eimsbüttel: Termin, Kontrolltermin, Vorsorge, Überweisung, Proktologie.",
+  en: "Booking an appointment at a proctology practice in Hamburg-Eimsbüttel: appointment, check-up, screening, referral, proctology.",
 } as const;
-const STT_KEYWORDS = ["Termin", "Proktologie", "Überweisung", "Vorsorge", "Kontrolltermin", "Eimsbüttel", "Kunstreich"];
+// `keywords` und `delay` gehören zum Live-Modell; `gpt-transcribe` lehnt sie
+// ab („The 'delay' parameter is not supported for this model" – gemessen).
+// Die Fachwörter stehen darum im Prompt, nicht in einer eigenen Liste.
 /** Länger als ein Antwortsatz braucht niemand – ein Riegel gegen Missbrauch. */
 export const MAX_SPEAK_CHARS = 600;
 
@@ -143,11 +145,11 @@ export interface VoiceSecret {
  *    Satz Luft holt, bekommt gut eine Sekunde Pause zugestanden, statt
  *    abgeschnitten zu werden. (`semantic_vad` wird als eigene Messung
  *    probiert, sobald dieser Pfad läuft – nicht vorher, nicht ungemessen.)
- *  - `languages` als Liste: Das ist die Form, die die neueren Modelle
- *    kennen; `language` in der Einzahl daneben wäre verboten.
- *  - `prompt` und `keywords` geben dem Modell den Rahmen einer Praxis –
- *    Fachwörter, Ortsname, Terminbegriffe. Kein Personenbezug, nichts, was
- *    aus einem Gespräch stammt.
+ *  - `language` in der Einzahl: `languages` als Liste, `delay` und
+ *    `keywords` gehören zum Live-Modell – `gpt-transcribe` lehnt sie ab.
+ *  - `prompt` gibt dem Modell den Rahmen einer Praxis – Fachwörter,
+ *    Ortsname, Terminbegriffe. Kein Personenbezug, nichts, was aus einem
+ *    Gespräch stammt.
  *  - `noise_reduction: near_field`: Laptop oder Telefon vor dem Gesicht.
  *  - **Kein `format`.** Über WebRTC handelt der Browser das Audio selbst
  *    aus; das Feld gilt für WebSocket-Verbindungen, und dort ist
@@ -171,10 +173,8 @@ export async function mintListenSecret(lang: "de" | "en", signal?: AbortSignal):
             noise_reduction: { type: "near_field" },
             transcription: {
               model: STT_MODEL,
-              languages: [lang],
-              delay: "low",
+              language: lang,
               prompt: STT_PROMPT[lang],
-              keywords: STT_KEYWORDS,
             },
             turn_detection: { type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 1100 },
           },
