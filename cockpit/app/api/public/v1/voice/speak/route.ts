@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db/client";
 import { hit } from "@/lib/ratelimit";
 import { MAX_SPEAK_CHARS, synthesize, voiceConfigured } from "@/lib/voice/openai";
 import { toSpeech } from "@/lib/chat/speech";
+import * as repo from "@/lib/booking/repo";
 import { z } from "zod";
 
 /**
@@ -46,12 +47,19 @@ export async function POST(req: Request) {
   ]);
   if (!session.ok || !address.ok) return apiError(req, 429, "rate_limited", "Zu viele Anfragen.");
 
+  // Derselbe Riegel wie beim Ausweis. Sonst spräche eine Sitzung, die vor
+  // dem Abschalten geöffnet wurde, danach ungerührt weiter – wer den Chat
+  // abschaltet, hat auch den Mund abgeschaltet.
+  const settings = await repo.getSettings();
+  if (!settings.chatEnabled) return apiError(req, 503, "chat_disabled", "Sprache ist gerade nicht verfügbar.");
+
   try {
     const audio = await synthesize(toSpeech(text, lang, { channel: "web" }), lang);
     const headers = new Headers(corsHeaders(req));
     headers.set("content-type", "audio/mpeg");
     return new Response(audio, { status: 200, headers });
-  } catch {
+  } catch (error) {
+    console.error(`[voice] speak: ${error instanceof Error ? error.message : "unbekannt"}`);
     return apiError(req, 502, "voice_unavailable", "Die Sprachausgabe ist gerade nicht erreichbar.");
   }
 }

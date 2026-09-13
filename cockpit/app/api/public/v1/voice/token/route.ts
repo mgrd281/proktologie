@@ -47,7 +47,13 @@ export async function POST(req: Request) {
     hit("voice.session", sessionId, { limit: 8, windowSec: 3600 }),
     hit("voice.ip", ip, { limit: 30, windowSec: 3600 }),
   ]);
-  if (!session.ok || !address.ok) return apiError(req, 429, "rate_limited", T.rateLimited);
+  if (!session.ok || !address.ok) {
+    // Auch das gehört ins Protokoll: Sonst sucht der Betreiber beim
+    // Anbieter, während sein eigenes Limit greift. Nur welcher Riegel es
+    // war – keine Sitzungskennung, keine IP.
+    console.warn(`[voice] token: Limit erreicht (${session.ok ? "IP" : "Sitzung"})`);
+    return apiError(req, 429, "rate_limited", T.rateLimited);
+  }
 
   const settings = await repo.getSettings();
   if (!settings.chatEnabled) return apiError(req, 503, "chat_disabled", T.disabled);
@@ -56,7 +62,10 @@ export async function POST(req: Request) {
     const secret = await mintListenSecret(lang);
     // Kein Cache, nirgends: Ein Ausweis gehört genau einer Sitzung.
     return json(req, { v: 1, ...secret }, { cache: "no-store" });
-  } catch {
+  } catch (error) {
+    // Der Grund gehört ins Protokoll, nicht zur Patientin: Sie kann mit
+    // „unknown model" nichts anfangen, der Betreiber sehr wohl.
+    console.error(`[voice] token: ${error instanceof Error ? error.message : "unbekannt"}`);
     return apiError(req, 502, "voice_unavailable", T.llmDown);
   }
 }

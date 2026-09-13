@@ -28,6 +28,13 @@
 
 /** Die Stimme, mit der die Praxis spricht. Ruhig, deutlich, ohne Show. */
 const VOICE = "alloy";
+/**
+ * Das Sprachausgabe-Modell. Nur dieses kennt `instructions`; die älteren
+ * `tts-1`/`tts-1-hd` ignorieren den Parameter.
+ */
+const TTS_MODEL = "gpt-4o-mini-tts";
+/** Das Zuhör-Modell. Von OpenAI für Echtzeit-Transkription empfohlen. */
+const STT_MODEL = "gpt-live-transcribe";
 /** Abtastrate, mit der Browser und Anbieter rechnen. */
 export const SAMPLE_RATE = 24_000;
 /** So lange gilt ein Ausweis. Kurz genug, dass ein Diebstahl nichts nützt. */
@@ -48,6 +55,24 @@ function key(): string {
   return k;
 }
 
+/**
+ * Der Grund einer Fehlantwort, kurz und ohne Geheimnisse.
+ *
+ * Ohne ihn steht im Protokoll nur „502" – und der Betreiber sucht einen
+ * Abend lang, obwohl der Anbieter „unknown model" geantwortet hat. Der
+ * Schlüssel steht nie in einer Fehlermeldung des Anbieters; hier wird
+ * trotzdem gekürzt, damit nichts Langes ins Protokoll läuft.
+ */
+async function reason(res: Response): Promise<string> {
+  try {
+    const text = (await res.text()).slice(0, 300);
+    const parsed = JSON.parse(text) as { error?: { message?: string; code?: string } };
+    return parsed.error?.message ?? parsed.error?.code ?? text;
+  } catch {
+    return "keine lesbare Antwort";
+  }
+}
+
 export interface VoiceSecret {
   /** Das kurzlebige Geheimnis für den Browser – niemals der echte Schlüssel. */
   value: string;
@@ -60,10 +85,19 @@ export interface VoiceSecret {
 /**
  * Einen Ausweis für genau eine Zuhör-Sitzung ausstellen.
  *
- * `turn_detection: server_vad` heißt: Der Anbieter erkennt selbst, wann
- * ein Satz zu Ende ist. Das ist der Teil, den ein eigener Schwellenwert im
- * Browser nie so gut hinbekommt – und der Grund, warum ältere Anrufer
- * nicht mitten im Satz abgeschnitten werden.
+ * `turn_detection: semantic_vad` statt `server_vad`, und das ist keine
+ * Feinheit: `server_vad` misst nur Stille. Wer langsam spricht, nach Worten
+ * sucht oder mitten im Satz Luft holt – also genau die ältere Patientin,
+ * für die dieser Kanal gebaut ist – wird davon abgeschnitten.
+ * `semantic_vad` hört auf den Inhalt und wartet, bis der Satz wirklich zu
+ * Ende ist; `eagerness: "low"` stellt es auf die geduldigste Stufe. Die
+ * Doku des Anbieters hält ausdrücklich fest, dass das auch für reine
+ * Transkriptions-Sitzungen gilt.
+ *
+ * `languages` mit einem Eintrag, nicht `language`: Das Zuhör-Modell kennt
+ * nur die Mehrzahlform, und beide zusammen zu schicken ist verboten. Ein
+ * falscher Feldname hier bedeutet nicht „etwas schlechter", sondern 400 –
+ * der Knopf erscheint und die Verbindung kommt nie zustande.
  */
 export async function mintListenSecret(lang: "de" | "en", signal?: AbortSignal): Promise<VoiceSecret> {
   const res = await fetch(`${BASE_URL}/realtime/client_secrets`, {
@@ -77,14 +111,14 @@ export async function mintListenSecret(lang: "de" | "en", signal?: AbortSignal):
         audio: {
           input: {
             format: { type: "audio/pcm", rate: SAMPLE_RATE },
-            transcription: { model: "gpt-live-transcribe", language: lang },
-            turn_detection: { type: "server_vad" },
+            transcription: { model: STT_MODEL, languages: [lang] },
+            turn_detection: { type: "semantic_vad", eagerness: "low" },
           },
         },
       },
     }),
   });
-  if (!res.ok) throw new Error(`client_secrets ${res.status}`);
+  if (!res.ok) throw new Error(`client_secrets ${res.status}: ${await reason(res)}`);
   const body = (await res.json()) as { value?: string; expires_at?: number };
   if (!body.value) throw new Error("client_secrets ohne value");
   return {
@@ -104,7 +138,7 @@ export async function synthesize(text: string, lang: "de" | "en", signal?: Abort
     headers: { authorization: `Bearer ${key()}`, "content-type": "application/json" },
     signal,
     body: JSON.stringify({
-      model: "gpt-mini-tts",
+      model: TTS_MODEL,
       voice: VOICE,
       input: text.slice(0, MAX_SPEAK_CHARS),
       response_format: "mp3",
@@ -113,6 +147,6 @@ export async function synthesize(text: string, lang: "de" | "en", signal?: Abort
       instructions: lang === "de" ? "Sprich ruhig und deutlich auf Deutsch." : "Speak calmly and clearly in English.",
     }),
   });
-  if (!res.ok) throw new Error(`audio/speech ${res.status}`);
+  if (!res.ok) throw new Error(`audio/speech ${res.status}: ${await reason(res)}`);
   return res.arrayBuffer();
 }

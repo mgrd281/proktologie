@@ -100,6 +100,12 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
    * bis dahin bestehen, aber sie ist verlassbar.
    */
   const restart = useCallback(() => {
+    // Zuerst das Mikrofon, dann der Rest: „Neues Gespräch" blendet Knopf und
+    // Banner neu auf – eine noch laufende Zuhör-Sitzung wäre ab hier
+    // unsichtbar und liefe weiter.
+    void liveRef.current?.stop("restart");
+    liveRef.current = null;
+    setListening("idle");
     clear(storeRef.current);
     const fresh = newSession(lang);
     setSession(append(fresh, "assistant", chatCopy[lang].greeting(hoursLine(lang)), Date.now()));
@@ -209,7 +215,16 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
       setQuick(a.quick ?? []);
       setForm(a.form ?? null);
       setLinks(a.links ?? []);
-      if (a.flags.emergency) setEmergency(true);
+      if (a.flags.emergency) {
+        setEmergency(true);
+        // Im Notfall verschwindet die ganze Bedienleiste. Ein Mikrofon, das
+        // dahinter weiterläuft, wäre unsichtbar offen – die teuerste und die
+        // unheimlichste Art von Fehler. Es geht vor dem Vorlesen zu, damit
+        // auch nichts mehr gesprochen wird.
+        void liveRef.current?.stop("emergency");
+        liveRef.current = null;
+        setListening("idle");
+      }
       setPending(false);
       // Wer gesprochen hat, bekommt gesprochen zurück. Beim Notfall wird
       // nicht vorgelesen: Da soll niemand zuhören, sondern anrufen – die
@@ -265,7 +280,11 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
       onTranscript: (text) => talkRef.current?.(text),
       onState: (state) => {
         setListening(state);
-        if (state === "idle") liveRef.current = null;
+        // „error" und „denied" sind genauso Endstationen wie „idle": Die
+        // Spur ist in `live.ts` schon geschlossen. Ließe man die Sitzung
+        // stehen, würde der nächste Knopfdruck sie nur stoppen statt neu
+        // zu starten – und der Knopf wirkte kaputt.
+        if (state === "idle" || state === "error" || state === "denied") liveRef.current = null;
       },
     });
     liveRef.current = session;
