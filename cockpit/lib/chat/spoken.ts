@@ -26,7 +26,23 @@ export type Lang = "de" | "en";
 
 /** Einleitungen, die vor dem eigentlichen Namen stehen. */
 const NAME_LEAD_RE =
-  /^(?:(?:ja|nein|also|äh|ähm|hm|okay|ok)[,\s]+)*(?:ich\s+(?:heiße|heisse|bin)|mein\s+name\s+ist|der\s+name\s+ist|name\s+ist|my\s+name\s+is|i\s+am|i'm|it's|this\s+is)\s+/iu;
+  /^(?:(?:ja|nein|also|äh|ähm|hm|okay|ok|gut|danke)[,\s]+)*(?:(?:ich\s+(?:heiße|heisse|bin)|mein\s+name\s+ist|der\s+name\s+ist|name\s+ist|my\s+name\s+is|i\s+am|i'm|it's|this\s+is)\s+)?/iu;
+/**
+ * Wörter, die in keinem Namen vorkommen – ein Satz mit einem davon ist
+ * eine Absicht, kein Name („Lieber am Mittwoch“, „Ich möchte abbrechen“)
+ * oder ein Fetzen der Erkennung („Wochen.“). Lieber nachfragen als
+ * „Danke, Lieber Am. Und Ihr Nachname?“.
+ */
+const NOT_A_NAME = new Set([
+  "ich", "möchte", "moechte", "hätte", "haette", "will", "gern", "gerne", "bitte", "nicht", "kein", "keine", "termin", "doch", "lieber",
+  "und", "oder", "das", "ist", "mir", "wir", "sie", "mein", "meine", "nein", "ja", "danke", "am", "um", "uhr", "morgen", "heute",
+  "montag", "dienstag", "mittwoch", "donnerstag", "freitag", "samstag", "sonntag", "woche", "wochen", "vormittags", "nachmittags",
+  "abbrechen", "zurück", "stopp", "stop", "mit", "einem", "einer", "menschen", "mensch", "sprechen", "hallo", "egal",
+  "the", "a", "an", "i", "want", "would", "like", "please", "not", "no", "yes", "appointment", "cancel", "monday", "tuesday",
+  "wednesday", "thursday", "friday", "week", "weeks", "morning", "afternoon", "hello",
+]);
+/** Namenszusätze, die zum Nachnamen gehören: „Anna von der Heide“. */
+const PARTICLES = new Set(["von", "van", "de", "der", "den", "zu", "zur", "zum", "da", "di", "du", "le", "la", "del", "della", "of", "vom", "ten", "ter"]);
 /** Anreden und Titel, die kein Namensteil sind. */
 const TITLE_RE = /^(?:herr|frau|hr\.?|fr\.?|dr\.?|prof\.?|mr\.?|mrs\.?|ms\.?|miss)$/iu;
 const NAME_WORD_RE = /^[\p{L}][\p{L}'’.-]*$/u;
@@ -53,9 +69,13 @@ export function parseSpokenName(text: string): SpokenName | null {
     .filter((w) => w && !TITLE_RE.test(w))
     .map((w) => w.replace(/[.,;:!?]+$/u, ""))
     .filter((w) => NAME_WORD_RE.test(w));
-  if (words.length === 0 || words.length > 4) return null;
+  if (words.length === 0 || words.length > 6) return null;
+  if (words.some((w) => NOT_A_NAME.has(w.toLowerCase()))) return null;
   const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
   if (words.length === 1) return { firstName: cap(words[0]!), lastName: null };
+  // „Anna Maria von der Heide“: ab dem ersten Zusatz beginnt der Nachname.
+  const particle = words.findIndex((w, i) => i > 0 && i < words.length - 1 && PARTICLES.has(w.toLowerCase()));
+  if (particle > 0) return { firstName: words.slice(0, particle).map(cap).join(" "), lastName: [...words.slice(particle, -1), cap(words[words.length - 1]!)].join(" ") };
   return { firstName: words.slice(0, -1).map(cap).join(" "), lastName: cap(words[words.length - 1]!) };
 }
 
@@ -88,7 +108,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/u;
 export function normalizeSpokenEmail(text: string): string | null {
   let s = text
     .trim()
-    .replace(/^(?:(?:ja|also|äh|ähm|okay|ok)[,\s]+)*(?:meine\s+e-?mail(?:-?adresse)?\s+(?:ist|lautet)|die\s+adresse\s+ist|e-?mail\s*:?|my\s+e-?mail\s+is|it's|email\s*:?)\s*/iu, "")
+    .replace(/^(?:(?:ja|nein|also|äh|ähm|okay|ok)[,\s]+)*(?:meine\s+e-?mail(?:-?adresse)?\s+(?:ist|lautet)|die\s+adresse\s+(?:ist|lautet)|(?:es|sie|die)\s+(?:ist|lautet)|e-?mail\s*:?|my\s+e-?mail\s+is|it's|it\s+is|email\s*:?)\s*/iu, "")
     .replace(/[.!?,;:]+$/u, "")
     .toLowerCase();
   // Bereits eine Adresse? Dann nur säubern.

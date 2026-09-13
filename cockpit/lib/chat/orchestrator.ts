@@ -299,7 +299,12 @@ export function freshState(lang: Lang = "de"): ChatState {
 
 function reviveState(raw: unknown, fallbackLang: Lang): ChatState {
   const parsed = chatStateSchema.safeParse(raw);
-  return parsed.success ? parsed.data : freshState(fallbackLang);
+  if (!parsed.success) return freshState(fallbackLang);
+  const state = parsed.data;
+  // Zustände von vor der Einwilligungs-Aufzeichnung: Kontaktdaten kamen
+  // damals ausschließlich aus dem Formular, und das verlangte das Häkchen.
+  if (state.draft.contact && !state.draft.consent) state.draft.consent = "form";
+  return state;
 }
 
 const BOOKING_STAGES: Stage[] = ["type", "date", "time", "contact", "confirm"];
@@ -600,9 +605,11 @@ const EARLIER_RE = /(?<!\p{L})(?:fr(?:ü|ue)her\p{L}*|vorher|earlier|before that
 const NONE_RE =
   /(?<!\p{L})(?:nichts davon|nichts passt|keins? davon|keine davon|keine[rs]? passt|geht alles nicht|passt (?:alles )?nicht|was anderes|etwas anderes|something else|none of (?:those|them|these)|nothing (?:works|fits|suits)|(?:that |these |those )?do(?:es)?n'?t work)/iu;
 /** „Egal" auf die Frage vormittags oder nachmittags. */
-const EGAL_RE = /^(?:(?:ist|is)\s+)?(?:mir\s+)?(?:egal|ganz egal|beides|beide|wie es passt|wann sie wollen|either|any|anytime|no preference|doesn't matter|whatever)[.!\s]*$/iu;
+const EGAL_RE =
+  /(?<!\p{L})(?:egal|beides|beide gehen|ganz gleich|wie es (?:ihnen|mir|dir) passt|wann sie wollen|wie sie wollen|either|any ?time|no preference|doesn'?t matter|don'?t mind|whatever)(?!\p{L})/iu;
 /** Der Ausstieg aus dem Kontaktdialog. */
-const CANCEL_RE = /^(?:abbrechen|abbruch|stopp?|zurück|zurueck|doch nicht|vergiss es|cancel|stop|never ?mind|forget it)[.!\s]*$/iu;
+const CANCEL_RE =
+  /(?<!\p{L})(?:abbrechen|abbruch|stopp?|zurück|zurueck|doch nicht|vergiss es|vergessen sie es|cancel|stop|never ?mind|forget it)(?!\p{L})/iu;
 const OTHER_DAY_RE = /(?<!\p{L})(?:ander(?:er|en|em) tag|anderes datum|another day|other day|different day)(?!\p{L})/iu;
 
 // -------------------------------------------------------------- Ablauf
@@ -722,9 +729,26 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
   // Dialog beginnt beim Namen. Nennt sie ihn gleich vollständig, gilt das;
   // ein Wortfetzen wird nicht zum Vornamen.
   if (deps.channel === "voice" && state.stage === "contact" && !state.draft.contact) {
-    const n = parseSpokenName(text);
-    if (n?.lastName) return contactDialogue(text, { ...state, draft: { ...state.draft, contactStep: "name", pending: null } }, deps, now);
-    return askContact(state, deps);
+    const other =
+      hasWish(readWhen(text, now, lang)) ||
+      HANDOVER_RE.test(text) ||
+      FORWARD_RE.test(text) ||
+      QUESTION_RE.test(text) ||
+      BOOKING_RE.test(norm) ||
+      NO_RE.test(text) ||
+      detectHealthData(text) !== null;
+    if (!other) {
+      const n = parseSpokenName(text);
+      if (n?.lastName) return contactDialogue(text, { ...state, draft: { ...state.draft, contactStep: "name", pending: null } }, deps, now);
+      // Ein Fetzen: still, das Formular bleibt stehen. Erst nach zwei
+      // stillen Runden wird nach dem Namen gefragt.
+      if (state.failures < 2) {
+        deps.audit("chat.voice_aside", { stage: state.stage, verdict: "fragment" });
+        return silent(state);
+      }
+      return askContact(state, deps);
+    }
+    // Übergabe, anderer Tag, eine Frage: der normale Weg – wie getippt.
   }
 
   const health = detectHealthData(text, { ignore: isQuestion ? [...typeTerms(types), ...SERVICE_ASK_TERMS] : typeTerms(types) });
@@ -749,6 +773,8 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
       isBareYes(text) ||
       YES_START_RE.test(text) ||
       NO_RE.test(text) ||
+      HANDOVER_RE.test(text) ||
+      FORWARD_RE.test(text) ||
       state.stage === "confirm" ||
       (asked && (LATER_RE.test(text) || EARLIER_RE.test(text) || NONE_RE.test(text) || OTHER_DAY_RE.test(text) || EGAL_RE.test(text)));
     const verdict = judge({ text }, { stage: state.stage, hasIntent, isEmergency: false, lang }).verdict;
@@ -1240,12 +1266,31 @@ async function checkSlot(
   // Gesprochen fragt man nicht sechs Uhrzeiten ab, man fragt „vormittags
   // oder nachmittags?". Nur beim ersten Mal für diesen Tag – danach wird
   // gelistet, sonst dreht sich das Gespräch im Kreis.
-  if (deps.channel === "voice" && date && !time && !window && state.draft.windowAsked !== date) {
-    const next: ChatState = { ...state, stage: "time", failures: 0, lastOffer: [], draft: { ...state.draft, date, time: null, window: null, page: 1, windowAsked: date } };
-    const day = fmtLongDateLocale(new Date(`${date}T12:00:00Z`), lang);
-    return say(next, t(lang).voice.askWindow(day), { quick: quick(lang, ["vormittags", "nachmittags", "egal"]) });
-  }
+  // Und nur, wenn die Frage eine Wahl ist: Ein Tag mit Zeiten in beiden
+  // Hälften. Ein Vormittagstag oder ein leerer Tag bekommt gleich die
+  // Auskunft – wie getippt. Beim Blättern und für einen schon gelisteten Tag
+  // wird nicht gefragt.
   const page = Math.max(1, opts.page ?? 1);
+  if (
+    deps.channel === "voice" &&
+    date &&
+    !time &&
+    !window &&
+    page === 1 &&
+    state.draft.windowAsked !== date &&
+    !(state.stage === "time" && state.draft.date === date)
+  ) {
+    const ctx = { now, lang };
+    const [am, pm] = await Promise.all([
+      deps.availability({ art: state.draft.typeId, datum: date, uhrzeit: null, fenster: { from: "00:00", to: "12:00" }, seite: 1 }, ctx),
+      deps.availability({ art: state.draft.typeId, datum: date, uhrzeit: null, fenster: { from: "12:00", to: "23:59" }, seite: 1 }, ctx),
+    ]);
+    if (am.kind === "day_slots" && pm.kind === "day_slots") {
+      const next: ChatState = { ...state, stage: "time", failures: 0, lastOffer: [], draft: { ...state.draft, date, time: null, window: null, page: 1, windowAsked: date } };
+      const day = fmtLongDateLocale(new Date(`${date}T12:00:00Z`), lang);
+      return say(next, t(lang).voice.askWindow(day), { quick: quick(lang, ["vormittags", "nachmittags", "egal"]) });
+    }
+  }
   const answer = await deps.availability({ art: state.draft.typeId, datum: date, uhrzeit: time, fenster: window, seite: page }, { now, lang });
   const next: ChatState = {
     ...state,
@@ -1339,7 +1384,7 @@ async function renderAvailability(answer: SlotAnswer, state: ChatState, deps: Ch
  * damit niemand vor einem stummen Fenster sitzt.
  */
 function silent(state: ChatState): ChatResponse {
-  return { reply: "", lang: state.lang, state: { ...state, failures: state.failures + 1 }, flags: { llm: "none", silent: true } };
+  return { reply: "", lang: state.lang, state: { ...state, failures: Math.min(state.failures + 1, 9) }, flags: { llm: "none", silent: true } };
 }
 
 /**
@@ -1394,20 +1439,30 @@ async function contactDialogue(text: string, state: ChatState, deps: ChatDeps, n
     reply: string,
     extra: { quick?: QuickReply[] } = {},
   ): ChatResponse => say({ ...state, failures: 0, draft: { ...d, pending: { ...pending, ...patch }, contactStep: nextStep } }, reply, extra);
-  const retry = (reply: string, extra: { quick?: QuickReply[] } = {}): ChatResponse => say({ ...state, failures: state.failures + 1 }, reply, extra);
+  // Zweimal nicht sicher verstanden: ehrlich ans Formular – das Mikrofon
+  // bleibt offen, danach geht es gesprochen weiter. Ein Gespräch, das eine
+  // Frage zum zehnten Mal stellt, ist keins mehr.
+  const toForm = (reply: string): ChatResponse =>
+    say({ ...state, failures: 0, draft: { ...d, contactStep: null, pending: null } }, reply, { form: contactForm(lang) });
+  const retry = (reply: string, extra: { quick?: QuickReply[] } = {}): ChatResponse =>
+    state.failures >= 1 ? toForm(V.typeInstead) : say({ ...state, failures: state.failures + 1 }, reply, extra);
 
   switch (step) {
     case "name": {
       const n = parseSpokenName(said);
-      if (!n) return retry(V.nameAgain);
+      if (!n || NO_RE.test(said)) return retry(V.nameAgain);
       if (!n.lastName) return go({ firstName: n.firstName }, "lastName", V.askLastName(n.firstName));
       return go({ firstName: n.firstName, lastName: n.lastName }, "email", V.askEmail);
     }
     case "lastName": {
       const n = parseSpokenName(said);
-      if (!n) return retry(V.nameAgain);
       // „Nein, ich heiße Max Mustermann“ – ein voller Name ersetzt beides.
-      if (n.lastName) return go({ firstName: n.firstName, lastName: n.lastName }, "email", V.askEmail);
+      if (n?.lastName) return go({ firstName: n.firstName, lastName: n.lastName }, "email", V.askEmail);
+      // Ein „Nein“ heißt: der Vorname war schon falsch – von vorn.
+      if (!n || NO_RE.test(said)) {
+        if (state.failures >= 1) return toForm(V.typeInstead);
+        return say({ ...state, failures: state.failures + 1, draft: { ...d, contactStep: "name", pending: null } }, V.nameAgain);
+      }
       return go({ lastName: n.firstName }, "email", V.askEmail);
     }
     case "email": {
@@ -1423,12 +1478,13 @@ async function contactDialogue(text: string, state: ChatState, deps: ChatDeps, n
       return go({ email }, "emailConfirm", V.confirmEmail(email), { quick: quick(lang, ["correct", "wrong"]) });
     }
     case "emailConfirm": {
-      const yn = spokenYesNo(said);
+      // Vielleicht hat sie die Adresse gleich noch einmal gesagt („Nein, es
+      // ist …“) – dann gilt die neue, und sie wird wieder zurückgelesen.
+      const again = normalizeSpokenEmail(said);
+      if (again && again !== pending.email) return go({ email: again }, "emailConfirm", V.confirmEmail(again), { quick: quick(lang, ["correct", "wrong"]) });
+      const yn = spokenYesNo(said) ?? (NO_RE.test(said) ? "no" : again || isBareYes(said) || YES_START_RE.test(said) ? "yes" : null);
       if (yn === "yes") return go({}, "phone", V.askPhone);
       if (yn === "no") return go({ email: undefined }, "email", V.emailAgain);
-      // Vielleicht hat sie die Adresse gleich noch einmal gesagt.
-      const again = normalizeSpokenEmail(said);
-      if (again) return go({ email: again }, "emailConfirm", V.confirmEmail(again), { quick: quick(lang, ["correct", "wrong"]) });
       return retry(V.confirmEmail(pending.email ?? ""), { quick: quick(lang, ["correct", "wrong"]) });
     }
     case "phone": {
@@ -1441,6 +1497,8 @@ async function contactDialogue(text: string, state: ChatState, deps: ChatDeps, n
       return go({ phone }, "note", V.askNote);
     }
     case "note": {
+      // „Ja“ auf „Möchten Sie noch etwas mitteilen?“ ist keine Mitteilung.
+      if (spokenYesNo(said) === "yes" || isBareYes(said)) return say({ ...state, failures: 0 }, V.noteWhat);
       let note: string | null = null;
       let dropped = false;
       let acute = false;

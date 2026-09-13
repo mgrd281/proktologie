@@ -128,10 +128,14 @@ export interface Texts {
     confirmEmail: (email: string) => string;
     emailAgain: string;
     emailTypeInstead: string;
+    /** Zweimal nicht sicher verstanden – bei Name, Rückfrage: ans Formular. */
+    typeInstead: string;
     askPhone: string;
     phoneAgain: string;
     phoneSkipped: string;
     askNote: string;
+    /** „Ja“ auf die Notizfrage: dann bitte den Inhalt. */
+    noteWhat: string;
     noteDropped: string;
     consentLine: string;
     clearYes: string;
@@ -247,10 +251,12 @@ const de: Texts = {
     confirmEmail: (email) => `Ich habe verstanden: ${email} – ist das richtig?`,
     emailAgain: "Bitte sagen Sie die Adresse noch einmal langsam – zum Beispiel: max punkt mustermann at gmx punkt de.",
     emailTypeInstead: "Ich verstehe die Adresse leider nicht sicher. Tippen Sie Ihre Daten bitte kurz unten ein – danach können Sie weitersprechen.",
+    typeInstead: "Das habe ich leider zweimal nicht sicher verstanden. Tippen Sie Ihre Daten bitte kurz unten ein – danach können Sie weitersprechen.",
     askPhone: "Danke. Und Ihre Handynummer – oder sagen Sie „keine“.",
     phoneAgain: "Die Nummer habe ich nicht verstanden. Bitte Ziffer für Ziffer – oder sagen Sie „keine“.",
     phoneSkipped: "Dann ohne Telefonnummer.",
     askNote: "Möchten Sie der Praxis noch etwas mitteilen – zum Beispiel, ob es ein Erst- oder ein Kontrolltermin ist? Bitte keine gesundheitlichen Details. Sonst sagen Sie „nein“.",
+    noteWhat: "Gern – was möchten Sie der Praxis mitteilen? Bitte ohne gesundheitliche Details.",
     noteDropped: "Ihre Anmerkung enthielt gesundheitliche Angaben und wurde nicht gespeichert – das besprechen Sie bitte in der Praxis.",
     consentLine: "Mit „Ja“ stimmen Sie zu, dass Ihre Angaben zur Terminvergabe gespeichert werden.",
     clearYes: "Bitte sagen Sie deutlich „Ja“, wenn ich verbindlich buchen soll – oder „Nein“.",
@@ -365,10 +371,12 @@ const en: Texts = {
     confirmEmail: (email) => `I understood: ${email} – is that correct?`,
     emailAgain: "Please say the address once more, slowly – for example: max dot mustermann at gmail dot com.",
     emailTypeInstead: "I cannot make out the address reliably. Please type your details below – you can continue speaking afterwards.",
+    typeInstead: "I did not catch that reliably twice. Please type your details below – you can continue speaking afterwards.",
     askPhone: "Thank you. And your mobile number – or say “none”.",
     phoneAgain: "I did not catch the number. Digit by digit, please – or say “none”.",
     phoneSkipped: "All right, without a phone number.",
     askNote: "Would you like to tell the practice anything else – for example whether it is a first or a follow-up visit? Please no health details. Otherwise say “no”.",
+    noteWhat: "Gladly – what would you like to tell the practice? Please no health details.",
     noteDropped: "Your note contained health details and was not stored – please discuss that at the practice.",
     consentLine: "By saying “yes” you agree that your details are stored for arranging the appointment.",
     clearYes: "Please say a clear “yes” if I should book this – or “no”.",

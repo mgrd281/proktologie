@@ -10,7 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { DIENSTAG, HOURS_DE, KONTAKT, click, form, makeDeps, msg, stateAt } from "./testkit.mjs";
+import { DIENSTAG, HOURS_DE, KONTAKT, SLOTS, click, form, makeDeps, msg, stateAt } from "./testkit.mjs";
 
 const o = await import("./orchestrator.ts");
 
@@ -640,6 +640,29 @@ test("Die Termindauer kommt aus der Datenbank, nicht aus einem festen Satz", asy
 const voice = (state, message) => msg(state, message, { channel: "voice" });
 const vclick = (state, id) => ({ ...click(state, id), channel: "voice" });
 
+/** Ein Dienstag mit Vormittag UND Nachmittag – nur dann ist „vormittags oder nachmittags?“ eine Wahl. */
+const PM = ["14:00", "14:30", "15:00"];
+function voiceDeps(over = {}) {
+  const ALL = [...SLOTS, ...PM];
+  return makeDeps({
+    availability: async (args) => {
+      const win = (list) => (args.fenster ? list.filter((x) => x >= args.fenster.from && x < args.fenster.to) : list);
+      if (!args.datum) return { kind: "next_days", days: [{ date: DIENSTAG, slots: win(ALL).slice(0, 3) }] };
+      if (args.uhrzeit) {
+        return ALL.includes(args.uhrzeit)
+          ? { kind: "time_free", date: args.datum, time: args.uhrzeit }
+          : { kind: "time_taken", date: args.datum, time: args.uhrzeit, alternatives: ALL.slice(0, 3) };
+      }
+      const all = win(ALL);
+      if (all.length === 0) return { kind: "day_empty", date: args.datum, nextDays: [] };
+      const pages = Math.max(1, Math.ceil(all.length / 5));
+      const page = Math.min(pages, Math.max(1, Math.trunc(args.seite ?? 1)));
+      return { kind: "day_slots", date: args.datum, slots: all.slice((page - 1) * 5, page * 5), total: all.length, page, hasMore: page < pages, hasEarlier: page > 1, window: args.fenster ?? null };
+    },
+    ...over,
+  });
+}
+
 test("Sprachkanal: ein Wortfetzen bleibt still – der Textkanal antwortet darauf wie immer", async () => {
   const { deps, calls } = makeDeps();
   let r = await o.runTurn(voice(null, "Wochen."), deps);
@@ -664,7 +687,7 @@ test("Sprachkanal: ein Wortfetzen bleibt still – der Textkanal antwortet darau
 });
 
 test("Sprachkanal: die ganze Buchung im Gespräch – Fenster, Name, E-Mail zurückgelesen, Telefon, Notiz, klares Ja", async () => {
-  const { deps, calls } = makeDeps();
+  const { deps, calls } = voiceDeps();
   let r = await o.runTurn(voice(null, "Ich hätte gern einen Kontrolltermin am Dienstag"), deps);
   assert.match(r.reply, /Dienstag, 14\. Juli 2026 – lieber vormittags oder nachmittags\?/);
   assert.deepEqual(r.quick?.map((q) => q.id), ["vormittags", "nachmittags", "egal"]);
@@ -767,14 +790,17 @@ test("Sprachkanal: eine Notiz mit Gesundheitsangaben wird nicht gespeichert – 
 });
 
 test("Sprachkanal: „egal“ auf die Fensterfrage listet den Tag – und fragt nicht noch einmal", async () => {
-  const { deps } = makeDeps();
+  const { deps } = voiceDeps();
   let r = await o.runTurn(voice(null, "Ich hätte gern einen Kontrolltermin am Dienstag"), deps);
   assert.match(r.reply, /vormittags oder nachmittags/);
-  r = await o.runTurn(voice(r.state, "Ist mir egal."), deps);
+  r = await o.runTurn(voice(r.state, "Das ist mir egal."), deps);
+  assert.notEqual(r.flags.silent, true, "eine Antwort auf die eigene Frage ist nie still");
   assert.doesNotMatch(r.reply, /vormittags oder nachmittags/);
   assert.match(r.reply, /07:00/);
+  assert.notEqual(r.flags.handover, true);
   // Und als Knopf.
   let k = await o.runTurn(voice(null, "Ich hätte gern einen Kontrolltermin am Dienstag"), deps);
+  assert.match(k.reply, /vormittags oder nachmittags/);
   k = await o.runTurn(vclick(k.state, "egal"), deps);
   assert.doesNotMatch(k.reply, /vormittags oder nachmittags/);
   assert.match(k.reply, /07:00/);
@@ -783,30 +809,41 @@ test("Sprachkanal: „egal“ auf die Fensterfrage listet den Tag – und fragt 
 test("Sprachkanal: steht schon das Formular und die Patientin spricht, beginnt das Gespräch beim Namen", async () => {
   const { deps } = makeDeps();
   const st = stateAt("contact");
-  // Ein Fetzen wird nicht zum Vornamen – es wird gefragt.
+  // Ein Fetzen wird nicht zum Vornamen – er bleibt still, das Formular steht.
   let r = await o.runTurn(voice(st, "Wochen."), deps);
+  assert.equal(r.flags.silent, true);
+  assert.equal(r.state.draft.contactStep ?? null, null);
+  r = await o.runTurn(voice(r.state, "Hm."), deps);
+  assert.equal(r.flags.silent, true);
+  // Nach zwei stillen Runden wird gefragt.
+  r = await o.runTurn(voice(r.state, "Äh."), deps);
   assert.equal(r.state.draft.contactStep, "name");
-  assert.equal(r.form, undefined);
   assert.match(r.reply, /Wie heißen Sie/);
   // Ein voller Name gilt sofort.
   r = await o.runTurn(voice(st, "Ich heiße Erika Musterfrau"), deps);
   assert.equal(r.state.draft.contactStep, "email");
+  // Andere Absichten gehen ihren Weg – wie getippt.
+  const hand = await o.runTurn(voice(st, "Ich möchte mit einem Menschen sprechen."), deps);
+  assert.equal(hand.flags.handover, true);
+  assert.equal(hand.state.draft.contactStep ?? null, null);
+  const day = await o.runTurn(voice(st, "Lieber am Mittwoch."), deps);
+  assert.equal(day.state.draft.contactStep ?? null, null);
+  assert.equal(day.state.draft.date, "2026-07-15");
   // Getippt bleibt das Formular der Weg.
   const typed = await o.runTurn(msg(st, "Erika Musterfrau"), deps);
   assert.equal(typed.state.draft.contactStep ?? null, null);
 });
 
-test("Ohne aufgezeichnete Einwilligung wird nicht gebucht – die Kontaktdaten werden neu erfragt", async () => {
+test("Einwilligung: das Formular zeichnet sie auf – ein Zustand von davor bucht weiter, weil damals nur das Formular Kontaktdaten setzte", async () => {
   const { deps, calls } = makeDeps();
-  const st = stateAt("confirm");
-  st.draft.consent = null;
-  const r = await o.runTurn(msg(st, "ja"), deps);
-  assert.equal(calls.book.length, 0);
-  assert.equal(r.form?.id, "contact");
-  assert.match(r.reply, /Einwilligung/);
-  // Das Formular zeichnet sie auf.
   const summary = await bisZurBestaetigung(deps);
   assert.equal(summary.state.draft.consent, "form");
+  // Ein Browser mit dem Zustand der Vorversion: Kontakt da, Feld fehlt.
+  const legacy = stateAt("confirm");
+  delete legacy.draft.consent;
+  const r = await o.runTurn(msg(legacy, "ja"), deps);
+  assert.equal(calls.book.length, 1);
+  assert.equal(r.state.draft.consent, "form");
 });
 
 test("Sprachkanal: eine Gesundheitsangabe wird nie zum Namen – Hinweis, und die Frage kommt noch einmal", async () => {
@@ -852,4 +889,103 @@ test("Eine Notiz im mitgeschickten Zustand wird an der Speichergrenze gefiltert 
   ok.draft.note = "Erstbesuch";
   await o.runTurn(msg(ok, "ja"), d2);
   assert.equal(c2.book[0].note, "Erstbesuch");
+});
+
+test("Sprachkanal: die Fensterfrage kommt nur, wenn der Tag beide Hälften hat – sonst gleich die Auskunft", async () => {
+  // Nur Vormittag (die Bühne von testkit): keine Frage, gleich die Zeiten.
+  const { deps } = makeDeps();
+  let r = await o.runTurn(voice(null, "Ich hätte gern einen Kontrolltermin am Dienstag"), deps);
+  assert.doesNotMatch(r.reply, /vormittags oder nachmittags/);
+  assert.match(r.reply, /07:00/);
+  // Leerer Tag: sofort die ehrliche Auskunft, kein Fensterfrage-Umweg.
+  const { deps: leer } = makeDeps({ availability: async (args) => (args.datum ? { kind: "day_empty", date: args.datum, nextDays: [] } : { kind: "next_days", days: [] }) });
+  r = await o.runTurn(voice(null, "Ich hätte gern einen Kontrolltermin am Dienstag"), leer);
+  assert.doesNotMatch(r.reply, /vormittags oder nachmittags/);
+  assert.match(r.reply, /nichts frei/i);
+});
+
+test("Sprachkanal: Blättern nach einer getippten Liste wird nicht von der Fensterfrage gekapert", async () => {
+  const { deps } = voiceDeps();
+  let r = await o.runTurn(msg(null, "Ich hätte gern einen Kontrolltermin am Dienstag"), deps);
+  assert.match(r.reply, /07:00/);
+  r = await o.runTurn(vclick(r.state, "later"), deps);
+  assert.doesNotMatch(r.reply, /vormittags oder nachmittags/);
+  assert.match(r.reply, /14:00/);
+});
+
+test("Sprachkanal: Übergabe- und Weiterleitungswünsche sind nie still", async () => {
+  const { deps } = makeDeps();
+  const hand = await o.runTurn(voice(null, "Mit einem Mitarbeiter sprechen."), deps);
+  assert.notEqual(hand.flags.silent, true);
+  assert.equal(hand.flags.handover, true);
+  const fwd = await o.runTurn(voice(null, "Folgerezept."), deps);
+  assert.notEqual(fwd.flags.silent, true);
+});
+
+test("Sprachkanal: im Namensschritt ist ein Fetzen kein Vorname, ein Nein kein Nachname, „Ja, Erika Musterfrau“ ein Name", async () => {
+  const { deps } = makeDeps();
+  const base = stateAt("contact");
+  const st = { ...base, draft: { ...base.draft, time: "09:00", contactStep: "name", pending: null } };
+  let r = await o.runTurn(voice(st, "Wochen."), deps);
+  assert.equal(r.state.draft.contactStep, "name");
+  assert.match(r.reply, /nicht verstanden/);
+  r = await o.runTurn(voice(st, "Ja, Erika Musterfrau."), deps);
+  assert.deepEqual(r.state.draft.pending, { firstName: "Erika", lastName: "Musterfrau" });
+  // Nachname-Schritt: „Nein.“ heißt von vorn.
+  r = await o.runTurn(voice({ ...st, draft: { ...st.draft, contactStep: "lastName", pending: { firstName: "Wochen" } } }, "Nein."), deps);
+  assert.equal(r.state.draft.contactStep, "name");
+  assert.equal(r.state.draft.pending, null);
+  // „Ich möchte abbrechen.“ ist ein Abbruch, kein Name.
+  r = await o.runTurn(voice(st, "Ich möchte doch abbrechen."), deps);
+  assert.equal(r.state.draft.contactStep ?? null, null);
+  assert.match(r.reply, /ändern/);
+  // Und ein langer Name mit Zusatz geht.
+  r = await o.runTurn(voice(st, "Anna Maria von der Heide"), deps);
+  assert.deepEqual(r.state.draft.pending, { firstName: "Anna Maria", lastName: "von der Heide" });
+});
+
+test("Sprachkanal: nach zwei Fehlversuchen bei Name oder Rückfrage geht es ans Formular – der Zähler läuft nie über", async () => {
+  const { deps } = makeDeps();
+  const base = stateAt("contact");
+  const st = { ...base, draft: { ...base.draft, time: "09:00", contactStep: "name", pending: null } };
+  let r = await o.runTurn(voice(st, "Wochen."), deps);
+  assert.equal(r.state.failures, 1);
+  r = await o.runTurn(voice(r.state, "Und dann."), deps);
+  assert.equal(r.form?.id, "contact");
+  assert.equal(r.state.failures, 0);
+  assert.equal(r.state.draft.contactStep, null);
+  // Rückfrage zur E-Mail: zweimal Unsinn → Formular, nicht Endlosschleife.
+  const conf = { ...st, draft: { ...st.draft, contactStep: "emailConfirm", pending: { firstName: "Erika", lastName: "Musterfrau", email: "erika@example.invalid" } } };
+  r = await o.runTurn(voice(conf, "Wochen."), deps);
+  assert.equal(r.state.draft.contactStep, "emailConfirm");
+  r = await o.runTurn(voice(r.state, "Und dann."), deps);
+  assert.equal(r.form?.id, "contact");
+  // Stille deckelt den Zähler ebenfalls.
+  let sil = { ...stateAt("idle"), failures: 9 };
+  sil = { ...sil, stage: "idle" };
+  const q = await o.runTurn(voice(sil, "Hallo, ich hätte gern einen Termin"), deps);
+  assert.ok(q.state.failures <= 9);
+});
+
+test("Sprachkanal: „Ja, das ist richtig“ bestätigt die Adresse – „Nein, es ist …“ ersetzt sie", async () => {
+  const { deps } = makeDeps();
+  const base = stateAt("contact");
+  const conf = { ...base, draft: { ...base.draft, time: "09:00", contactStep: "emailConfirm", pending: { firstName: "Erika", lastName: "Musterfrau", email: "erika@example.invalid" } } };
+  let r = await o.runTurn(voice(conf, "Ja, das ist richtig."), deps);
+  assert.equal(r.state.draft.contactStep, "phone");
+  r = await o.runTurn(voice(conf, "Nein, es ist erika punkt m at example punkt invalid"), deps);
+  assert.equal(r.state.draft.contactStep, "emailConfirm");
+  assert.equal(r.state.draft.pending.email, "erika.m@example.invalid");
+});
+
+test("Sprachkanal: „Ja“ auf die Notizfrage ist keine Notiz – es wird nach dem Inhalt gefragt", async () => {
+  const { deps } = makeDeps();
+  const base = stateAt("contact");
+  const st = { ...base, draft: { ...base.draft, time: "09:00", contactStep: "note", pending: { firstName: "Erika", lastName: "Musterfrau", email: "erika@example.invalid" } } };
+  let r = await o.runTurn(voice(st, "Ja."), deps);
+  assert.equal(r.state.draft.contactStep, "note");
+  assert.match(r.reply, /was möchten Sie/);
+  r = await o.runTurn(voice(r.state, "Es ist ein Erstbesuch."), deps);
+  assert.equal(r.state.stage, "confirm");
+  assert.equal(r.state.draft.note, "Es ist ein Erstbesuch.");
 });
