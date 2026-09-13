@@ -31,6 +31,13 @@ const VOICE = "alloy";
 /**
  * Das Sprachausgabe-Modell. Nur dieses kennt `instructions`; die älteren
  * `tts-1`/`tts-1-hd` ignorieren den Parameter.
+ *
+ * Achtung für später: Die EU-Residenz gilt **je Modell**, nicht je
+ * Endpunkt, und `gpt-4o-mini-tts` steht nicht auf der Residenz-Liste.
+ * Sobald die Praxis die EU-Verarbeitung bekommt, muss hier `tts-1` stehen
+ * – und dann fällt `instructions` weg. Der Test in `openai.test.mjs` nagelt
+ * den Namen fest, damit dieser Wechsel nie unbemerkt in die falsche
+ * Richtung passiert.
  */
 const TTS_MODEL = "gpt-4o-mini-tts";
 /** Das Zuhör-Modell. Von OpenAI für Echtzeit-Transkription empfohlen. */
@@ -85,14 +92,25 @@ export interface VoiceSecret {
 /**
  * Einen Ausweis für genau eine Zuhör-Sitzung ausstellen.
  *
- * `turn_detection: semantic_vad` statt `server_vad`, und das ist keine
- * Feinheit: `server_vad` misst nur Stille. Wer langsam spricht, nach Worten
- * sucht oder mitten im Satz Luft holt – also genau die ältere Patientin,
- * für die dieser Kanal gebaut ist – wird davon abgeschnitten.
- * `semantic_vad` hört auf den Inhalt und wartet, bis der Satz wirklich zu
- * Ende ist; `eagerness: "low"` stellt es auf die geduldigste Stufe. Die
- * Doku des Anbieters hält ausdrücklich fest, dass das auch für reine
- * Transkriptions-Sitzungen gilt.
+ * `turn_detection`: Der Kommentar hier behauptete früher, `server_vad` sei
+ * der Grund, warum ältere Anrufer nicht mitten im Satz abgeschnitten
+ * werden. Das ist die Umkehrung der Wahrheit – `server_vad` misst nur
+ * Stille und schneidet langsame Sprecher genau deshalb ab.
+ *
+ * Der ehrliche Umgang damit ist nicht, auf `semantic_vad` zu wechseln:
+ * Die Referenz des Anbieters sagt an drei Stellen, in Transkriptions-
+ * Sitzungen sei „only `server_vad` is currently supported"; nur der
+ * VAD-Leitfaden sagt das Gegenteil. Dieser Widerspruch steht seit Monaten
+ * ungeklärt (siehe `docs/sprachkanal-openai.md`, Abschnitt „VAD-Wahl"), und
+ * eine abgelehnte Einstellung wäre ein 400 – der Knopf erschiene und
+ * verbände nie. Eine unbelegte Verbesserung ist keine Verbesserung.
+ *
+ * Stattdessen dieselbe Absicht mit einem Feld, das sicher unterstützt ist:
+ * `silence_duration_ms` deutlich über dem Auslieferungswert von 700 ms.
+ * Wer nach Worten sucht oder mitten im Satz Luft holt, bekommt damit
+ * anderthalb Sekunden Pause zugestanden, statt abgeschnitten zu werden.
+ * `semantic_vad` bleibt das, was es ist: eine zu messende Option, sobald
+ * ein Schlüssel existiert – keine Planungsgrundlage.
  *
  * `languages` mit einem Eintrag, nicht `language`: Das Zuhör-Modell kennt
  * nur die Mehrzahlform, und beide zusammen zu schicken ist verboten. Ein
@@ -112,7 +130,7 @@ export async function mintListenSecret(lang: "de" | "en", signal?: AbortSignal):
           input: {
             format: { type: "audio/pcm", rate: SAMPLE_RATE },
             transcription: { model: STT_MODEL, languages: [lang] },
-            turn_detection: { type: "semantic_vad", eagerness: "low" },
+            turn_detection: { type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 1100 },
           },
         },
       },

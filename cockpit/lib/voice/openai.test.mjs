@@ -45,7 +45,7 @@ test("Der Ausweis ist eine Transkriptions-Sitzung – sie kann strukturell nicht
     const body = JSON.parse(gesehen.init.body);
     assert.equal(body.session.type, "transcription", "keine Sprache-zu-Sprache-Sitzung");
     assert.deepEqual(body.session.audio.input.transcription.languages, ["de"]);
-    assert.equal(body.session.audio.input.turn_detection.type, "semantic_vad");
+    assert.equal(body.session.audio.input.turn_detection.type, "server_vad");
     assert.match(gesehen.url, /\/realtime\/client_secrets$/);
     assert.equal(gesehen.init.headers.authorization, "Bearer sk-geheim");
   } finally {
@@ -118,9 +118,11 @@ test("Die Sprache steht als Liste im Ausweis, nicht als Einzelwert", async () =>
   assert.equal("language" in input.transcription, false, "beide zusammen sind verboten");
 });
 
-test("Das Satzende wird am Inhalt erkannt, nicht an der Stille", async () => {
+test("Die Pause vor dem Satzende ist länger als der Auslieferungswert", async () => {
   // `server_vad` misst nur Stille und schneidet damit genau die Patientin
-  // ab, die langsam spricht. Deshalb die geduldigste Stufe.
+  // ab, die langsam spricht. `semantic_vad` wäre die Antwort darauf, ist
+  // für Transkriptions-Sitzungen aber widersprüchlich dokumentiert – also
+  // dieselbe Absicht über ein Feld, das sicher unterstützt wird.
   let input = null;
   const echt = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
@@ -132,8 +134,8 @@ test("Das Satzende wird am Inhalt erkannt, nicht an der Stille", async () => {
   } finally {
     globalThis.fetch = echt;
   }
-  assert.equal(input.turn_detection.type, "semantic_vad");
-  assert.equal(input.turn_detection.eagerness, "low");
+  assert.equal(input.turn_detection.type, "server_vad");
+  assert.ok(input.turn_detection.silence_duration_ms >= 1000, "mehr Luft als die 700 ms des Anbieters");
 });
 
 test("Der Sprechtext wird gekürzt, statt eine offene Vorlesemaschine zu sein", async () => {
