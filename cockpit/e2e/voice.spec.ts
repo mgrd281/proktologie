@@ -44,3 +44,48 @@ test("Die Sprech-Route weist zu langen Text ab, statt alles vorzulesen", async (
   });
   expect(res.status()).toBe(400);
 });
+
+// ------------------------------------------------- Sprachkanal am Automaten
+
+const SECRET = process.env.E2E_SECRET;
+const ipFor = (sessionId: string) => `198.51.100.${(Number(sessionId.slice(-6)) % 250) + 1}`;
+
+/**
+ * Was der Automat tut, wenn der Text aus dem Mikrofon kommt – über die echte
+ * Route, ohne Mikrofon und ohne Schlüssel: `channel: "voice"` ist alles, was
+ * der Browser dazu mitschickt.
+ */
+test("Im Sprachkanal bleibt ein Wortfetzen still, ein Terminwunsch bekommt die Fensterfrage – und Kontaktdaten werden erfragt, nicht abgefragt", async ({ request }) => {
+  const enable = await request.post("/api/internal/e2e", {
+    data: { secret: SECRET, action: "settings", settings: { bookingLive: true, bookingPaused: false, bannerText: null, chatEnabled: true } },
+  });
+  expect(enable.ok(), await enable.text()).toBeTruthy();
+
+  const sessionId = "11111111-2222-4333-8444-000000000077";
+  const say = async (state: unknown, message: string) => {
+    const r = await request.post("/api/public/v1/chat", {
+      data: { v: 1, sessionId, state, channel: "voice", message },
+      headers: { Origin: SITE, "X-Forwarded-For": ipFor(sessionId) },
+    });
+    expect(r.status(), await r.text()).toBe(200);
+    return (await r.json()) as { reply: string; state: unknown; form?: { id: string }; quick?: Array<{ id: string }>; flags: { silent?: true } };
+  };
+
+  const aside = await say(null, "Wochen.");
+  expect(aside.reply).toBe("");
+  expect(aside.flags.silent).toBe(true);
+
+  const wish = await say(aside.state, "Ich hätte gern einen Kontrolltermin am Dienstag");
+  expect(wish.flags.silent).toBeUndefined();
+  expect(wish.reply).toMatch(/vormittags oder nachmittags\?$/);
+  expect(wish.quick?.map((q) => q.id)).toEqual(["vormittags", "nachmittags", "egal"]);
+
+  // Getippt bekommt derselbe Fetzen sofort eine Antwort.
+  const typed = await request.post("/api/public/v1/chat", {
+    data: { v: 1, sessionId, state: null, message: "Wochen." },
+    headers: { Origin: SITE, "X-Forwarded-For": ipFor(sessionId) },
+  });
+  const typedBody = (await typed.json()) as { reply: string; flags: { silent?: true } };
+  expect(typedBody.flags.silent).toBeUndefined();
+  expect(typedBody.reply.length).toBeGreaterThan(0);
+});

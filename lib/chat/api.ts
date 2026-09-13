@@ -47,6 +47,8 @@ export interface ChatAnswer {
     emergency?: true;
     handover?: true;
     booked?: { ref: string; mail: "sent" | "failed" };
+    /** Nichts zeigen, nichts sprechen, weiter zuhören – der Satz galt nicht uns. Nur im Sprachkanal. */
+    silent?: true;
     /** Der Server hat die Sprache aus dem Text erkannt – nur dann folgt die Oberfläche `lang`. */
     langDetected?: true;
     /** Eine Sprache, die der Chat nicht spricht: die Antwort ist ein fester Satz in dieser Sprache. */
@@ -63,6 +65,8 @@ export interface ChatSend {
   state: unknown;
   /** Vom Patienten ausdrücklich gewählte Sprache – sie gewinnt gegen die Erkennung. */
   lang?: ChatLang;
+  /** „voice“: der Text kommt aus der Spracherkennung – der Automat führt dann ein Gespräch statt Formulare zu zeigen. */
+  channel?: "text" | "voice";
   message?: string;
   action?: { kind: "quick"; id: string } | { kind: "form"; formId: "contact" | "callback"; values: Record<string, string> };
 }
@@ -70,9 +74,10 @@ export interface ChatSend {
 function parseAnswer(body: unknown): ChatAnswer | null {
   if (!body || typeof body !== "object") return null;
   const b = body as Record<string, unknown>;
-  if (typeof b.reply !== "string" || !b.reply) return null;
-  if (b.lang !== "de" && b.lang !== "en") return null;
   const flags = (b.flags ?? {}) as Record<string, unknown>;
+  // Eine stille Antwort hat keinen Text – das ist ihr Sinn, kein Fehler.
+  if (typeof b.reply !== "string" || (!b.reply && flags.silent !== true)) return null;
+  if (b.lang !== "de" && b.lang !== "en") return null;
   const llm = flags.llm === "model" || flags.llm === "fallback" ? flags.llm : "none";
   return {
     reply: b.reply,
@@ -85,6 +90,7 @@ function parseAnswer(body: unknown): ChatAnswer | null {
       emergency: flags.emergency === true ? true : undefined,
       handover: flags.handover === true ? true : undefined,
       booked: isBooked(flags.booked) ? flags.booked : undefined,
+      silent: flags.silent === true ? true : undefined,
       langDetected: flags.langDetected === true ? true : undefined,
       foreign: typeof flags.foreign === "string" ? flags.foreign : undefined,
       llm,

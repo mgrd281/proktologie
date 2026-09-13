@@ -163,6 +163,7 @@ async function bookSlot(input: Parameters<ChatDeps["book"]>[0], ip: string): Pro
         email: input.email,
         phone: input.phone,
         locale: input.locale,
+        note: input.note,
       },
       { ip, source: "chat" },
     );

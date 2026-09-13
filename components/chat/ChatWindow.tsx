@@ -67,6 +67,10 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
   const [level, setLevel] = useState(0);
   const meterStopRef = useRef<(() => void) | null>(null);
   const liveRef = useRef<LiveSession | null>(null);
+  /** Der laufende Zug kam aus dem Mikrofon – dann keine Tipp-Blase, und Stille ist erlaubt. */
+  const voiceTurnRef = useRef(false);
+  /** Der Mikrofonknopf pulst beim ersten Öffnen einmal kurz – danach nie wieder. */
+  const [pulse, setPulse] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const talkRef = useRef<((text: string) => void) | null>(null);
   /** Die laufende Sitzungskennung, damit die Sprachsitzung nicht auf einer alten sitzt. */
@@ -185,6 +189,24 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
   }, [session.messages.length, pending]);
 
+  // Wer nicht weiß, dass man hier sprechen kann, tippt. Darum pulst der
+  // Mikrofonknopf beim ersten Mal ein paar Sekunden – einmal je Tab, und
+  // bei „weniger Bewegung" gar nicht (`motion-safe:` regelt das im CSS).
+  useEffect(() => {
+    if (!voice) return;
+    let seen = false;
+    try {
+      seen = window.sessionStorage.getItem("pe-chat-voice-hint") === "1";
+      window.sessionStorage.setItem("pe-chat-voice-hint", "1");
+    } catch {
+      // Ohne Speicher pulst es eben bei jedem Öffnen – harmlos.
+    }
+    if (seen) return;
+    setPulse(true);
+    const id = window.setTimeout(() => setPulse(false), 4_000);
+    return () => window.clearTimeout(id);
+  }, [voice]);
+
   /**
    * Der Cursor gehört ins Eingabefeld – das ist das einzige Zeichen, das
    * ohne Worte sagt „hier können Sie schreiben“. Ohne ihn liest sich das
@@ -215,23 +237,51 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
   const talk = useCallback(
     async (payload: { message?: string; action?: Parameters<typeof sendChat>[1]["action"] }, echo?: string) => {
       if (pending) return;
+      // Solange das Mikrofon offen ist, kommt jeder Zug „aus der Stimme" – auch
+      // ein Knopfdruck oder ein Formular. Der Automat führt dann das Gespräch
+      // weiter, statt auf ein Formular zurückzufallen.
+      const voiceTurn = liveRef.current !== null;
+      voiceTurnRef.current = voiceTurn;
+      const keep = { quick, form, links };
       setPending(true);
       setQuick([]);
       setForm(null);
       setLinks([]);
       let next = session;
-      if (echo) {
+      // Gesprochenes wird erst gezeigt, wenn klar ist, dass es uns galt: Ein
+      // Wortfetzen, den der Automat still übergeht, soll keine Blase hinterlassen.
+      if (echo && !voiceTurn) {
         next = append(next, "user", echo, Date.now());
         setSession(next);
       }
-      const result = await sendChat(site.cockpitApiUrl, { sessionId: next.sessionId, state: next.state, ...(langChosen ? { lang } : {}), ...payload });
+      const result = await sendChat(site.cockpitApiUrl, {
+        sessionId: next.sessionId,
+        state: next.state,
+        ...(langChosen ? { lang } : {}),
+        channel: voiceTurn ? "voice" : "text",
+        ...payload,
+      });
       if (!result.ok) {
+        if (echo && voiceTurn) next = append(next, "user", echo, Date.now());
         setSession(append(next, "assistant", copy.errors[result.error], Date.now()));
         setQuick(copy.quickStart);
         setPending(false);
+        liveRef.current?.answered();
         return;
       }
       const a = result.answer;
+      if (a.flags.silent) {
+        // Galt nicht uns, oder war ein Fetzen: nichts zeigen, nichts sagen,
+        // Zustand übernehmen, Knöpfe und Formular stehen lassen, weiter zuhören.
+        setSession({ ...next, state: a.state });
+        setQuick(keep.quick);
+        setForm(keep.form);
+        setLinks(keep.links);
+        setPending(false);
+        liveRef.current?.answered();
+        return;
+      }
+      if (echo && voiceTurn) next = append(next, "user", echo, Date.now());
       // Die Sprache der Oberfläche folgt dem Server nur, wenn er sie aus dem
       // Text erkannt hat – nie gegen eine ausdrückliche Wahl.
       const follow = a.flags.langDetected === true && !langChosen && a.lang !== lang;
@@ -258,7 +308,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
       }
       liveRef.current?.answered();
     },
-    [pending, session, copy, lang, onLang, langChosen, closeVoice],
+    [pending, session, copy, lang, onLang, langChosen, closeVoice, quick, form, links],
   );
 
   const submitDraft = () => {
@@ -439,10 +489,16 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
                       </a>
                     </p>
                   )}
+                  {i === 0 && m.role === "assistant" && voice && (
+                    <p className="mt-2 flex items-start gap-1.5 px-1 text-xs text-primary-deep">
+                      <Icon name="mic" size={14} className="mt-0.5 shrink-0" />
+                      <span>{copy.voice.intro}</span>
+                    </p>
+                  )}
                 </div>
               </li>
             ))}
-              {pending && (
+              {pending && !voiceTurnRef.current && (
                 <li className="flex justify-start">
                   <p className="rounded-2xl rounded-bl-sm bg-mist px-3.5 py-2.5 text-sm text-ink/70">{copy.typing}</p>
                 </li>
@@ -525,7 +581,11 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
             </div>
           )}
 
-          {!emergency && !form && (
+          {/* Steht ein Formular, weicht das Textfeld – das Mikrofon bleibt:
+              Wer spricht, soll weitersprechen können, und wer erst jetzt
+              sprechen will, kann es. Ein Formular, das das Mikrofon
+              versteckt, war der Grund, warum die Stimme wie Tippen wirkte. */}
+          {!emergency && (!form || voice) && (
             <div className="flex items-end gap-2 border-t border-mist bg-mist/40 px-3 py-3">
               {voice && (
                 <button
@@ -533,44 +593,50 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
                   onClick={toggleVoice}
                   aria-pressed={listening !== "idle"}
                   aria-label={listening === "idle" ? copy.voice.start : copy.voice.stop}
-                  title={listening === "idle" ? copy.voice.start : copy.voice.stop}
+                  title={listening === "idle" ? copy.voice.startTitle : copy.voice.stop}
                   className={`flex size-11 shrink-0 items-center justify-center rounded-xl transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
                     listening === "idle"
-                      ? "border-2 border-primary/25 bg-white text-primary-deep hover:bg-mist"
+                      ? `border-2 border-primary/25 bg-white text-primary-deep hover:bg-mist ${pulse ? "motion-safe:animate-pulse ring-4 ring-primary/20" : ""}`
                       : "bg-red-600 text-white hover:bg-red-700"
                   }`}
                 >
                   <Icon name={listening === "idle" ? "mic" : "mic-off"} size={18} />
                 </button>
               )}
-              <label htmlFor="site-chat-input" className="sr-only">
-                {copy.composerLabel}
-              </label>
-              <textarea
-                id="site-chat-input"
-                ref={inputRef}
-                rows={1}
-                value={draft}
-                maxLength={600}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    submitDraft();
-                  }
-                }}
-                placeholder={copy.composerPlaceholder}
-                className="max-h-32 min-h-11 flex-1 resize-none rounded-xl border-2 border-primary/25 bg-white px-3 py-2.5 text-sm text-ink shadow-sm transition placeholder:text-ink/60 focus:border-primary/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
-              />
-              <button
-                type="button"
-                onClick={submitDraft}
-                disabled={pending || draft.trim().length === 0}
-                aria-label={copy.send}
-                className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary text-cream transition hover:bg-primary-deep disabled:bg-primary/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-              >
-                <Icon name="send" size={18} />
-              </button>
+              {form ? (
+                <p className="flex-1 self-center text-xs text-ink/70">{listening === "idle" ? copy.voice.formHint : copy.voice.formHintLive}</p>
+              ) : (
+                <>
+                  <label htmlFor="site-chat-input" className="sr-only">
+                    {copy.composerLabel}
+                  </label>
+                  <textarea
+                    id="site-chat-input"
+                    ref={inputRef}
+                    rows={1}
+                    value={draft}
+                    maxLength={600}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        submitDraft();
+                      }
+                    }}
+                    placeholder={voice ? copy.composerPlaceholderVoice : copy.composerPlaceholder}
+                    className="max-h-32 min-h-11 flex-1 resize-none rounded-xl border-2 border-primary/25 bg-white px-3 py-2.5 text-sm text-ink shadow-sm transition placeholder:text-ink/60 focus:border-primary/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+                  />
+                  <button
+                    type="button"
+                    onClick={submitDraft}
+                    disabled={pending || draft.trim().length === 0}
+                    aria-label={copy.send}
+                    className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary text-cream transition hover:bg-primary-deep disabled:bg-primary/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                  >
+                    <Icon name="send" size={18} />
+                  </button>
+                </>
+              )}
             </div>
           )}
         </>

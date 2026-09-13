@@ -11,6 +11,8 @@ import { matchType, renderSlotAnswer, typeTerms, type SlotAnswer, type ToolConte
 import { parseDate, parseTime } from "./datetime.ts";
 import { normalize } from "./normalize.ts";
 import { t } from "./texts.ts";
+import { isSkip, normalizeSpokenEmail, parseSpokenName, parseSpokenPhone, spokenYesNo } from "./spoken.ts";
+import { isBindingYes, judge } from "../voice/addressee.ts";
 
 /**
  * Der Gesprächsablauf – ein Automat, kein Sprachmodell.
@@ -102,6 +104,42 @@ export const chatStateSchema = z.object({
     window: z.object({ from: z.string().regex(timeRe), to: z.string().regex(timeRe) }).nullable().default(null),
     /** Welche Seite der Zeiten eines Tages gerade gezeigt wird. */
     page: z.number().int().min(1).max(20).default(1),
+    /**
+     * Freiwillige Anmerkung zur Buchung – nur aus dem Sprachdialog, nach
+     * dem Gesundheitsfilter. Ältere Zustände ohne das Feld bleiben gültig.
+     */
+    note: z.string().max(300).nullable().default(null),
+    /**
+     * Der Schritt im gesprochenen Kontaktdialog. Im Textkanal gibt es das
+     * Formular, hier fragt der Automat ein Feld nach dem anderen ab.
+     * `null` heißt: kein Sprachdialog im Gange.
+     */
+    contactStep: z.enum(["name", "lastName", "email", "emailConfirm", "phone", "note"]).nullable().default(null),
+    /**
+     * Was im Gespräch schon genannt wurde, bis alles beisammen ist. Erst
+     * dann wird daraus `contact` – der Rest des Automaten liest nur das.
+     */
+    pending: z
+      .object({
+        firstName: z.string().max(80).optional(),
+        lastName: z.string().max(80).optional(),
+        email: z.string().max(200).optional(),
+        phone: z.string().max(40).optional(),
+      })
+      .nullable()
+      .default(null),
+    /**
+     * Womit die Patientin der Speicherung zugestimmt hat: mit dem Häkchen im
+     * Formular oder mit dem Ja auf die vorgelesene Zusammenfassung samt
+     * Einwilligungssatz. Ohne Einwilligung bucht `book()` nicht – egal, auf
+     * welchem Weg die Kontaktdaten in den Entwurf kamen.
+     */
+    consent: z.enum(["form", "voice"]).nullable().default(null),
+    /**
+     * Für welchen Tag die Stimme schon „vormittags oder nachmittags?“
+     * gefragt hat. Einmal je Tag – sonst dreht sich das Gespräch im Kreis.
+     */
+    windowAsked: z.string().regex(dateRe).nullable().default(null),
   }),
   lastOffer: z.array(z.object({ date: z.string().regex(dateRe), time: z.string().regex(timeRe) })).max(8),
   callbackKind: z.enum(["rueckruf", "folgerezept", "ueberweisung", "befundkopie", "sonstiges"]).nullable(),
@@ -116,6 +154,13 @@ export const chatRequestSchema = z.object({
   state: z.unknown().nullish(),
   /** Vom Patienten ausdrücklich gewählte Sprache – sie gewinnt gegen die Erkennung. */
   lang: z.enum(["de", "en"]).optional(),
+  /**
+   * Woher der Text kommt. „voice“: erkannte Sprache. Dann fragt der
+   * Automat Kontaktdaten im Gespräch ab statt per Formular, verschluckt
+   * Wortfetzen, die niemandem galten, und bucht nur auf ein klares Ja.
+   * Fehlt das Feld, gilt der Textkanal – ältere Clients bleiben gültig.
+   */
+  channel: z.enum(["text", "voice"]).optional(),
   message: z.string().max(600).optional(),
   action: z
     .union([
@@ -161,6 +206,11 @@ export interface ChatResponse {
     emergency?: true;
     handover?: true;
     booked?: { ref: string; mail: "sent" | "failed" };
+    /**
+     * Nichts sagen, nichts zeigen, weiter zuhören: Der Satz galt vermutlich
+     * jemandem im Raum oder war ein Wortfetzen. Nur im Sprachkanal.
+     */
+    silent?: true;
     /** Die Sprache wurde aus der Nachricht erkannt und gewechselt. */
     langDetected?: true;
     /** Nachricht in einer Sprache, die der Chat nicht spricht – fester Satz, kein Modell. */
@@ -179,6 +229,8 @@ export interface BookInput {
   email: string;
   phone?: string;
   locale: Lang;
+  /** Freiwillige Anmerkung – nie Gesundheitsangaben; der Filter läuft vorher. */
+  note?: string;
 }
 
 export type BookOutcome =
@@ -221,6 +273,12 @@ export interface ChatDeps {
   bookingsToday(email: string): Promise<boolean>;
   isBlocked(email: string | null, phone: string | null): boolean;
   audit(event: string, data?: Record<string, unknown>): void;
+  /**
+   * Woher der Text kommt. Im Sprachkanal fragt der Automat Kontaktdaten im
+   * Gespräch ab statt per Formular, verschluckt Wortfetzen, die niemandem
+   * galten, und bucht nur auf ein klares Ja. Wird je Anfrage gesetzt.
+   */
+  channel?: "text" | "voice";
 }
 
 // ------------------------------------------------------------- Zustand
@@ -231,7 +289,7 @@ export function freshState(lang: Lang = "de"): ChatState {
     lang,
     stage: "idle",
     intent: null,
-    draft: { typeId: null, date: null, time: null, contact: null, window: null, page: 1 },
+    draft: { typeId: null, date: null, time: null, contact: null, window: null, page: 1, note: null, contactStep: null, pending: null, consent: null, windowAsked: null },
     lastOffer: [],
     callbackKind: null,
     failures: 0,
@@ -265,7 +323,12 @@ type QuickId =
   | "changeContact"
   | "takeIt"
   | "later"
-  | "earlier";
+  | "earlier"
+  | "vormittags"
+  | "nachmittags"
+  | "egal"
+  | "correct"
+  | "wrong";
 
 function quick(lang: Lang, ids: QuickId[]): QuickReply[] {
   const q = t(lang).quick;
@@ -536,6 +599,10 @@ const LATER_RE = /(?<!\p{L})(?:sp(?:ä|ae)ter\p{L}*|danach|nach hinten|later|aft
 const EARLIER_RE = /(?<!\p{L})(?:fr(?:ü|ue)her\p{L}*|vorher|earlier|before that)(?!\p{L})/iu;
 const NONE_RE =
   /(?<!\p{L})(?:nichts davon|nichts passt|keins? davon|keine davon|keine[rs]? passt|geht alles nicht|passt (?:alles )?nicht|was anderes|etwas anderes|something else|none of (?:those|them|these)|nothing (?:works|fits|suits)|(?:that |these |those )?do(?:es)?n'?t work)/iu;
+/** „Egal" auf die Frage vormittags oder nachmittags. */
+const EGAL_RE = /^(?:(?:ist|is)\s+)?(?:mir\s+)?(?:egal|ganz egal|beides|beide|wie es passt|wann sie wollen|either|any|anytime|no preference|doesn't matter|whatever)[.!\s]*$/iu;
+/** Der Ausstieg aus dem Kontaktdialog. */
+const CANCEL_RE = /^(?:abbrechen|abbruch|stopp?|zurück|zurueck|doch nicht|vergiss es|cancel|stop|never ?mind|forget it)[.!\s]*$/iu;
 const OTHER_DAY_RE = /(?<!\p{L})(?:ander(?:er|en|em) tag|anderes datum|another day|other day|different day)(?!\p{L})/iu;
 
 // -------------------------------------------------------------- Ablauf
@@ -575,7 +642,8 @@ export function emergencyReply(state: ChatState, text = ""): ChatResponse {
   });
 }
 
-export async function runTurn(req: ChatRequest, deps: ChatDeps): Promise<ChatResponse> {
+export async function runTurn(req: ChatRequest, deps0: ChatDeps): Promise<ChatResponse> {
+  const deps: ChatDeps = { ...deps0, channel: req.channel ?? deps0.channel ?? "text" };
   const now = deps.now();
   let state = stateFor(req);
   state = { ...state, turns: Math.min(state.turns + 1, 500) };
@@ -646,8 +714,49 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
   // 1. Gesundheitsangaben: Hinweis statt Verarbeitung – das Modell sieht
   //    diesen Text nicht, und gespeichert wird er auch nicht. Die Namen
   //    der buchbaren Terminarten zählen nicht als Gesundheitsangabe.
+  // Der gesprochene Kontaktdialog: Solange ein Schritt offen ist, ist jede
+  // Äußerung die Antwort darauf – ein Name ist keine Gesundheitsangabe,
+  // und die Notiz wird im Schritt selbst gefiltert.
+  if (state.stage === "contact" && state.draft.contactStep) return contactDialogue(text, state, deps, now);
+  // Das Formular stand schon (Textzug), jetzt spricht die Patientin: Der
+  // Dialog beginnt beim Namen. Nennt sie ihn gleich vollständig, gilt das;
+  // ein Wortfetzen wird nicht zum Vornamen.
+  if (deps.channel === "voice" && state.stage === "contact" && !state.draft.contact) {
+    const n = parseSpokenName(text);
+    if (n?.lastName) return contactDialogue(text, { ...state, draft: { ...state.draft, contactStep: "name", pending: null } }, deps, now);
+    return askContact(state, deps);
+  }
+
   const health = detectHealthData(text, { ignore: isQuestion ? [...typeTerms(types), ...SERVICE_ASK_TERMS] : typeTerms(types) });
   const acute = isAcuteConcern(text, health !== null);
+
+  // Im Sprachkanal: Galt der Satz überhaupt uns? Ein Wortfetzen („Wochen."),
+  // ein Erkennungsfehler, ein Zuruf an jemanden im Raum – darauf antwortet
+  // ein Mensch am Empfang nicht mit „Das habe ich nicht verstanden", er
+  // hört weiter zu. Nach zwei stillen Runden sagt der Automat trotzdem
+  // etwas, damit niemand vor einem stummen Fenster sitzt.
+  if (deps.channel === "voice" && state.failures < 2) {
+    const when = readWhen(text, now, lang);
+    const asked = state.stage === "time" || state.stage === "date";
+    const hasIntent =
+      hasWish(when) ||
+      namedType !== null ||
+      health !== null ||
+      BOOKING_WISH_RE.test(norm) ||
+      BOOKING_RE.test(norm) ||
+      QUESTION_RE.test(text) ||
+      findTopics(norm, lang).length > 0 ||
+      isBareYes(text) ||
+      YES_START_RE.test(text) ||
+      NO_RE.test(text) ||
+      state.stage === "confirm" ||
+      (asked && (LATER_RE.test(text) || EARLIER_RE.test(text) || NONE_RE.test(text) || OTHER_DAY_RE.test(text) || EGAL_RE.test(text)));
+    const verdict = judge({ text }, { stage: state.stage, hasIntent, isEmergency: false, lang }).verdict;
+    if (verdict !== "me") {
+      deps.audit("chat.voice_aside", { stage: state.stage, verdict });
+      return silent(state);
+    }
+  }
   if (health?.medicalQuestion) {
     deps.audit("chat.health_filtered", { medicalQuestion: true });
     return say({ ...state, failures: 0 }, T.medicalRefusal, { quick: quick(lang, ["book", "callback"]) });
@@ -747,6 +856,10 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
       if (when.time || when.window) {
         return checkSlot(ready, deps, now, state.draft.date, when.time, { window: windowFor(when, state.draft), page: 1 });
       }
+      // „Egal" auf die Fensterfrage: alle Zeiten des Tages.
+      if (state.draft.date && EGAL_RE.test(text)) {
+        return checkSlot(ready, deps, now, state.draft.date, null, { window: null, page: 1 });
+      }
       // „Nichts davon passt", „anderer Tag" – weiter suchen, nicht raten.
       if (NONE_RE.test(text) || OTHER_DAY_RE.test(text)) {
         const ab = state.draft.date ? addDays(state.draft.date, 1) : null;
@@ -842,7 +955,17 @@ async function confirmStage(text: string, state: ChatState, deps: ChatDeps, now:
     const newTime = time ?? (date && date !== d.date ? null : when.window ? null : d.time);
     return checkSlot(next, deps, now, newDate, newTime, { window: windowFor(when, d), page: 1 });
   }
-  if (isBareYes(text)) return book(state, deps, now);
+  if (deps.channel === "voice") {
+    // Gesprochen bucht nur eine Ganzäußerung aus der geschlossenen Liste
+    // („Ja", „Ja bitte", „Bitte buchen"). Ein „mhm", ein „okay", ein „ja"
+    // mitten im Satz bucht nichts – dafür wird einmal deutlich nachgefragt.
+    if (isBindingYes(text, "me", "confirm")) return book(state, deps, now);
+    if (isBareYes(text) || YES_START_RE.test(text)) {
+      return say({ ...state, failures: 1 }, T.voice.clearYes, { quick: quick(lang, ["yes", "no"]) });
+    }
+  } else if (isBareYes(text)) {
+    return book(state, deps, now);
+  }
   if (NO_RE.test(text) || YES_START_RE.test(text)) {
     return say({ ...state, failures: 0 }, T.whatToChange, { quick: changeQuick(lang) });
   }
@@ -871,6 +994,13 @@ async function handleQuick(id: string, prev: ChatState, deps: ChatDeps, now: Dat
   const T = t(lang);
 
   if (id === "book" || id === "again") return startBooking(state, deps, now, "", NO_WHEN);
+  // „Vormittags / Nachmittags / Egal" – die gesprochene Fensterfrage, als Knopf.
+  if (id === "vormittags" || id === "nachmittags" || id === "egal") {
+    const window = id === "egal" ? null : readWhen(id, now, lang).window;
+    return checkSlot(state, deps, now, state.draft.date, null, { window, page: 1 });
+  }
+  // „Richtig / Nicht richtig" – die Rückfrage im Kontaktdialog, als Knopf.
+  if (id === "correct" || id === "wrong") return handleText(id === "correct" ? "ja" : "nein", state, deps, now);
   if (id === "hours" || id === "directions") {
     const topics: Topic[] = id === "hours" ? ["oeffnungszeiten"] : ["anfahrt", "adresse"];
     return answerTopics(topics, state, deps, null);
@@ -902,7 +1032,7 @@ async function handleQuick(id: string, prev: ChatState, deps: ChatDeps, now: Dat
     return say({ ...state, stage: "type", draft: { ...state.draft, typeId: null } }, T.askType, { quick: typeQuick(types) });
   }
   if (id === "changeContact") {
-    return say({ ...state, stage: "contact", draft: { ...state.draft, contact: null } }, T.askContact, { form: contactForm(lang) });
+    return askContact({ ...state, draft: { ...state.draft, contact: null } }, deps);
   }
   if (id.startsWith("type:")) {
     const typeId = id.slice(5);
@@ -953,7 +1083,7 @@ async function handleForm(
       email: get("email").slice(0, 200),
       phone: get("phone") ? get("phone").slice(0, 40) : undefined,
     };
-    const next: ChatState = { ...state, stage: "confirm", draft: { ...state.draft, contact } };
+    const next: ChatState = { ...state, stage: "confirm", draft: { ...state.draft, contact, consent: "form" } };
     return say(next, await summarySentence(next, deps), { quick: quick(lang, ["yes", "no"]) });
   }
 
@@ -1107,6 +1237,14 @@ async function checkSlot(
   const lang = state.lang;
   const window = opts.window === undefined ? state.draft.window : opts.window;
   if (!state.draft.typeId) return startBooking(state, deps, now, "", { ...NO_WHEN, date, time, window });
+  // Gesprochen fragt man nicht sechs Uhrzeiten ab, man fragt „vormittags
+  // oder nachmittags?". Nur beim ersten Mal für diesen Tag – danach wird
+  // gelistet, sonst dreht sich das Gespräch im Kreis.
+  if (deps.channel === "voice" && date && !time && !window && state.draft.windowAsked !== date) {
+    const next: ChatState = { ...state, stage: "time", failures: 0, lastOffer: [], draft: { ...state.draft, date, time: null, window: null, page: 1, windowAsked: date } };
+    const day = fmtLongDateLocale(new Date(`${date}T12:00:00Z`), lang);
+    return say(next, t(lang).voice.askWindow(day), { quick: quick(lang, ["vormittags", "nachmittags", "egal"]) });
+  }
   const page = Math.max(1, opts.page ?? 1);
   const answer = await deps.availability({ art: state.draft.typeId, datum: date, uhrzeit: time, fenster: window, seite: page }, { now, lang });
   const next: ChatState = {
@@ -1139,8 +1277,7 @@ async function renderAvailability(answer: SlotAnswer, state: ChatState, deps: Ch
         const next: ChatState = { ...state, stage: "confirm", draft };
         return say(next, `${sentence} ${T.contactReused} ${await summarySentence(next, deps)}`, { quick: quick(lang, ["yes", "no"]) });
       }
-      const next: ChatState = { ...state, stage: "contact", draft };
-      return say(next, `${sentence} ${T.askContact}`, { form: contactForm(lang) });
+      return askContact({ ...state, draft }, deps, sentence);
     }
     case "time_taken": {
       const next: ChatState = {
@@ -1194,6 +1331,138 @@ async function renderAvailability(answer: SlotAnswer, state: ChatState, deps: Ch
   }
 }
 
+// --------------------------------------------------- Sprachkanal
+
+/**
+ * Nichts sagen, nichts zeigen, weiter zuhören. Der Zustand bleibt, nur der
+ * Zähler geht hoch: Nach zwei stillen Runden antwortet der Automat wieder,
+ * damit niemand vor einem stummen Fenster sitzt.
+ */
+function silent(state: ChatState): ChatResponse {
+  return { reply: "", lang: state.lang, state: { ...state, failures: state.failures + 1 }, flags: { llm: "none", silent: true } };
+}
+
+/**
+ * Kontaktdaten erfragen – als Formular im Textkanal, als Gespräch im
+ * Sprachkanal. Der Rest des Automaten sieht davon nichts: Am Ende steht in
+ * beiden Fällen `draft.contact`.
+ */
+function askContact(state: ChatState, deps: ChatDeps, prefix = ""): ChatResponse {
+  const lang = state.lang;
+  const T = t(lang);
+  const lead = prefix ? `${prefix} ` : "";
+  if (deps.channel === "voice") {
+    const next: ChatState = { ...state, stage: "contact", failures: 0, draft: { ...state.draft, contact: null, consent: null, contactStep: "name", pending: null } };
+    return say(next, `${lead}${T.voice.askName}`);
+  }
+  const next: ChatState = { ...state, stage: "contact", draft: { ...state.draft, contact: null, consent: null, contactStep: null, pending: null } };
+  return say(next, `${lead}${T.askContact}`, { form: contactForm(lang) });
+}
+
+/**
+ * Der gesprochene Kontaktdialog: ein Feld nach dem anderen. Die E-Mail-
+ * Adresse wird zurückgelesen, bevor sie gilt – eine falsch gehörte Adresse
+ * ist eine Bestätigung, die nie ankommt. Was zweimal nicht sicher
+ * verstanden wird, geht ehrlich ans Formular; die Notiz läuft durch
+ * denselben Gesundheitsfilter wie beim Rückruf.
+ */
+async function contactDialogue(text: string, state: ChatState, deps: ChatDeps, now: Date): Promise<ChatResponse> {
+  const lang = state.lang;
+  const T = t(lang);
+  const V = T.voice;
+  const d = state.draft;
+  const step = d.contactStep;
+  const pending = d.pending ?? {};
+  const said = text.trim();
+  void now;
+
+  if (CANCEL_RE.test(said)) {
+    return say({ ...state, stage: "date", failures: 0, draft: { ...d, contactStep: null, pending: null } }, T.whatToChange, { quick: changeQuick(lang) });
+  }
+  const go = (
+    patch: Partial<NonNullable<ChatState["draft"]["pending"]>>,
+    nextStep: ChatState["draft"]["contactStep"],
+    reply: string,
+    extra: { quick?: QuickReply[] } = {},
+  ): ChatResponse => say({ ...state, failures: 0, draft: { ...d, pending: { ...pending, ...patch }, contactStep: nextStep } }, reply, extra);
+  const retry = (reply: string, extra: { quick?: QuickReply[] } = {}): ChatResponse => say({ ...state, failures: state.failures + 1 }, reply, extra);
+
+  switch (step) {
+    case "name": {
+      const n = parseSpokenName(said);
+      if (!n) return retry(V.nameAgain);
+      if (!n.lastName) return go({ firstName: n.firstName }, "lastName", V.askLastName(n.firstName));
+      return go({ firstName: n.firstName, lastName: n.lastName }, "email", V.askEmail);
+    }
+    case "lastName": {
+      const n = parseSpokenName(said);
+      if (!n) return retry(V.nameAgain);
+      // „Nein, ich heiße Max Mustermann“ – ein voller Name ersetzt beides.
+      if (n.lastName) return go({ firstName: n.firstName, lastName: n.lastName }, "email", V.askEmail);
+      return go({ lastName: n.firstName }, "email", V.askEmail);
+    }
+    case "email": {
+      const email = normalizeSpokenEmail(said);
+      if (!email) {
+        if (state.failures >= 1) {
+          // Zweimal nicht sicher verstanden: ehrlich ans Formular – das
+          // Mikrofon bleibt offen, danach geht es gesprochen weiter.
+          return say({ ...state, failures: 0, draft: { ...d, contactStep: null, pending: null } }, V.emailTypeInstead, { form: contactForm(lang) });
+        }
+        return retry(V.emailAgain);
+      }
+      return go({ email }, "emailConfirm", V.confirmEmail(email), { quick: quick(lang, ["correct", "wrong"]) });
+    }
+    case "emailConfirm": {
+      const yn = spokenYesNo(said);
+      if (yn === "yes") return go({}, "phone", V.askPhone);
+      if (yn === "no") return go({ email: undefined }, "email", V.emailAgain);
+      // Vielleicht hat sie die Adresse gleich noch einmal gesagt.
+      const again = normalizeSpokenEmail(said);
+      if (again) return go({ email: again }, "emailConfirm", V.confirmEmail(again), { quick: quick(lang, ["correct", "wrong"]) });
+      return retry(V.confirmEmail(pending.email ?? ""), { quick: quick(lang, ["correct", "wrong"]) });
+    }
+    case "phone": {
+      if (isSkip(said)) return go({}, "note", V.askNote);
+      const phone = parseSpokenPhone(said);
+      if (!phone) {
+        if (state.failures >= 1) return go({}, "note", `${V.phoneSkipped} ${V.askNote}`);
+        return retry(V.phoneAgain);
+      }
+      return go({ phone }, "note", V.askNote);
+    }
+    case "note": {
+      let note: string | null = null;
+      let dropped = false;
+      if (!isSkip(said)) {
+        if (detectHealthData(said) !== null) {
+          dropped = true;
+          deps.audit("chat.note_dropped");
+        } else {
+          note = said.slice(0, 300);
+        }
+      }
+      const { firstName, lastName, email, phone } = pending;
+      if (!firstName || !lastName || !email) {
+        // Sollte nie passieren – wenn doch, lieber von vorn als eine halbe Buchung.
+        return askContact(state, deps);
+      }
+      const next: ChatState = {
+        ...state,
+        stage: "confirm",
+        failures: 0,
+        // Die Zusammenfassung wird mit dem Einwilligungssatz vorgelesen; das
+        // Ja darauf ist die Einwilligung – wie das Häkchen im Formular.
+        draft: { ...d, contact: { firstName, lastName, email, phone }, note, contactStep: null, pending: null, consent: "voice" },
+      };
+      const head = dropped ? `${V.noteDropped} ` : "";
+      return say(next, `${head}${await summarySentence(next, deps)} ${V.consentLine}`, { quick: quick(lang, ["yes", "no"]) });
+    }
+    default:
+      return askContact(state, deps);
+  }
+}
+
 async function summarySentence(state: ChatState, deps: ChatDeps): Promise<string> {
   const lang = state.lang;
   const d = state.draft;
@@ -1212,7 +1481,11 @@ async function book(state: ChatState, deps: ChatDeps, now: Date): Promise<ChatRe
   const T = t(lang);
   const d = state.draft;
   if (!d.typeId || !d.date || !d.time) return say({ ...state, stage: "date" }, T.askDate, { quick: quick(lang, ["nextfree"]) });
-  if (!d.contact) return say({ ...state, stage: "contact" }, T.askContact, { form: contactForm(lang) });
+  if (!d.contact) return askContact(state, deps);
+  // Ohne aufgezeichnete Einwilligung wird nicht gebucht – gleich, ob die
+  // Kontaktdaten aus dem Formular, dem Gespräch oder einem älteren
+  // Zustand stammen. Dann werden sie noch einmal erfragt, mit Einwilligung.
+  if (!d.consent) return askContact(state, deps, T.errors.consent);
 
   if (deps.isBlocked(d.contact.email, d.contact.phone ?? null)) {
     deps.audit("chat.blocked", { where: "booking" });
@@ -1232,6 +1505,9 @@ async function book(state: ChatState, deps: ChatDeps, now: Date): Promise<ChatRe
     email: d.contact.email,
     phone: d.contact.phone,
     locale: lang,
+    // Nur mitgeben, wenn es eine gibt: Der Textkanal kennt keine Notiz, und
+    // sein Aufruf soll genau so aussehen wie vor dem Sprachkanal.
+    ...(d.note ? { note: d.note } : {}),
   });
 
   if (outcome.ok) {
@@ -1248,7 +1524,7 @@ async function book(state: ChatState, deps: ChatDeps, now: Date): Promise<ChatRe
       stage: "done",
       intent: null,
       lastOffer: [],
-      draft: { typeId: null, date: null, time: null, contact: d.contact, window: null, page: 1 },
+      draft: { typeId: null, date: null, time: null, contact: d.contact, window: null, page: 1, note: null, contactStep: null, pending: null, consent: d.consent, windowAsked: null },
     };
     return say(done, `${head} ${tail}`, {
       quick: quick(lang, ["again", "myAppointment"]),
