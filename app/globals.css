@@ -373,3 +373,20 @@ html.lenis body {
     transform: none;
   }
 }
+
+/*
+ * Die klebende Bühne der Kamerafahrt. Bewusst als eigene Regel statt
+ * `h-dvh`: Edge/Chrome vor Version 108 kennen `dvh` nicht und verwerfen
+ * die Zeile – die Bühne fiel dann auf Höhe 0, und man scrollte zehn
+ * Bildschirmhöhen durch Weiß. Alte Browser nehmen 100vh; nur wer `dvh`
+ * nachweislich kennt, bekommt es. (Zwei Zeilen untereinander genügen
+ * nicht: Der CSS-Minifier fasst sie zu einer einzigen dvh-Zeile zusammen.)
+ */
+.cinema-stage {
+  height: 100vh;
+}
+@supports (height: 100dvh) {
+  .cinema-stage {
+    height: 100dvh;
+  }
+}

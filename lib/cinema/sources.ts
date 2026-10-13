@@ -80,7 +80,9 @@ export type SceneSource = FramesSource | StillSource;
 /**
  * Der gebackene Film – trägt die GESAMTE Fahrt (alpha konstant 1; die
  * Kreuzblenden liegen IM Material, der DOM-Release vollendet das Ende).
- * windowRadius 24: 1600×900-Bitmaps ≈ 5.8 MB → Fenster ≈ 320 MB Peak.
+ * windowRadius 8: 1600×900-Bitmaps ≈ 5.8 MB → Fenster (2·8+16 = 32) ≈ 185 MB
+ * Peak. Vorher 24 (≈ 370 MB) – zu viel für einen gewöhnlichen Praxisrechner,
+ * dort scheiterte das Dekodieren still. Lücken überbrückt die Leiter.
  */
 export const FILM_DESKTOP: FramesSource = {
   mode: "frames",
@@ -90,7 +92,7 @@ export const FILM_DESKTOP: FramesSource = {
   span: [1, TOTAL_FRAMES],
   alpha: () => 1,
   media: "desktop",
-  store: { windowRadius: 24, ladderWidth: 640 },
+  store: { windowRadius: 8, ladderWidth: 640 },
 };
 
 /** Mobil: jeder 2. Master-Frame bei 960×540 (≈ 1.6 MB Bitmap, Fenster ≈ 50 MB). */

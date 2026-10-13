@@ -13,11 +13,3 @@ export const FRAME_DIR = "/hero-frames";
 
 /** Statisches Poster (Reduced Motion / Mobile-Video-Vorschau). */
 export const POSTER_PATH = `${FRAME_DIR}/poster.webp`;
-
-/**
- * Mobile-Fallback: statt 500 Frames ein kurzes Video.
- * Dateien hier ablegen, sobald sie produziert sind – die Website fällt
- * bis dahin automatisch auf das Porträt-Panel zurück.
- */
-export const MOBILE_VIDEO_WEBM = `${FRAME_DIR}/hero-mobile.webm`;
-export const MOBILE_VIDEO_MP4 = `${FRAME_DIR}/hero-mobile.mp4`;

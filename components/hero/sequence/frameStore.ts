@@ -60,6 +60,8 @@ export class FrameStore {
 
   /** Wird gerufen, sobald ein neuer Frame gezeichnet werden kann. */
   onFrameReady?: () => void;
+  /** Gescheiterte Abrufe/Dekodierungen – das Standbild darunter bleibt dann sichtbar. */
+  failures = 0;
 
   loadedBlobs = 0;
 
@@ -101,7 +103,10 @@ export class FrameStore {
           const res = await fetch(this.cfg.path(i), {
             signal: this.aborter.signal,
           });
-          if (!res.ok) continue;
+          if (!res.ok) {
+            this.failures++;
+            continue;
+          }
           const blob = await res.blob();
           if (this.destroyed) return;
           this.blobs.set(i, blob);
@@ -112,6 +117,7 @@ export class FrameStore {
             this.requestFull(i);
           }
         } catch {
+          if (!this.aborter.signal.aborted) this.failures++;
           // abgebrochen oder Netzfehler – nearest() überbrückt Lücken
         }
       }
@@ -132,6 +138,7 @@ export class FrameStore {
       this.ladder.set(i, bitmap);
       this.onFrameReady?.();
     } catch {
+      this.failures++;
       /* Frame bleibt Lücke – nearest() überbrückt */
     }
   }
@@ -206,7 +213,9 @@ export class FrameStore {
           this.evict();
           this.onFrameReady?.();
         })
-        .catch(() => undefined)
+        .catch(() => {
+          this.failures++;
+        })
         .finally(() => {
           this.decoding.delete(i);
           this.activeDecodes--;

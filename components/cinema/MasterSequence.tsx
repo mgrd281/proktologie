@@ -463,7 +463,7 @@ export function MasterSequence() {
       >
         <div
           ref={stageRef}
-          className="on-dark sticky top-0 h-dvh origin-top overflow-hidden bg-deep text-cream"
+          className="cinema-stage on-dark sticky top-0 origin-top overflow-hidden bg-deep text-cream"
         >
           {/* 1 – Verläufe unter der Lichtsequenz (DOM: scharf und billig) */}
           <div ref={ambientRef} className="cinema-ambient absolute inset-0">
