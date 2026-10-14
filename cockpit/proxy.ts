@@ -4,12 +4,12 @@ import { NextResponse, type NextRequest } from "next/server";
  * Grobfilter am Rand: ohne Sitzungs-Cookie geht es nicht ins Cockpit.
  * Die eigentliche Prüfung (Gültigkeit, Rolle, absolute Sitzungsdauer,
  * Sicherheits-Einrichtung) macht lib/auth/actor.ts auf dem Server –
- * Middleware sieht bewusst keine Datenbank.
+ * Der Proxy sieht bewusst keine Datenbank.
  */
 // /api/internal sichert sich selbst über Geheimnisse (CRON_SECRET, E2E_SECRET)
 const PUBLIC_PREFIXES = ["/login", "/einladung", "/api/auth", "/api/public", "/api/internal", "/t", "/_next", "/favicon", "/icon"];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
     return NextResponse.next();
