@@ -23,3 +23,8 @@ next-env.d.ts
 /cockpit/e2e/shots/
 # Protokollierte Mails im Entwicklungs-/Testbetrieb (LogChannel)
 /cockpit/.mail-outbox*/
+
+# Design-Skills (.claude/skills): Arbeitsdateien, nie einchecken
+/.impeccable/
+__pycache__/
+/design-system/
