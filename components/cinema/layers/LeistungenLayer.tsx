@@ -121,11 +121,16 @@ export const LeistungenLayer = forwardRef<LeistungenLayerHandle>(
       },
     }));
 
+    /*
+     * Auf dem Handy (unter md) bleiben die Tafeln aus: Der Szenentext steht
+     * dort über die volle Breite, die Tafeln schimmerten hinter ihm durch.
+     * Dieselben Leistungen folgen direkt nach der Fahrt als Wischkarten.
+     */
     return (
       <div
         ref={rootRef}
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0"
+        className="pointer-events-none absolute inset-0 max-md:hidden"
         style={{ opacity: 0, visibility: "hidden" }}
       >
         {CINEMA_PANELS.map((panel, i) => (

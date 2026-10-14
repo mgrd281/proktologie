@@ -11,7 +11,7 @@ export function Footer() {
   return (
     <footer id="site-footer" className="on-dark bg-deep text-cream">
       <div className="mx-auto max-w-7xl px-5 py-16 md:px-8 md:py-20">
-        <div className="grid gap-12 md:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
+        <div className="grid gap-12 max-md:gap-10 md:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
           <div>
             <LogoLockup onDark />
             <p className="mt-6 max-w-xs text-sm leading-relaxed text-cream/60">
@@ -23,12 +23,12 @@ export function Footer() {
             <h2 className="text-xs font-semibold tracking-[0.2em] text-accent uppercase">
               {footerContent.navTitle}
             </h2>
-            <ul className="mt-5 space-y-2.5">
+            <ul className="mt-5 space-y-2.5 max-md:mt-3 max-md:grid max-md:grid-cols-2 max-md:gap-x-4 max-md:space-y-0">
               {navigation.map((item) => (
                 <li key={item.href}>
                   <a
                     href={item.href}
-                    className="text-sm text-cream/70 underline-offset-4 hover:text-white hover:underline"
+                    className="text-sm text-cream/70 underline-offset-4 hover:text-white hover:underline max-md:flex max-md:min-h-11 max-md:items-center max-md:text-[15px]"
                   >
                     {item.label}
                   </a>
@@ -58,7 +58,7 @@ export function Footer() {
               <p>
                 <a
                   href={site.phoneHref}
-                  className="underline-offset-4 hover:text-white hover:underline"
+                  className="underline-offset-4 hover:text-white hover:underline max-md:inline-flex max-md:min-h-11 max-md:items-center max-md:text-[15px]"
                 >
                   {site.phone}
                 </a>
@@ -67,7 +67,7 @@ export function Footer() {
                 <br />
                 <a
                   href={`mailto:${site.email}`}
-                  className="underline-offset-4 hover:text-white hover:underline"
+                  className="underline-offset-4 hover:text-white hover:underline max-md:inline-flex max-md:min-h-11 max-md:items-center max-md:text-[15px]"
                 >
                   {site.email}
                 </a>
@@ -79,12 +79,12 @@ export function Footer() {
             <h2 className="text-xs font-semibold tracking-[0.2em] text-accent uppercase">
               {footerContent.legalTitle}
             </h2>
-            <ul className="mt-5 space-y-2.5">
+            <ul className="mt-5 space-y-2.5 max-md:mt-3 max-md:grid max-md:grid-cols-2 max-md:gap-x-4 max-md:space-y-0">
               {legalNavigation.map((item) => (
                 <li key={item.href}>
                   <Link
                     href={item.href}
-                    className="text-sm text-cream/70 underline-offset-4 hover:text-white hover:underline"
+                    className="text-sm text-cream/70 underline-offset-4 hover:text-white hover:underline max-md:flex max-md:min-h-11 max-md:items-center max-md:text-[15px]"
                   >
                     {item.label}
                   </Link>

@@ -142,12 +142,12 @@ export function BookingCard() {
           <BookingProgress step={step} />
         </div>
         {mode === "request" && send.kind !== "done" && (
-          <p className="mt-2.5 text-xs leading-relaxed text-ink/55">
+          <p className="mt-2.5 text-xs leading-relaxed text-ink/70">
             {bookingCopy.requestModeNote}
           </p>
         )}
         {confirmed && send.kind !== "done" && (
-          <p className="mt-2.5 text-xs leading-relaxed text-ink/55">
+          <p className="mt-2.5 text-xs leading-relaxed text-ink/70">
             {bookingCopy.confirmedModeNote}
           </p>
         )}
@@ -189,7 +189,7 @@ export function BookingCard() {
             </p>
             {send.method === "confirmed" && (
               <p className="mt-4 inline-flex items-baseline gap-2 rounded-xl border border-ink/10 bg-mist/40 px-4 py-2.5 text-sm">
-                <span className="text-xs font-medium tracking-wide text-ink/55 uppercase">
+                <span className="text-xs font-medium tracking-wide text-ink/70 uppercase">
                   {bookingCopy.confirm.refLabel}
                 </span>
                 <span className="font-display text-lg font-medium tabular-nums text-ink">{send.ref}</span>
@@ -224,7 +224,7 @@ export function BookingCard() {
                   type="button"
                   onClick={() => setStep((s) => s - 1)}
                   aria-label={bookingCopy.back}
-                  className="flex size-9 shrink-0 items-center justify-center rounded-full border border-ink/10 text-ink/70 transition-colors hover:border-primary/50 hover:text-ink"
+                  className="flex size-9 shrink-0 items-center justify-center rounded-full border border-ink/10 text-ink/70 transition-colors hover:border-primary/50 hover:text-ink max-md:size-11"
                 >
                   <Icon name="arrow-right" size={15} className="rotate-180" />
                 </button>
@@ -324,7 +324,7 @@ export function BookingCard() {
        */}
       {!confirmed && site.doctolibConfigured && send.kind !== "done" && step !== 4 && (
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-ink/8 px-6 py-2.5 md:px-8">
-          <p className="text-xs text-ink/55">{bookingCopy.doctolibHint}</p>
+          <p className="text-xs text-ink/70">{bookingCopy.doctolibHint}</p>
           <a
             href={site.doctolibUrl}
             target="_blank"

@@ -55,7 +55,7 @@ export const StateText = forwardRef<HTMLDivElement, StateTextProps>(
         className={cn("cinema-text absolute inset-y-0 left-0 flex items-center", className)}
         style={{ opacity: 0, visibility: "hidden" }}
       >
-        <div className="w-full max-w-xl px-5 py-16 md:pl-10 lg:pl-16">
+        <div className="w-full max-w-xl px-5 pt-20 pb-28 md:py-16 md:pl-10 lg:pl-16">
           <p className="flex items-center gap-4 text-xs font-semibold tracking-[0.24em] text-accent uppercase">
             {content.kicker}
             <span aria-hidden="true" className="h-px w-16 bg-accent/45" />
@@ -77,12 +77,12 @@ export const StateText = forwardRef<HTMLDivElement, StateTextProps>(
             )}
           </Heading>
 
-          <p className="mt-6 max-w-md text-sm leading-relaxed text-cream/75 md:text-base">
+          <p className="mt-6 max-w-md text-[15px] leading-relaxed text-cream/85 md:text-base md:text-cream/75">
             {content.text}
           </p>
 
           {content.secondaryText && (
-            <p className="mt-4 max-w-md text-sm leading-relaxed text-cream/65">
+            <p className="mt-4 max-w-md text-sm leading-relaxed text-cream/75 md:text-cream/65">
               {content.secondaryText}
             </p>
           )}
@@ -97,7 +97,7 @@ export const StateText = forwardRef<HTMLDivElement, StateTextProps>(
                   />
                   <span className="text-sm leading-snug text-cream/75">
                     <span className="font-medium text-cream">{item.title}</span>
-                    <span className="block text-xs text-cream/50">{item.note}</span>
+                    <span className="block text-xs text-cream/65 md:text-cream/50">{item.note}</span>
                   </span>
                 </li>
               ))}

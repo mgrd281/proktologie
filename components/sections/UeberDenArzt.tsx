@@ -11,12 +11,12 @@ export function UeberDenArzt() {
       aria-labelledby="ueber-den-arzt-title"
       className="bg-cream"
     >
-      <div className="mx-auto grid max-w-7xl items-center gap-14 px-5 py-24 md:px-8 md:py-32 lg:grid-cols-[1fr_1.15fr] lg:gap-20">
+      <div className="mx-auto grid max-w-7xl items-center gap-10 px-5 py-16 md:gap-14 md:px-8 md:py-32 lg:grid-cols-[1fr_1.15fr] lg:gap-20">
         <Reveal>
           <div className="relative mx-auto max-w-md lg:max-w-none">
             <div
               aria-hidden="true"
-              className="absolute -top-4 -left-4 h-full w-full rounded-2xl border border-primary/25"
+              className="absolute -top-4 -left-4 h-full w-full rounded-2xl border border-primary/25 max-md:-top-2.5 max-md:-left-2.5"
             />
             <DoctorPortrait
               alt={arzt.portraitAlt}

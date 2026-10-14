@@ -390,3 +390,31 @@ html.lenis body {
     height: 100dvh;
   }
 }
+
+/*
+ * Handy: Unten liegt die feste Leiste (Anrufen · Termin · Chat, siehe
+ * ChatWidget). Der Seitenfuß bekommt darunter genau ihren Platz, damit
+ * Impressum und Datenschutz nie hinter ihr verschwinden.
+ */
+@media (max-width: 47.99rem) {
+  body {
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* Das Handy-Menü blendet weich ein – nur, wenn Bewegung erwünscht ist. */
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .animate-menu-in {
+    animation: menu-in 320ms var(--ease-out-soft) both;
+  }
+}

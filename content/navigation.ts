@@ -19,6 +19,14 @@ export const navigation: NavItem[] = [
 export const ctaLabel = "Termin vereinbaren";
 export const ctaHref = "/#kontakt";
 
+/** Die feste Leiste unten auf dem Handy – kurze Wörter, ein Daumen breit. */
+export const mobileBar = {
+  label: "Schnellzugriff",
+  call: "Anrufen",
+  termin: "Termin",
+  chat: "Chat",
+} as const;
+
 export const legalNavigation: NavItem[] = [
   { label: "Impressum", href: "/impressum/" },
   { label: "Datenschutz", href: "/datenschutz/" },

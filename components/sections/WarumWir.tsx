@@ -1,5 +1,7 @@
 import { Reveal } from "@/components/ui/Reveal";
 import { SectionHeading } from "@/components/ui/SectionHeading";
+import { SwipeHint, swipeItem, swipeList } from "@/components/ui/Swipe";
+import { cn } from "@/lib/cn";
 import { benefits, benefitsIntro } from "@/content/benefits";
 
 /** Warum diese Praxis: editorial gesetzte Benefits auf Deep Green. */
@@ -10,7 +12,7 @@ export function WarumWir() {
       aria-labelledby="warum-title"
       className="on-dark bg-deep"
     >
-      <div className="mx-auto max-w-7xl px-5 py-24 md:px-8 md:py-32">
+      <div className="mx-auto max-w-7xl px-5 py-16 md:px-8 md:py-32">
         <Reveal>
           <SectionHeading
             id="warum-title"
@@ -20,11 +22,21 @@ export function WarumWir() {
           />
         </Reveal>
 
-        <ol className="mt-14 border-t border-white/10">
+        <ol
+          tabIndex={0}
+          aria-label={benefitsIntro.kicker}
+          className={cn("mt-14 border-t border-white/10 max-md:mt-10 max-md:border-t-0", swipeList)}
+        >
           {benefits.map((benefit, index) => (
-            <li key={benefit.title} className="border-b border-white/10">
+            <li
+              key={benefit.title}
+              className={cn(
+                "border-b border-white/10 max-md:rounded-2xl max-md:border-0 max-md:bg-white/5 max-md:ring-1 max-md:ring-white/10",
+                swipeItem,
+              )}
+            >
               <Reveal delay={index * 60}>
-                <div className="grid items-baseline gap-3 py-7 md:grid-cols-[7rem_1fr_1.4fr] md:gap-8 md:py-9">
+                <div className="grid items-baseline gap-3 py-7 max-md:px-6 md:grid-cols-[7rem_1fr_1.4fr] md:gap-8 md:py-9">
                   <span
                     aria-hidden="true"
                     className="font-display text-3xl font-light text-accent/80 tabular-nums md:text-4xl"
@@ -42,6 +54,7 @@ export function WarumWir() {
             </li>
           ))}
         </ol>
+        <SwipeHint onDark />
       </div>
     </section>
   );

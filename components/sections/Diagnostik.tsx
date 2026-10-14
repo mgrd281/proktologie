@@ -10,7 +10,7 @@ export function Diagnostik() {
       aria-labelledby="diagnostik-title"
       className="bg-white"
     >
-      <div className="mx-auto max-w-7xl px-5 py-24 md:px-8 md:py-32">
+      <div className="mx-auto max-w-7xl px-5 py-16 md:px-8 md:py-32">
         <Reveal>
           <SectionHeading
             id="diagnostik-title"
@@ -23,21 +23,21 @@ export function Diagnostik() {
           </p>
         </Reveal>
 
-        <ol className="mt-16 grid gap-10 md:grid-cols-3 md:gap-8">
+        <ol className="mt-16 grid gap-10 max-md:mt-10 max-md:gap-6 md:grid-cols-3 md:gap-8">
           {diagnostikSchritte.map((schritt, index) => (
             <li key={schritt.step} className="relative">
               <Reveal delay={index * 120}>
-                <div className="border-t border-ink/10 pt-7">
+                <div className="border-t border-ink/10 pt-7 max-md:grid max-md:grid-cols-[2.75rem_1fr] max-md:gap-x-4 max-md:pt-6">
                   <span
                     aria-hidden="true"
-                    className="font-display text-4xl font-light text-primary"
+                    className="font-display text-4xl font-light text-primary max-md:row-span-2 max-md:text-3xl max-md:leading-none"
                   >
                     {schritt.step}
                   </span>
-                  <h3 className="font-display mt-4 text-xl font-medium text-ink">
+                  <h3 className="font-display mt-4 text-xl font-medium text-ink max-md:mt-0">
                     {schritt.title}
                   </h3>
-                  <p className="mt-3 text-sm leading-relaxed text-ink/70">
+                  <p className="mt-3 text-sm leading-relaxed text-ink/70 max-md:col-start-2 max-md:mt-2">
                     {schritt.text}
                   </p>
                 </div>

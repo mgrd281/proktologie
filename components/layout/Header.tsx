@@ -33,7 +33,7 @@ export function Header() {
     }
 
     /*
-     * Die Kamerafahrt ist 900vh lang und wird in ihrem letzten Drittel hell
+     * Die Kamerafahrt ist 1000vh lang (Handy: 500vh) und wird in ihrem letzten Drittel hell
      * (Empfangsraum). Erst am Ende der Sektion umzuschalten hieße: heller
      * Text auf hellem Grund. Die Fahrt hinterlegt deshalb am Track den
      * Fortschritt, ab dem der Header deckend sein soll; ohne Fahrt
@@ -122,12 +122,12 @@ export function Header() {
         className={cn(
           "fixed inset-x-0 top-0 z-50 transition-colors duration-500",
           solid
-            ? "border-b border-ink/8 bg-cream/90 backdrop-blur-md"
+            ? "border-b border-ink/8 bg-cream/97 backdrop-blur-md md:bg-cream/90"
             : "on-dark border-b border-transparent bg-transparent",
         )}
       >
-        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-6 px-5 md:px-8">
-          <Link href="/" aria-label="Proktologie Eimsbüttel – zur Startseite">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-6 px-5 md:h-20 md:px-8">
+          <Link href="/" aria-label="Proktologie Eimsbüttel – zur Startseite" className="max-md:flex max-md:min-h-11 max-md:items-center">
             <LogoLockup onDark={!solid} />
           </Link>
 

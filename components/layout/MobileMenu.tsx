@@ -73,7 +73,7 @@ export function MobileMenu({ open, onClose }: MobileMenuProps) {
       role="dialog"
       aria-modal="true"
       aria-label="Menü"
-      className="on-dark fixed inset-0 z-60 flex flex-col overflow-y-auto bg-deep px-6 py-5"
+      className="on-dark animate-menu-in fixed inset-0 z-60 flex flex-col overflow-y-auto bg-deep px-6 py-5"
     >
       <div className="flex items-center justify-between">
         <LogoLockup onDark />
@@ -87,14 +87,14 @@ export function MobileMenu({ open, onClose }: MobileMenuProps) {
         </button>
       </div>
 
-      <nav aria-label="Hauptnavigation" className="mt-14 flex-1">
-        <ul className="space-y-2">
+      <nav aria-label="Hauptnavigation" className="mt-10 flex-1">
+        <ul className="space-y-1">
           {navigation.map((item, index) => (
             <li key={item.href}>
               <a
                 href={item.href}
                 onClick={onClose}
-                className="group flex items-baseline gap-4 py-2"
+                className="group flex min-h-12 items-baseline gap-4 py-2"
               >
                 <span className="text-xs font-medium text-accent/70 tabular-nums">
                   {String(index + 1).padStart(2, "0")}
@@ -112,12 +112,13 @@ export function MobileMenu({ open, onClose }: MobileMenuProps) {
         <Button href={ctaHref} onClick={onClose} withArrow className="w-full">
           {ctaLabel}
         </Button>
-        <p className="text-sm text-cream/60">
-          Oder rufen Sie uns an:{" "}
-          <a href={site.phoneHref} className="font-medium text-cream underline-offset-4 hover:underline">
+        <Button href={site.phoneHref} variant="outline-dark" className="w-full">
+          <Icon name="phone" size={18} />
+          <span>
+            <span className="sr-only">Oder rufen Sie uns an: </span>
             {site.phone}
-          </a>
-        </p>
+          </span>
+        </Button>
       </div>
     </div>
   );

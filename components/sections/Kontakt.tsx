@@ -17,7 +17,7 @@ import { site } from "@/content/site";
 export function Kontakt() {
   return (
     <section id="kontakt" aria-labelledby="kontakt-title" className="bg-cream">
-      <div className="mx-auto grid max-w-7xl gap-12 px-5 py-24 md:px-8 md:py-32 lg:grid-cols-[1fr_1.35fr] lg:grid-rows-[auto_1fr] lg:gap-x-16 lg:gap-y-10">
+      <div className="mx-auto grid max-w-7xl gap-10 px-5 py-16 md:gap-12 md:px-8 md:py-32 lg:grid-cols-[1fr_1.35fr] lg:grid-rows-[auto_1fr] lg:gap-x-16 lg:gap-y-10">
         <Reveal className="lg:col-start-1 lg:row-start-1">
           <SectionHeading
             id="kontakt-title"
@@ -44,7 +44,7 @@ export function Kontakt() {
               </p>
               <a
                 href={site.phoneHref}
-                className="font-display mt-2 inline-flex items-center gap-3 text-2xl font-medium text-ink hover:text-primary md:text-3xl"
+                className="font-display mt-2 inline-flex items-center gap-3 text-2xl font-medium text-ink hover:text-primary max-md:min-h-11 md:text-3xl"
               >
                 <Icon name="phone" size={22} className="text-primary" />
                 {site.phone}

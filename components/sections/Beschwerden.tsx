@@ -1,6 +1,8 @@
 import { Button } from "@/components/ui/Button";
 import { Reveal } from "@/components/ui/Reveal";
 import { SectionHeading } from "@/components/ui/SectionHeading";
+import { SwipeHint, swipeItem, swipeList } from "@/components/ui/Swipe";
+import { cn } from "@/lib/cn";
 import {
   beschwerden,
   beschwerdenCta,
@@ -15,7 +17,7 @@ export function Beschwerden() {
       aria-labelledby="beschwerden-title"
       className="bg-cream"
     >
-      <div className="mx-auto grid max-w-7xl gap-14 px-5 py-24 md:px-8 md:py-32 lg:grid-cols-[1fr_1.25fr] lg:gap-20">
+      <div className="mx-auto grid max-w-7xl gap-10 px-5 py-16 md:gap-14 md:px-8 md:py-32 lg:grid-cols-[1fr_1.25fr] lg:gap-20">
         <div className="lg:sticky lg:top-32 lg:self-start">
           <Reveal>
             <SectionHeading
@@ -32,12 +34,18 @@ export function Beschwerden() {
           </Reveal>
         </div>
 
-        <div>
-          <ul className="space-y-4">
+        {/* min-w-0: Ein Rasterkind ist sonst mindestens so breit wie die
+            Wischreihe darin – die ganze Seite würde seitlich scrollen. */}
+        <div className="min-w-0">
+          <ul
+            tabIndex={0}
+            aria-label={beschwerdenIntro.kicker}
+            className={cn("space-y-4 max-md:space-y-0", swipeList)}
+          >
             {beschwerden.map((cluster, index) => (
-              <li key={cluster.id}>
-                <Reveal delay={index * 70}>
-                  <article className="rounded-2xl bg-white p-7 ring-1 ring-ink/5 md:p-8">
+              <li key={cluster.id} className={cn("max-md:h-full", swipeItem)}>
+                <Reveal delay={index * 70} className="max-md:h-full">
+                  <article className="rounded-2xl bg-white p-7 ring-1 ring-ink/5 max-md:h-full max-md:p-6 md:p-8">
                     <h3 className="font-display text-xl font-medium text-ink">
                       {cluster.symptom}
                     </h3>
@@ -52,8 +60,9 @@ export function Beschwerden() {
               </li>
             ))}
           </ul>
+          <SwipeHint />
           <Reveal delay={200}>
-            <div className="mt-8 flex flex-col items-start gap-5 rounded-2xl bg-deep p-7 md:flex-row md:items-center md:justify-between md:p-8">
+            <div className="mt-8 flex flex-col items-start gap-5 rounded-2xl bg-deep p-7 max-md:mt-6 max-md:p-6 md:flex-row md:items-center md:justify-between md:p-8">
               <p className="on-dark max-w-md text-sm leading-relaxed text-cream/85">
                 {beschwerdenCta.text}
               </p>

@@ -13,7 +13,7 @@ import { site } from "@/content/site";
 export function Praxis() {
   return (
     <section id="praxis" aria-labelledby="praxis-title" className="bg-mist">
-      <div className="mx-auto max-w-7xl px-5 py-24 md:px-8 md:py-32">
+      <div className="mx-auto max-w-7xl px-5 py-16 md:px-8 md:py-32">
         <Reveal>
           <SectionHeading
             id="praxis-title"
@@ -58,11 +58,11 @@ export function Praxis() {
               <h3 className="font-display mt-5 text-lg font-medium text-ink">
                 {praxisSection.hoursTitle}
               </h3>
-              <dl className="mt-3 space-y-2 text-sm text-ink/70">
+              <dl className="mt-3 space-y-2 text-sm text-ink/70 max-md:space-y-3">
                 {site.hours.map((entry) => (
-                  <div key={entry.days} className="flex justify-between gap-4">
+                  <div key={entry.days} className="flex justify-between gap-4 max-md:flex-col max-md:gap-0.5">
                     <dt>{entry.days}</dt>
-                    <dd className="text-right font-medium text-ink/80">
+                    <dd className="text-right font-medium text-ink/80 max-md:text-left">
                       {entry.time}
                     </dd>
                   </div>

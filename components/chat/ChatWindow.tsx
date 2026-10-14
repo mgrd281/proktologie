@@ -458,7 +458,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
             type="button"
             onClick={restart}
             disabled={pending}
-            className="rounded-lg px-2 py-1 text-xs font-medium text-primary-deep hover:bg-mist disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            className="rounded-lg px-2 py-1 text-xs font-medium text-primary-deep hover:bg-mist disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent max-md:min-h-11"
           >
             {copy.restart}
           </button>
@@ -467,7 +467,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
             onClick={switchLang}
             disabled={pending}
             lang={lang === "de" ? "en" : "de"}
-            className="rounded-lg px-2 py-1 text-xs font-medium text-primary-deep hover:bg-mist disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            className="rounded-lg px-2 py-1 text-xs font-medium text-primary-deep hover:bg-mist disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent max-md:min-h-11"
           >
             {copy.langSwitch}
           </button>
@@ -475,7 +475,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
             type="button"
             onClick={onClose}
             aria-label={copy.close}
-            className="rounded-lg p-1.5 text-ink/70 hover:bg-mist focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            className="rounded-lg p-1.5 text-ink/70 hover:bg-mist focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent max-md:flex max-md:size-11 max-md:items-center max-md:justify-center"
           >
             <Icon name="close" size={18} />
           </button>

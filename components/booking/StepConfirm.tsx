@@ -58,7 +58,7 @@ export function StepConfirm({
       <dl className="mt-5 divide-y divide-ink/8 rounded-xl border border-ink/10 bg-mist/40 px-5">
         {rows.map(([label, value]) => (
           <div key={label} className="flex items-baseline justify-between gap-6 py-3">
-            <dt className="text-xs font-medium tracking-wide text-ink/55 uppercase">
+            <dt className="text-xs font-medium tracking-wide text-ink/70 uppercase">
               {label}
             </dt>
             <dd className="text-right text-sm font-medium text-ink">{value}</dd>

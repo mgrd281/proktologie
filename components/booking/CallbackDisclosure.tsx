@@ -84,7 +84,7 @@ export function CallbackDisclosure() {
                 aria-invalid={Boolean(errors.name)}
                 aria-describedby={errors.name ? "callback-name-error" : undefined}
                 className={cn(
-                  "min-h-11 w-full rounded-lg border bg-white px-3.5 py-2 text-sm text-ink focus:border-primary",
+                  "min-h-11 w-full rounded-lg border bg-white px-3.5 py-2 text-sm text-ink focus:border-primary max-md:text-base",
                   errors.name ? "border-red-700" : "border-ink/12",
                 )}
               />
@@ -107,7 +107,7 @@ export function CallbackDisclosure() {
                 aria-invalid={Boolean(errors.phone)}
                 aria-describedby={errors.phone ? "callback-phone-error" : undefined}
                 className={cn(
-                  "min-h-11 w-full rounded-lg border bg-white px-3.5 py-2 text-sm text-ink focus:border-primary",
+                  "min-h-11 w-full rounded-lg border bg-white px-3.5 py-2 text-sm text-ink focus:border-primary max-md:text-base",
                   errors.phone ? "border-red-700" : "border-ink/12",
                 )}
               />
@@ -126,7 +126,7 @@ export function CallbackDisclosure() {
             <select
               id="callback-time"
               name="time"
-              className="min-h-11 rounded-lg border border-ink/12 bg-white px-3 py-1.5 text-sm"
+              className="min-h-11 rounded-lg border border-ink/12 bg-white px-3 py-1.5 text-sm max-md:text-base"
             >
               {copy.timeOptions.map((option) => (
                 <option key={option}>{option}</option>

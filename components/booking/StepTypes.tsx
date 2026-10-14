@@ -38,7 +38,7 @@ export function StepTypes({ types, selected, onSelect }: StepTypesProps) {
                 {type.label}
               </span>
               {type.note && (
-                <span className="mt-0.5 block text-xs text-ink/55">
+                <span className="mt-0.5 block text-xs text-ink/70">
                   {type.note}
                 </span>
               )}

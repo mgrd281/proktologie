@@ -7,7 +7,7 @@ import { faq, faqIntro } from "@/content/faq";
 export function Faq() {
   return (
     <section id="faq" aria-labelledby="faq-title" className="bg-cream">
-      <div className="mx-auto max-w-3xl px-5 py-24 md:px-8 md:py-32">
+      <div className="mx-auto max-w-3xl px-5 py-16 md:px-8 md:py-32">
         <Reveal>
           <SectionHeading
             id="faq-title"

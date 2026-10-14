@@ -18,7 +18,7 @@ export function BookingProgress({ step }: { step: number }) {
       {/* Mobil */}
       <p
         aria-hidden="true"
-        className="text-xs font-medium tracking-wide text-ink/60 sm:hidden"
+        className="text-xs font-medium tracking-wide text-ink/70 sm:hidden"
       >
         <span className="text-primary-deep tabular-nums">
           {step + 1} / {bookingSteps.length}

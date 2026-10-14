@@ -35,11 +35,11 @@ export const PraxisLayer = forwardRef<HTMLDivElement>(function PraxisLayer(_, re
           </span>
         </p>
 
-        <dl className="mt-5 space-y-1.5 border-t border-ink/10 pt-4 text-sm">
+        <dl className="mt-5 space-y-1.5 border-t border-ink/10 pt-4 text-sm max-md:space-y-2.5">
           {site.hours.map((entry) => (
-            <div key={entry.days} className="flex items-baseline justify-between gap-4">
+            <div key={entry.days} className="flex items-baseline justify-between gap-4 max-md:flex-col max-md:gap-0">
               <dt className="text-ink/60">{entry.days}</dt>
-              <dd className="text-right font-medium text-ink tabular-nums">{entry.time}</dd>
+              <dd className="text-right font-medium text-ink tabular-nums max-md:text-left">{entry.time}</dd>
             </div>
           ))}
         </dl>

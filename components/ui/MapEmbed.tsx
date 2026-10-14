@@ -110,7 +110,7 @@ export function MapEmbed({ className }: { className?: string }) {
             href={site.mapsUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-accent underline-offset-4 hover:underline"
+            className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-accent underline-offset-4 hover:underline max-md:min-h-11"
           >
             {praxisSection.mapsLabel}
             <Icon name="arrow-right" size={16} />

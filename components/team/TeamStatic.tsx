@@ -23,7 +23,7 @@ const OFFSET = ["md:mt-0", "md:mt-14", "md:mt-6", "md:mt-20", "md:mt-4", "md:mt-
 
 export function TeamStatic() {
   return (
-    <div className="mx-auto max-w-7xl px-5 py-24 md:px-8 md:py-32">
+    <div className="mx-auto max-w-7xl px-5 py-16 md:px-8 md:py-32">
       <Reveal>
         <p className="text-xs font-semibold tracking-[0.22em] text-primary-deep uppercase">
           {teamIntro.kicker}

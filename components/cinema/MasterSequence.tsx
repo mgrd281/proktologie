@@ -455,11 +455,17 @@ export function MasterSequence() {
         <CinemaStatic />
       </div>
 
+      {/*
+        * Spurlänge: auf dem Handy 500vh statt 1000vh – dieselbe Fahrt,
+        * doppelt so schnell. Zehn Bildschirmhöhen Film vor dem ersten
+        * Inhalt waren auf dem Telefon zu viel. Alles rechnet mit dem
+        * relativen Fortschritt (useScrollProgress), nichts mit Pixeln.
+        */}
       <div
         ref={trackRef}
         data-header-solid={headerSolidProgress()}
         data-total-frames={TOTAL_FRAMES}
-        className="cinema-track relative hidden h-[1000vh] motion-safe:block"
+        className="cinema-track relative hidden h-[500vh] motion-safe:block md:h-[1000vh]"
       >
         <div
           ref={stageRef}
@@ -594,11 +600,16 @@ export function MasterSequence() {
             style={{ opacity: 0, visibility: "hidden" }}
           />
 
-          {/* 9 – Szenentexte und ihr Lesbarkeitsschleier (die Konstante links) */}
+          {/*
+            * 9 – Szenentexte und ihr Lesbarkeitsschleier (die Konstante links).
+            * Auf dem Handy steht der Text über die volle Breite – der Schleier
+            * läuft dort nicht ins Durchsichtige aus, sonst stünde die rechte
+            * Texthälfte in den hellen Untersuchungsraum-Frames ungeschützt.
+            */}
           <div
             ref={scrimRef}
             aria-hidden="true"
-            className="pointer-events-none absolute inset-y-0 left-0 w-full bg-gradient-to-r from-deep via-deep/85 to-transparent md:w-[66%] lg:w-[56%]"
+            className="pointer-events-none absolute inset-y-0 left-0 w-full bg-gradient-to-r from-deep via-deep/85 to-transparent max-md:bg-[linear-gradient(to_right,rgba(23,37,27,0.9),rgba(23,37,27,0.62))] md:w-[66%] lg:w-[56%]"
           />
 
           {/*
@@ -619,11 +630,14 @@ export function MasterSequence() {
                 /*
                  * Unter lg liegt die Praxis-Karte mittig über der vollen
                  * Breite – dort trägt SIE die Szene (Adresse, Zeiten,
-                 * CTAs); der Intro-Text würde mit ihr kollidieren.
+                 * CTAs); der Intro-Text würde mit ihr kollidieren. Ebenso
+                 * trägt auf dem Handy die Termin-Vorschau ihre Szene allein.
                  */
                 SCENES[index].id === "praxis"
                   ? "w-full max-lg:hidden md:w-[62%] lg:w-[52%]"
-                  : "w-full md:w-[62%] lg:w-[52%]"
+                  : SCENES[index].id === "termin"
+                    ? "w-full max-md:hidden md:w-[62%] lg:w-[52%]"
+                    : "w-full md:w-[62%] lg:w-[52%]"
               }
             />
           ))}
@@ -658,7 +672,7 @@ export function MasterSequence() {
 
             <p
               aria-hidden={active !== TEAM_SCENE}
-              className="cinema-counter pointer-events-none absolute right-5 bottom-8 font-display text-sm text-cream/70 tabular-nums transition-opacity duration-500 md:right-10 md:bottom-10"
+              className="cinema-counter pointer-events-none absolute right-5 bottom-24 font-display text-sm text-cream/70 tabular-nums transition-opacity duration-500 md:right-10 md:bottom-10"
               style={{ opacity: active === TEAM_SCENE ? 1 : 0 }}
             >
               {memberLabel(teamChapter)}
@@ -667,7 +681,7 @@ export function MasterSequence() {
             <div
               ref={cueRef}
               aria-hidden="true"
-              className="pointer-events-none absolute bottom-9 left-5 flex items-center gap-4 md:left-10"
+              className="pointer-events-none absolute bottom-24 left-5 flex items-center gap-4 md:bottom-9 md:left-10"
             >
               <span className="flex h-9 w-5.5 shrink-0 items-start justify-center rounded-full border border-cream/30 pt-1.5">
                 <span className="animate-scroll-cue block h-1.5 w-1 rounded-full bg-accent" />
