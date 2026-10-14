@@ -1020,6 +1020,18 @@ test("„Wann habt ihr?“ ist mehrdeutig – also kommen Sprechzeit und frühes
   assert.equal(calls.classify.length, 0, "geraten wurde das früher vom Modell – jetzt nicht mehr");
 });
 
+test("„Wann haben Sie freie Termine?“ bekommt den Platz – nicht nur die Sprechzeit", async () => {
+  // „wann haben Sie“ ist auch ein Stichwort der Öffnungszeiten. Live kam
+  // deshalb nur die Sprechzeit zurück – genau der Satz des Betreibers.
+  const { deps, calls } = makeDeps();
+  const r = await o.runTurn(msg(null, "Wann haben Sie freie Termine?"), deps);
+  assert.match(r.reply, /früheste freie Termin/);
+  assert.match(r.reply, new RegExp(HOURS_DE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.equal(calls.classify.length, 0);
+  const h = await o.runTurn(msg(null, "Wann haben Sie geöffnet?"), makeDeps().deps);
+  assert.doesNotMatch(h.reply, /früheste freie Termin/, "die reine Sprechzeit-Frage bleibt eine Sprechzeit-Frage");
+});
+
 test("Was die Praxis nicht hinterlegt hat, endet nicht in einer Sackgasse", async () => {
   const { deps } = makeDeps();
   const r = await o.runTurn(msg(null, "Haben Sie Parkplätze?"), deps);

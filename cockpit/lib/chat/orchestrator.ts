@@ -742,7 +742,13 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
   // „opening", „Gibt es noch einen anderen Arzt?" enthält „noch einen" –
   // beides sind Fragen an die Praxis, keine Terminsuche. Ein ausdrückliches
   // „so früh wie möglich" bleibt dagegen ein Wunsch und gewinnt.
-  const topicHit = topicsFor(text, norm, lang).length > 0;
+  //
+  // Ausnahme: Trifft nur das Thema Öffnungszeiten, dann über Wendungen wie
+  // „wann haben Sie“ – „Wann haben Sie freie Termine?“ fragt nach einem
+  // Platz, nicht nach der Sprechzeit. Dort kommen beide Antworten.
+  const hitTopics = topicsFor(text, norm, lang);
+  const hoursOnly = hitTopics.length === 1 && hitTopics[0] === "oeffnungszeiten";
+  const topicHit = hitTopics.length > 0 && !hoursOnly;
   const named = matchType(text, types, lang) ?? matchType(norm, types, lang);
   const namedType = named && types.some((x) => x.id === named) ? named : null;
   // Die Frageform entscheidet mit, was als Gesundheitsangabe gilt.
@@ -958,7 +964,12 @@ async function handleText(text: string, state: ChatState, deps: ChatDeps, now: D
   // „So früh wie möglich“ ist ein Wunsch, keine Wissensfrage – auch wenn
   // er als Frage formuliert ist („Was ist das Früheste, was Sie haben?“).
   if (when.earliest && !(when.askedFree && topicHit)) {
-    const res = await startBooking({ ...state, failures: 0 }, deps, now, text, when);
+    const ready: ChatState = { ...state, failures: 0 };
+    const res = await startBooking(ready, deps, now, text, when);
+    if (when.askedFree && hoursOnly && !acute) {
+      const info = await answerTopics(["oeffnungszeiten"], ready, deps);
+      return { ...res, reply: `${info.reply} ${res.reply}` };
+    }
     return acute ? prefixed(res, T.acute) : res;
   }
 

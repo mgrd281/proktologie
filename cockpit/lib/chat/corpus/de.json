@@ -3891,5 +3891,53 @@
     "expectWindow": null,
     "expectTopic": "diskretion",
     "note": "Gegenprüfung: „Plätze“ ist kein freier Termin"
+  },
+  {
+    "id": "de-304",
+    "text": "Wann haben Sie freie Termine?",
+    "stage": "idle",
+    "expect": "earliest",
+    "expectDate": null,
+    "expectTime": null,
+    "expectTypeId": null,
+    "expectWindow": null,
+    "expectTopic": null,
+    "note": "Betreiber-Satz: „wann haben Sie“ trifft auch die Öffnungszeiten – der Platz muss trotzdem kommen"
+  },
+  {
+    "id": "de-305",
+    "text": "Wann habt ihr freie Termine?",
+    "stage": "idle",
+    "expect": "earliest",
+    "expectDate": null,
+    "expectTime": null,
+    "expectTypeId": null,
+    "expectWindow": null,
+    "expectTopic": null,
+    "note": "Betreiber-Satz: „wann haben Sie“ trifft auch die Öffnungszeiten – der Platz muss trotzdem kommen"
+  },
+  {
+    "id": "de-306",
+    "text": "Wann haben Sie noch etwas frei?",
+    "stage": "idle",
+    "expect": "earliest",
+    "expectDate": null,
+    "expectTime": null,
+    "expectTypeId": null,
+    "expectWindow": null,
+    "expectTopic": null,
+    "note": "Betreiber-Satz: „wann haben Sie“ trifft auch die Öffnungszeiten – der Platz muss trotzdem kommen"
+  },
+  {
+    "id": "de-307",
+    "text": "wann haben sie termine frei",
+    "stage": "idle",
+    "expect": "earliest",
+    "expectDate": null,
+    "expectTime": null,
+    "expectTypeId": null,
+    "expectWindow": null,
+    "expectTopic": null,
+    "note": "Betreiber-Satz: „wann haben Sie“ trifft auch die Öffnungszeiten – der Platz muss trotzdem kommen"
   }
 ]
