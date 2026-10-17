@@ -230,7 +230,8 @@ test("Rückruf aus dem Chat erscheint im Posteingang und lässt sich abschließe
   await expect(zeile).toContainText("040 99 88 77");
   await page.screenshot({ path: "e2e/shots/anfragen.png" });
 
-  await zeile.click();
+  // Auf den Namen – die Telefonnummer in der Zeile ist ein Anruf-Link
+  await zeile.getByText("Paula Posteingang").click();
   await expect(page.getByText(`${ref} · Chat`)).toBeVisible();
   await expect(page.getByText("nachmittags")).toBeVisible();
   await page.getByRole("button", { name: "Erledigt", exact: true }).click();
