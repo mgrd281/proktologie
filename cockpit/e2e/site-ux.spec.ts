@@ -77,6 +77,42 @@ test("„Einführung überspringen“ springt sofort zur Buchung – ohne Durchs
   expect(between, "keine Zwischenbilder").toBe(0);
 });
 
+test("Handy: „Einführung überspringen“ klein und ohne Schrift, verdeckt nichts; die Leiste scheint durch und passt sich an", async ({ browser }) => {
+  // iPhone SE mit Browserleisten – hier lag der Knopf früher über „Freie Termine ab …“
+  const context = await browser.newContext({ viewport: { width: 375, height: 548 }, screen: { width: 375, height: 548 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  await page.goto(`${SITE}/`, { waitUntil: "load" });
+  const skip = page.getByRole("link", { name: "Einführung überspringen" });
+  await expect(skip).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".cinema-text").first().getByText(/^Freie Termine ab/)).toBeVisible({ timeout: 30_000 });
+  const layout = await page.evaluate(() => {
+    const link = [...document.querySelectorAll<HTMLAnchorElement>("#hero a")].find((a) => a.textContent?.includes("Einführung überspringen"))!;
+    const s = link.getBoundingClientRect();
+    // Die Zeile als Glyphen messen, nicht als Kasten
+    const walker = document.createTreeWalker(document.getElementById("hero")!, NodeFilter.SHOW_TEXT);
+    let line: DOMRect | null = null;
+    for (let t = walker.nextNode(); t && !line; t = walker.nextNode()) {
+      if (!t.textContent?.includes("Freie Termine ab")) continue;
+      const range = document.createRange();
+      range.selectNodeContents(t.parentElement!.closest("div")!);
+      const r = range.getBoundingClientRect();
+      if (r.width > 0) line = r;
+    }
+    const apart = !line || s.left >= line.right || s.right <= line.left || s.top >= line.bottom || s.bottom <= line.top;
+    return { width: s.width, height: s.height, apart, visibleText: getComputedStyle(link.querySelector("span")!).position !== "absolute" };
+  });
+  expect(layout).toEqual({ width: 44, height: 44, apart: true, visibleText: false });
+
+  // Die Leiste: über dem Film rauchig, über hellen Abschnitten milchig, über dem Fuß wieder rauchig
+  const bar = page.getByRole("navigation", { name: "Schnellzugriff" });
+  await expect(bar).toHaveAttribute("data-tone", "dark");
+  await page.evaluate(() => document.getElementById("faq")!.scrollIntoView({ block: "center" }));
+  await expect(bar).toHaveAttribute("data-tone", "light");
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect(bar).toHaveAttribute("data-tone", "dark");
+  await context.close();
+});
+
 test("Film-Knöpfe landen wie alle Anker unter dem Header und nehmen den Fokus mit", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${SITE}/`, { waitUntil: "load" });

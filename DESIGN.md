@@ -202,7 +202,10 @@ diese Tokens**, nie über Rohwerte. Dunkelmodus über `data-theme="dark"` oder
   - Mobile Änderungen nur mit `max-md:`/Basisklassen + unveränderten `md:`-Klassen; Desktop und
     Tablet bleiben pixelgleich (per Screenshot-Vergleich prüfen).
   - Feste **Aktionsleiste** unten (Anrufen · Termin · Chat, 64 px + Safe-Area); kein weiteres
-    schwebendes Element darüber.
+    schwebendes Element darüber. Sie scheint durch (`backdrop-blur-xl`): über dem Film und dunklen
+    Flächen (`data-surface="dark"`, `data-header-dark`) rauchig `deep/65` mit cream-Schrift und
+    accent-Symbolen, sonst milchig `cream/70` mit ink/80 und primary-deep
+    (`lib/hooks/useDarkBehind.ts`); „Termin“ bleibt die grüne Fläche.
   - Lange Kartenstapel werden **Wischreihen** (`components/ui/Swipe.tsx`, CSS-Scroll-Snap,
     Karte ≈ 84 % breit, nächste lugt hervor; `SwipeRow` ergänzt den Zähler „2 / 8“, mit Maus
     Pfeile und eine schmale Leiste, und ist nur fokussierbar, wo wirklich gescrollt wird).
@@ -288,7 +291,10 @@ Symbol nicht sofort verständlich ist.
   Header und Menü markiert (`aria-current`, `lib/hooks/useActiveSection.ts`).
 - Sprünge: Anker landen über `scroll-padding-top` unter dem Header (Lenis rechnet ihn ein),
   der Fokus geht aufs Ziel; weite Sprünge (über die Kamerafahrt) ohne Fahrt. Sprunglinks
-  „Zum Inhalt springen“ und auf der Startseite „Zur Terminbuchung“.
+  „Zum Inhalt springen“ und auf der Startseite „Zur Terminbuchung“. „Einführung überspringen“
+  steht ab md mit Text links unten; auf dem Handy (Wunsch des Betreibers) als kleiner runder
+  Symbol-Knopf (Doppelpfeil, 44 px, Name für Screenreader) rechts unten im Auftakt, damit er die
+  Zeile „Freie Termine ab …“ nie verdeckt; unter 360 px Breite entfällt er.
 - Unbekannte Adressen: deutsche 404, Fehler: ruhige Fehlerseite – beide `NoticePage` (klare
   Aussage, Weg zum Termin bzw. „Seite neu laden“, Telefon).
 - Cockpit: Seitenleiste mit 40 px hohen Einträgen, Befehlspalette (⌘K).

@@ -11,6 +11,7 @@ export function WarumWir() {
     <section
       id="warum"
       aria-labelledby="warum-title"
+      data-surface="dark"
       className="on-dark bg-deep"
     >
       <div className="mx-auto max-w-7xl px-5 py-16 md:px-8 md:py-32">

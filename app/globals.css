@@ -438,10 +438,11 @@ html.lenis body {
 /*
  * Handy: Unten liegt die feste Leiste (Anrufen · Termin · Chat, siehe
  * ChatWidget). Der Seitenfuß bekommt darunter genau ihren Platz, damit
- * Impressum und Datenschutz nie hinter ihr verschwinden.
+ * Impressum und Datenschutz nie hinter ihr verschwinden – als Teil des
+ * dunklen Fußes, denn die Leiste scheint durch.
  */
 @media (max-width: 47.99rem) {
-  body {
+  #site-footer {
     padding-bottom: calc(4rem + env(safe-area-inset-bottom));
   }
 }

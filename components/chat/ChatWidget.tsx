@@ -5,6 +5,7 @@ import { chatCopy, hoursLine, type ChatLang } from "@/content/chat";
 import { site } from "@/content/site";
 import { fetchCockpitStatus } from "@/lib/booking/status";
 import { cn } from "@/lib/cn";
+import { useDarkBehind } from "@/lib/hooks/useDarkBehind";
 import { useLenis } from "@/providers/LenisProvider";
 import { Icon } from "@/components/ui/Icon";
 import { ChatOffline, ChatTitle, chatCloseClass, chatHeaderClass, chatWindowClass } from "@/components/chat/frame";
@@ -143,6 +144,9 @@ export function ChatWidget() {
     });
   }, [open, preload]);
 
+  // Die Leiste scheint durch: über dem Film und dunklen Abschnitten rauchig, sonst milchig
+  const onDark = useDarkBehind(bar);
+
   // Ist die Buchungskarte im Bild, tritt „Termin“ in der Leiste zurück: Der
   // Weg ist schon da, und pro Ansicht handelt nur ein Grün.
   const [bookingInView, setBookingInView] = useState(false);
@@ -217,23 +221,32 @@ export function ChatWidget() {
       <nav
         ref={bar}
         aria-label={mobileBar.label}
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-ink/10 bg-cream/97 pb-[env(safe-area-inset-bottom)] shadow-[0_-12px_32px_-24px_rgba(23,37,27,0.45)] backdrop-blur-md md:hidden"
+        data-tone={onDark ? "dark" : "light"}
+        className={cn(
+          "fixed inset-x-0 bottom-0 z-40 border-t pb-[env(safe-area-inset-bottom)] backdrop-blur-xl backdrop-saturate-150 transition-[color,background-color,border-color] duration-300 md:hidden",
+          onDark ? "on-dark border-white/10 bg-deep/65" : "border-ink/10 bg-cream/70 shadow-[0_-12px_32px_-24px_rgba(23,37,27,0.35)]",
+        )}
       >
         <div className="mx-auto grid h-16 max-w-md grid-cols-[1fr_1.4fr_1fr] items-center gap-2 px-3">
           <a
             href={site.phoneHref}
             aria-label={copy.callLabel}
-            className="flex h-12 flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-medium text-ink/80 active:bg-ink/5"
+            className={cn(
+              "flex h-12 flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-medium transition-[color,background-color,border-color] duration-300",
+              onDark ? "text-cream/90 active:bg-white/10" : "text-ink/80 active:bg-ink/5",
+            )}
           >
-            <Icon name="phone" size={20} className="text-primary-deep" />
+            <Icon name="phone" size={20} className={onDark ? "text-accent" : "text-primary-deep"} />
             {mobileBar.call}
           </a>
           <a
             href={ctaHref}
             className={cn(
-              "flex h-12 items-center justify-center gap-2 rounded-full border px-4 text-sm font-semibold transition-colors duration-300",
+              "flex h-12 items-center justify-center gap-2 rounded-full border px-4 text-sm font-semibold transition-[color,background-color,border-color] duration-300",
               bookingInView
-                ? "border-ink/15 text-ink/80 active:bg-ink/5"
+                ? onDark
+                  ? "border-white/25 text-cream/90 active:bg-white/10"
+                  : "border-ink/15 text-ink/80 active:bg-ink/5"
                 : "border-transparent bg-accent text-deep active:bg-[#76a81f]",
             )}
           >
@@ -253,9 +266,12 @@ export function ChatWidget() {
             aria-label={open ? copy.launcherClose : copy.launcherOpen}
             aria-expanded={open}
             aria-controls="site-chat-window"
-            className="flex h-12 flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-medium text-ink/80 active:bg-ink/5"
+            className={cn(
+              "flex h-12 flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-medium transition-[color,background-color,border-color] duration-300",
+              onDark ? "text-cream/90 active:bg-white/10" : "text-ink/80 active:bg-ink/5",
+            )}
           >
-            <Icon name={open ? "close" : "chat"} size={20} className="text-primary-deep" />
+            <Icon name={open ? "close" : "chat"} size={20} className={onDark ? "text-accent" : "text-primary-deep"} />
             {mobileBar.chat}
           </button>
         </div>

@@ -770,14 +770,20 @@ export function MasterSequence() {
               * auf der Buchung – siehe LenisProvider). Ein ruhiger Knopf mit
               * eigener Fläche, damit er über hellen wie dunklen Bildern lesbar
               * bleibt. Sichtbar in der Eröffnung (s. Loop).
+              * Auf dem Handy klein und ohne Schrift (Doppelpfeil, Name nur für
+              * Screenreader), rechts: Links unten lag er auf manchen iPhones
+              * über der Zeile „Freie Termine ab …“. Unter 360 px Breite reicht
+              * auch rechts der Platz nicht – dort fehlt er; „Termin vereinbaren“
+              * führt zum selben Ziel.
               */}
             <a
               ref={skipRef}
               href={ctaHref}
-              className="pointer-events-auto absolute bottom-24 left-5 inline-flex min-h-11 items-center gap-2 rounded-full border border-cream/25 bg-deep/70 px-4 text-xs font-medium tracking-wide text-cream transition-colors duration-200 hover:border-accent hover:text-accent md:bottom-9 md:left-10"
+              className="pointer-events-auto absolute bottom-24 inline-flex min-h-11 items-center gap-2 rounded-full border border-cream/25 bg-deep/70 text-xs font-medium tracking-wide text-cream transition-colors duration-200 hover:border-accent hover:text-accent max-md:right-5 max-md:size-11 max-md:justify-center md:bottom-9 md:left-10 md:px-4 [@media(max-width:359px)]:hidden"
             >
-              {cinemaSkip}
-              <Icon name="arrow-down" size={14} />
+              <span className="max-md:sr-only">{cinemaSkip}</span>
+              <Icon name="arrow-down" size={14} className="max-md:hidden" />
+              <Icon name="chevrons-down" size={18} className="md:hidden" />
             </a>
           </div>
         </div>
