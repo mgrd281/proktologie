@@ -274,7 +274,12 @@ export function StepCalendar({ provider, typeId, selected, onSelect }: StepCalen
         role="grid"
         aria-label={monthLabel}
         key={monthKey(view.year, view.month)}
-        className="animate-step-in grid grid-cols-7 gap-1 max-md:gap-0.5"
+        // Während die freien Tage laden, ist Platz für fünf Wochen reserviert –
+        // sonst schrumpft die Karte kurz und wächst dann wieder.
+        className={cn(
+          "animate-step-in grid grid-cols-7 gap-1 max-md:gap-0.5",
+          days === null && "min-h-[14.75rem] max-md:min-h-[14.25rem]",
+        )}
       >
         {/* Gültige Grid-Semantik: Zellen in Wochen-Rows (display:contents
             lässt die Zellen weiter am 7-Spalten-Grid teilnehmen). */}

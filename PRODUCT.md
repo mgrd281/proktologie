@@ -13,7 +13,8 @@ web
 ## Stack
 
 - **Website** (Repo-Root): Next.js 16 (App Router, statischer Export `out/`), React 19,
-  Tailwind CSS v4, TypeScript. Hosting Vercel (proktologie.vercel.app).
+  Tailwind CSS v4, TypeScript, Lenis (Scrollen), Motion für React (`framer-motion`, nur
+  Buchungsschritte). Hosting Vercel (proktologie.vercel.app).
 - **Cockpit** (`cockpit/`): Next.js 16 Server-App, Better Auth (Passkey, TOTP), Drizzle ORM,
   Postgres (Neon), Vercel Region fra1 (proktologie-cockpit.vercel.app).
 - Eigene UI-Bausteine in `components/ui/` bzw. `cockpit/components/ui/`, keine UI-Bibliothek.

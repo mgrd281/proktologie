@@ -136,7 +136,7 @@ Text ist und zu Stack und Marke passt.
 | 5 | Playwright | Testwerkzeug | bereits installiert | `cockpit/e2e`, deckt auch die Website ab |
 | 6 | Playwright MCP | MCP-Server | übersprungen | doppelt zu 5; startet ein unversioniertes `npx`-Paket |
 | 7 | UI Animation (mblode) | Skill | **installiert ohne Skripte** (`ui-animation`) | Bewegungsregeln; Messskripte und Töne ausgeschlossen |
-| 8 | Motion (motion.dev) | Laufzeit-Bibliothek | übersprungen | CSS-Übergänge und Web Animations reichen (`/MOTION_SYSTEM.md`); kein neues Paket |
+| 8 | Motion (motion.dev) | Laufzeit-Bibliothek | **installiert (Paket), 17.10.2026 auf Wunsch des Betreibers** | als `framer-motion` (= Motion für React, MIT), nur Website, nur Buchungsschritte; Regeln in `/MOTION_SYSTEM.md` |
 | 9 | GSAP | Laufzeit-Bibliothek | übersprungen | wie 8; die Kamerafahrt läuft bereits ohne Bibliothek |
 | 10 | Remotion-Skills | Skills (Video) | übersprungen | Videoproduktion nicht im Umfang; später eigener Arbeitsbereich |
 | 11 | Rive | Laufzeit + Editor | übersprungen | keine interaktiven Vektoranimationen geplant; neues Paket |

@@ -5,8 +5,9 @@ und `/impeccable`. Bei Widerspruch gilt diese Datei vor jeder Skill; Farben, Sch
 Komponenten stehen in `DESIGN.md`.
 
 > Stand: 17.10.2026 – beschreibt, was im Code **tatsächlich** vorhanden ist. Neue Bewegung nur
-> nach diesen Regeln; keine Animationsbibliothek (Motion, GSAP, Rive, Lottie …) ohne Zustimmung
-> des Betreibers.
+> nach diesen Regeln. Einzige Animationsbibliothek ist **Motion für React** (Paket
+> `framer-motion`, MIT, vom Betreiber am 17.10.2026 freigegeben) – keine weitere (GSAP, Rive,
+> Lottie …) ohne Zustimmung.
 
 ## Haltung
 
@@ -36,6 +37,21 @@ viele sind älter, viele lesen auf dem Handy. Darum:
 
 Neue Werte nur, wenn keiner der vorhandenen passt – dann hier eintragen.
 
+## Motion (Bibliothek)
+
+- **Wo:** nur Website, derzeit nur `components/booking/StepFrame.tsx` (Schritte der
+  Buchungskarte). Nicht im Cockpit.
+- **Wie:** Import aus `framer-motion` (nicht aus `motion/react`: dessen Sammel-Import zieht die ganze
+  Bibliothek in die Startseite, +45 statt +17 KB gzip); `LazyMotion` (strict) mit `m`-Komponenten,
+  Funktionspaket über `lib/motionFeatures.ts` nachgeladen. Keine `motion.*`-Komponenten.
+- **Werte:** dieselben Tokens wie oben – `ease-out-soft` als `[0.22, 1, 0.36, 1]`, Eintritt 280 ms,
+  Austritt 180 ms, Versatz 24 px, keine Federn.
+- **Reduzierte Bewegung:** `useReducedMotion()` → Dauer 0, kein Versatz; das statische HTML zeigt
+  den Endzustand (`initial={false}`).
+- **Ausblendende Inhalte** sind `inert` (nicht antippbar, nicht fokussierbar, für Screenreader weg).
+- **Positionierte Ebenen** (`relative`) mit bewegtem Inhalt brauchen einen deckenden Hintergrund
+  hinter dem Text, sonst glättet Chrome Schrift nur in Graustufen (`bg-white bg-clip-content`).
+
 **Animiert werden nur `transform` und `opacity`** (Ausnahmen bestehen bereits: `stroke` der grünen
 Bahn, `color`/`text-shadow` der Filmbeschriftung). Kein `filter: blur()` und kein
 `backdrop-filter` auf bewegten Ebenen – Tiefenschärfe läuft über Schleier mit reiner Deckkraft
@@ -50,7 +66,8 @@ Bahn, `color`/`text-shadow` der Filmbeschriftung). Kein `filter: blur()` und kei
 | Team-Bühne / Leistungs-Korridor | `TeamStage`, `LeistungenLayer`: Tiefe über `transform` + Schleier | Schleier 0,5–0,6 s | statische Fassung | statische Fassung |
 | Scroll-Hinweis | `.animate-scroll-cue` | 2,2 s `ease-in-out`, endlos | eine Runde, dann still | – |
 | Einblendung beim Scrollen | `components/ui/Reveal.tsx` (IntersectionObserver, einmalig), `.reveal-init` → `.reveal-in` | 0,7 s `ease-out-soft`, Staffelung über `--reveal-delay` | nie versteckt | sichtbar (Ausblendung erst nach dem Laden) |
-| Buchungsschritte, Kalender, Rückruf | `.animate-step-in` | 0,3 s `ease-out-soft`, 10 px nach oben | aus | – (Buchung braucht JS) |
+| Buchungsschritte | Motion, `StepFrame`: neuer Schritt von rechts herein, alter nach links hinaus (zurück: umgekehrt); Kartenhöhe gleitet mit | 280 ms herein / 180 ms hinaus, 24 px, `ease-out-soft` | sofortiger Wechsel | erster Schritt sichtbar |
+| Kalendermonat, Rückruf | `.animate-step-in` | 0,3 s `ease-out-soft`, 10 px nach oben | aus | – (Buchung braucht JS) |
 | Handy-Menü | `.animate-menu-in` nur unter `prefers-reduced-motion: no-preference` | 320 ms `ease-out-soft` | keine Animation | – |
 | Buchungskarte, Schrittwechsel (nur Handy) | `BookingCard`: Lenis `scrollTo(Karte)` mit Header-Abstand, ein Bild verzögert (Scroll Anchoring) | Lenis 1,2 s | Sprung statt Fahrt | – |
 | Hover/Farbe | `transition-colors`, `duration-200/300` | kurz | aus | – |
@@ -92,6 +109,8 @@ Auch im Cockpit schaltet `prefers-reduced-motion: reduce` alles global ab. Grund
    Effekte nicht daneben stellen.
 9. **Leistung:** 60 fps auf einem Mittelklasse-Handy; keine Layout-Eigenschaften (`top`, `height`,
    `width`, `margin`) animieren; `will-change` nur auf tatsächlich bewegten Ebenen.
+   **Einzige Ausnahme:** die Höhe der Buchungskarte (ein Element, 280 ms) – bei FLIP-Technik
+   stünde der Inhalt unter der Karte sofort am neuen Platz und würde überdeckt.
 
 ## Prüfen
 

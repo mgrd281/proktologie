@@ -6,6 +6,7 @@ import { BookingProgress } from "@/components/booking/BookingProgress";
 import { StepCalendar } from "@/components/booking/StepCalendar";
 import { StepConfirm } from "@/components/booking/StepConfirm";
 import { StepDetails } from "@/components/booking/StepDetails";
+import { StepFrame } from "@/components/booking/StepFrame";
 import { StepSlots } from "@/components/booking/StepSlots";
 import { StepTypes } from "@/components/booking/StepTypes";
 import { appointmentTypes, bookingCopy, bookingSteps } from "@/content/booking";
@@ -63,6 +64,14 @@ export function BookingCard() {
   const cardRef = useRef<HTMLDivElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const successRef = useRef<HTMLParagraphElement>(null);
+  // Beim Schrittwechsel gleitet der alte Schritt noch kurz hinaus; verschwindet
+  // er, würde ein gewöhnlicher Ref auf null fallen – obwohl der neue längst steht.
+  const setHeading = useCallback((el: HTMLHeadingElement | null) => {
+    if (el) headingRef.current = el;
+  }, []);
+  const setSuccess = useCallback((el: HTMLParagraphElement | null) => {
+    if (el) successRef.current = el;
+  }, []);
   const mounted = useRef(false);
   const { scrollTo } = useLenis();
   // Latest-wins-Token: schützt vor veralteten Slot-Antworten, falls ein
@@ -144,6 +153,16 @@ export function BookingCard() {
       )
     : "";
 
+  // Richtung für die Bewegung (StepFrame): Weiter = +1, Zurück, „Termin
+  // ändern" und „Weiteren Termin" = −1. Der Abschluss zählt als letzter Schritt.
+  const paneIndex = send.kind === "done" ? bookingSteps.length : step;
+  const [lastPane, setLastPane] = useState(paneIndex);
+  const [direction, setDirection] = useState(1);
+  if (paneIndex !== lastPane) {
+    setDirection(paneIndex > lastPane ? 1 : -1);
+    setLastPane(paneIndex);
+  }
+
   // Bis der Provider steht, gilt der Wunschtermin – der ehrliche Default.
   // Ist die Website gegen das Cockpit gebaut, entscheidet erst dessen Antwort
   // zwischen Anfrage und Buchung: Titel und Hinweis bleiben bis dahin
@@ -205,11 +224,15 @@ export function BookingCard() {
         )}
       </div>
 
-      <div className="px-6 py-6 md:px-8 md:py-7">
+      <StepFrame
+        paneKey={paneIndex}
+        direction={direction}
+        className="px-6 py-6 md:px-8 md:py-7"
+      >
         {send.kind === "done" ? (
-          <div key="done" className="animate-step-in">
+          <div>
             <p
-              ref={successRef}
+              ref={setSuccess}
               tabIndex={-1}
               className="flex items-center gap-2.5 font-display text-xl font-medium text-ink outline-none"
             >
@@ -259,7 +282,7 @@ export function BookingCard() {
             </div>
           </div>
         ) : (
-          <div key={step} className="animate-step-in">
+          <div>
             <div className="flex items-center gap-3">
               {step > 0 && (
                 <button
@@ -272,7 +295,7 @@ export function BookingCard() {
                 </button>
               )}
               <h3
-                ref={headingRef}
+                ref={setHeading}
                 tabIndex={-1}
                 className="font-display text-xl font-medium text-ink outline-none"
               >
@@ -357,7 +380,7 @@ export function BookingCard() {
               ))}
           </div>
         )}
-      </div>
+      </StepFrame>
 
       {/*
        * Sofort verbindlicher Weg – ab Schritt 1 leise erreichbar, damit

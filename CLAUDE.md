@@ -44,8 +44,8 @@ Datenschutz/Sicherheit: `docs/PRIVACY_SECURITY_CHECKLIST.md`.
    - **`/react-best-practices`** – Performance-Regeln für React/Next.js (Wasserfälle,
      Bundle-Größe, Re-Renders). Regeln, die neue Pakete verlangen (z. B. SWR), nur als Hinweis.
    - **`/ui-animation`** – Bewegung entwerfen und prüfen. Grundlage ist `MOTION_SYSTEM.md`.
-     **Keine Interface-Töne** (Abschnitt „interface sound/SFX" gilt hier nicht), **keine**
-     Animationsbibliothek (Motion, GSAP …), `prefers-reduced-motion` immer respektieren. Die
+     **Keine Interface-Töne** (Abschnitt „interface sound/SFX" gilt hier nicht), außer Motion
+     **keine** Animationsbibliothek (GSAP …), `prefers-reduced-motion` immer respektieren. Die
      Messskripte („Reverse-engineer workflow") sind nicht installiert.
    - **Rollen kurz:** Richtung neu = `frontend-design` · Kritik/Feinschliff = `impeccable` ·
      Nachschlagen = `ui-ux-pro-max` · Code-Prüfliste = `web-design-guidelines` ·
@@ -54,7 +54,9 @@ Datenschutz/Sicherheit: `docs/PRIVACY_SECURITY_CHECKLIST.md`.
 3. **Keine neuen UI-, Icon-, Animations- oder Kalender-Bibliotheken** (shadcn, daisyUI, Floating UI,
    FullCalendar, lucide-react …) und **keine externen Buchungsdienste** (Cal.com u. a.) ohne
    Zustimmung – Bewertung siehe `.claude/skills/VENDOR.md`. Neue Icons als Lucide-Pfaddaten in
-   die eigene `Icon.tsx`.
+   die eigene `Icon.tsx`. **Freigegeben (17.10.2026):** Motion für React (`framer-motion`), nur
+   Website, nur wie in `MOTION_SYSTEM.md` beschrieben (LazyMotion + `m`, Import aus
+   `framer-motion`, nicht `motion/react`).
 4. **Keine Neugestaltung ohne Auftrag.** Verfeinern heißt: Marke, Inhalte, Texte und Verhalten
    bleiben. Inhalte/Texte nur nach Rückfrage ändern.
 5. **Mobil arbeiten ohne Desktop zu verändern:** Handy-Änderungen über Basis- bzw.
