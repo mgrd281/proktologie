@@ -1,6 +1,6 @@
 "use client";
 
-import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+import type { ComponentPropsWithRef, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 import { useId } from "react";
 import { cn } from "@/lib/cn";
 
@@ -10,21 +10,31 @@ export const inputClass =
 
 interface FieldProps {
   label: string;
+  /** Pflichtfeld – sichtbar markiert; das Eingabefeld bekommt selbst aria-required */
+  required?: boolean;
   hint?: string;
   error?: string;
   children: (id: string, describedBy: string | undefined) => ReactNode;
   className?: string;
 }
 
-export function Field({ label, hint, error, children, className }: FieldProps) {
+export function Field({ label, required, hint, error, children, className }: FieldProps) {
   const id = useId();
   const hintId = hint ? `${id}-hint` : undefined;
   const errId = error ? `${id}-err` : undefined;
   return (
     <div className={cn("flex flex-col", className)}>
-      <label htmlFor={id} className="mb-1.5 block text-[13px] font-medium text-text">
-        {label}
-      </label>
+      {/* Der Stern steht neben der Beschriftung, nicht darin: Der Feldname bleibt „Vorname“, Pflicht sagt aria-required */}
+      <div className="mb-1.5 flex items-baseline gap-0.5">
+        <label htmlFor={id} className="block text-[13px] font-medium text-text">
+          {label}
+        </label>
+        {required && (
+          <span aria-hidden="true" className="text-[13px] font-medium text-danger">
+            *
+          </span>
+        )}
+      </div>
       {children(id, [hintId, errId].filter(Boolean).join(" ") || undefined)}
       {hint && !error && (
         <p id={hintId} className="mt-1.5 text-[12px] text-text-muted">
@@ -40,7 +50,7 @@ export function Field({ label, hint, error, children, className }: FieldProps) {
   );
 }
 
-export function Input({ className, invalid, ...rest }: InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }) {
+export function Input({ className, invalid, ...rest }: ComponentPropsWithRef<"input"> & { invalid?: boolean }) {
   return <input className={cn(inputClass, invalid && "border-danger", className)} aria-invalid={invalid || undefined} {...rest} />;
 }
 

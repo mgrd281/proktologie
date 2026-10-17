@@ -2,8 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { availabilityAction, createAppointmentAction, resendConfirmationAction, setStatusAction, updateAppointmentAction } from "@/app/actions/appointments";
-import { cn } from "@/lib/cn";
+import { createAppointmentAction, nextFreeTimesAction, resendConfirmationAction, setStatusAction, updateAppointmentAction } from "@/app/actions/appointments";
 import { SOURCE_LABEL, STATUS_LABEL, type AppointmentStatus, type AppointmentView, type TypeView } from "@/lib/booking/model";
 import { cancellationLead } from "@/lib/messaging/templates";
 import { dateKey, fmtLongDate, fmtShortDate, timeKey } from "@/lib/time";
@@ -13,6 +12,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { Dialog, Drawer } from "@/components/ui/Overlay";
 import { useToast } from "@/components/ui/Toast";
+import { FreeTimes, nextAfter, type FreeTimesState } from "./FreeTimes";
 
 /** Vorbelegung eines neuen Termins – etwa ein Folgetermin aus einem erledigten Besuch. */
 export interface NewPrefill {
@@ -41,6 +41,11 @@ interface FormSnapshot {
 
 /** „Mo, 19.10. 09:00“ – kurz genug für die Zeile „alt → neu“. */
 const when = (date: string, time: string) => (date ? `${fmtShortDate(new Date(`${date}T12:00:00Z`))} ${time}`.trim() : time);
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+type FieldName = "date" | "time" | "firstName" | "lastName" | "email";
+/** In dieser Reihenfolge stehen die Felder im Formular – der Fokus geht zum ersten Fehler. */
+const FIELD_ORDER: FieldName[] = ["date", "time", "firstName", "lastName", "email"];
 
 export function AppointmentDrawer({
   state,
@@ -75,7 +80,16 @@ export function AppointmentDrawer({
   const [phone, setPhone] = useState("");
   const [note, setNote] = useState("");
   const [source, setSource] = useState<"cockpit" | "telefon">("telefon");
-  const [free, setFree] = useState<string[] | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldName, string>>>({});
+  /** Nach einer Überschneidung: die nächsten freien Zeiten ab der gewünschten */
+  const [conflictAt, setConflictAt] = useState<{ date: string; time: string } | null>(null);
+  /** Erster Tag der Leiste „Nächste freie Zeiten“ */
+  const [from, setFrom] = useState("");
+  const [freeReload, setFreeReload] = useState(0);
+  const [free, setFree] = useState<{ key: string; state: FreeTimesState } | null>(null);
+  /** Solange niemand selbst gewählt hat, steht die erste freie Zeit im Formular. */
+  const autoPick = useRef(false);
+  const fieldRefs = useRef<Partial<Record<FieldName, HTMLInputElement | null>>>({});
 
   // Die Typliste kommt bei jeder Aktualisierung der Seite neu – zurückgesetzt
   // wird das Formular trotzdem nur, wenn ein neues Fenster aufgeht. Vorher
@@ -114,6 +128,10 @@ export function AppointmentDrawer({
             note: state.appointment.note ?? "",
           };
     setInitial(snap);
+    setFieldErrors({});
+    setConflictAt(null);
+    setFrom(snap.date);
+    autoPick.current = state.mode === "new" && !state.time;
     setTypeId(snap.typeId);
     setDate(snap.date);
     setTime(snap.time);
@@ -125,20 +143,47 @@ export function AppointmentDrawer({
     if (state.mode === "new") setSource("telefon");
   }, [state]);
 
-  // Freie Zeiten für die gewählte Terminart am Tag – als Vorschlagschips
+  // Nächste freie Zeiten ab `from` – beim Verschieben zählt der Termin selbst nicht als belegt
+  const finished = editing ? FINISHED.includes(editing.status) : false;
+  const exceptId = editing?.id;
+  const freeKey = `${typeId}|${from}|${exceptId ?? ""}|${freeReload}`;
   useEffect(() => {
-    if (!state || !typeId || !date) return;
+    if (!state || finished || !typeId || !from) return;
     let alive = true;
-    setFree(null);
-    availabilityAction(typeId, date).then((r) => alive && setFree(r.ok ? r.data : []));
+    void nextFreeTimesAction({ typeId, from, exceptId }).then(
+      (r) => {
+        if (!alive) return;
+        setFree({ key: freeKey, state: r.ok ? { status: "ok", days: r.data } : { status: "error" } });
+        const first = r.ok ? r.data[0] : undefined;
+        if (autoPick.current && first) {
+          // Vorauswahl ist Ausgangslage, keine Eingabe: Schließen fragt deshalb nicht nach
+          setDate(first.date);
+          setTime(first.times[0]!);
+          setInitial((i) => i && { ...i, date: first.date, time: first.times[0]! });
+        }
+      },
+      // Netz weg oder Server nicht erreichbar: sagen, nicht ewig laden
+      () => alive && setFree({ key: freeKey, state: { status: "error" } }),
+    );
     return () => {
       alive = false;
     };
-  }, [state, typeId, date]);
+  }, [state, finished, typeId, from, exceptId, freeKey]);
 
   if (!state) return null;
   const type = types.find((t) => t.id === typeId);
-  const finished = editing ? FINISHED.includes(editing.status) : false;
+  const freeState: FreeTimesState = free?.key === freeKey ? free.state : { status: "loading" };
+  const suggestions = conflictAt && freeState.status === "ok" ? nextAfter(freeState.days, conflictAt.date, conflictAt.time) : [];
+  const today = dateKey(new Date());
+  /** Selbst gewählt: Ab jetzt überschreibt die Leiste nichts mehr. */
+  const pick = (d: string, t: string) => {
+    autoPick.current = false;
+    setDate(d);
+    setTime(t);
+    setOutsideHours(false);
+    setConflictAt(null);
+    setFieldErrors((e) => ({ ...e, date: undefined, time: undefined }));
+  };
   const dirty = Boolean(
     initial &&
       (typeId !== initial.typeId ||
@@ -159,8 +204,23 @@ export function AppointmentDrawer({
    */
   const requestClose = () => (dirty ? setConfirmDiscard(true) : onClose());
 
+  /** Pflichtfelder vorab prüfen – der Fehler steht am Feld, der Fokus geht zum ersten. */
+  const validate = (): boolean => {
+    const errors: Partial<Record<FieldName, string>> = {};
+    if (!date) errors.date = "Datum fehlt";
+    if (!time) errors.time = "Uhrzeit fehlt";
+    if (!firstName.trim()) errors.firstName = "Vorname fehlt";
+    if (!lastName.trim()) errors.lastName = "Nachname fehlt";
+    if (email.trim() && !EMAIL.test(email.trim())) errors.email = "E-Mail ungültig";
+    setFieldErrors(errors);
+    const firstInvalid = FIELD_ORDER.find((f) => errors[f]);
+    if (firstInvalid) fieldRefs.current[firstInvalid]?.focus();
+    return !firstInvalid;
+  };
+
   const save = () => {
     setError(null);
+    if (!validate()) return;
     start(async () => {
       const pii = { firstName, lastName, email, phone };
       const r = editing
@@ -171,6 +231,12 @@ export function AppointmentDrawer({
           setOutsideHours(true);
           setError("Der Termin liegt außerhalb der Sprechzeiten. Noch einmal speichern, um ihn trotzdem anzulegen.");
           return;
+        }
+        if (/bereits belegt/.test(r.error)) {
+          // Frisch nachladen ab dem gewünschten Tag – die nächsten freien Zeiten stehen gleich darunter
+          setConflictAt({ date, time });
+          setFrom(date);
+          setFreeReload((n) => n + 1);
         }
         setError(r.error);
         return;
@@ -271,13 +337,28 @@ export function AppointmentDrawer({
           <Button variant="ghost" onClick={requestClose}>
             Schließen
           </Button>
-          <Button variant="primary" onClick={save} loading={pending} icon={editing ? (moving ? "calendar" : "check") : "plus"}>
+          <Button variant="primary" type="submit" form="appointment-form" loading={pending} icon={editing ? (moving ? "calendar" : "check") : "plus"}>
             {!editing ? (outsideHours ? "Trotzdem anlegen" : "Anlegen") : moving ? (email ? "Verschieben und benachrichtigen" : "Verschieben") : "Speichern"}
           </Button>
         </>
       }
     >
-      <div className="space-y-5">
+      {/* Enter in einem Feld speichert, Strg/⌘+Enter auch aus der Notiz heraus */}
+      <form
+        id="appointment-form"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          save();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            save();
+          }
+        }}
+        className="space-y-5"
+      >
         {editing && (
           <div className="flex flex-wrap items-center gap-2">
             <StatusPill status={editing.status} />
@@ -359,34 +440,54 @@ export function AppointmentDrawer({
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Datum" hint={finished ? "Nicht änderbar – bitte Folgetermin anlegen" : undefined}>
-            {(id) => (
+          <Field label="Datum" required hint={finished ? "Nicht änderbar – bitte Folgetermin anlegen" : undefined} error={fieldErrors.date}>
+            {(id, describedBy) => (
               <Input
                 id={id}
+                ref={(el) => {
+                  fieldRefs.current.date = el;
+                }}
                 type="date"
                 value={date}
                 onChange={(e) => {
+                  autoPick.current = false;
                   setDate(e.target.value);
+                  // Die Leiste sucht ab dem eingetragenen Tag – z. B. für die Kontrolle in drei Monaten
+                  if (e.target.value) setFrom(e.target.value);
                   setOutsideHours(false);
+                  setConflictAt(null);
+                  setFieldErrors((f) => ({ ...f, date: undefined }));
                 }}
                 className="tnum"
                 disabled={finished}
+                aria-required
+                aria-describedby={describedBy}
+                invalid={Boolean(fieldErrors.date)}
               />
             )}
           </Field>
-          <Field label="Uhrzeit">
-            {(id) => (
+          <Field label="Uhrzeit" required error={fieldErrors.time}>
+            {(id, describedBy) => (
               <Input
                 id={id}
+                ref={(el) => {
+                  fieldRefs.current.time = el;
+                }}
                 type="time"
                 step={300}
                 value={time}
                 onChange={(e) => {
+                  autoPick.current = false;
                   setTime(e.target.value);
                   setOutsideHours(false);
+                  setConflictAt(null);
+                  setFieldErrors((f) => ({ ...f, time: undefined }));
                 }}
                 className="tnum"
                 disabled={finished}
+                aria-required
+                aria-describedby={describedBy}
+                invalid={Boolean(fieldErrors.time)}
               />
             )}
           </Field>
@@ -400,44 +501,81 @@ export function AppointmentDrawer({
         )}
 
         {!finished && (
-        <div>
-          <p className="mb-1.5 text-[12px] text-text-muted">
-            {free === null ? "Freie Zeiten werden geladen …" : free.length ? `Frei am ${fmtLongDate(new Date(`${date}T12:00:00Z`))} für ${type?.label ?? "diese Terminart"}:` : "An diesem Tag ist für diese Terminart nichts frei – Sprechzeit, Blocker oder Vorlauf."}
-          </p>
-          {free && free.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {free.slice(0, 24).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => {
-                    setTime(t);
-                    setOutsideHours(false);
-                  }}
-                  className={cn(
-                    "tnum h-8 rounded-lg border px-2.5 text-[12px] font-medium transition-colors",
-                    time === t ? "border-brand-fill bg-brand-fill text-deep" : "border-line text-text-muted hover:border-line-strong hover:text-text",
-                  )}
-                >
-                  {t}
-                </button>
-              ))}
-              {free.length > 24 && <span className="self-center text-[12px] text-text-faint">+{free.length - 24}</span>}
-            </div>
-          )}
-        </div>
+          <FreeTimes
+            state={freeState}
+            today={today}
+            from={from}
+            onFrom={(d) => setFrom(d)}
+            selected={{ date, time }}
+            onPick={pick}
+            onRetry={() => setFreeReload((n) => n + 1)}
+            typeLabel={type?.label}
+          />
         )}
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Vorname">{(id) => <Input id={id} autoComplete="off" value={firstName} onChange={(e) => setFirstName(e.target.value)} data-autofocus={!editing} />}</Field>
-          <Field label="Nachname">{(id) => <Input id={id} autoComplete="off" value={lastName} onChange={(e) => setLastName(e.target.value)} />}</Field>
+          <Field label="Vorname" required error={fieldErrors.firstName}>
+            {(id, describedBy) => (
+              <Input
+                id={id}
+                ref={(el) => {
+                  fieldRefs.current.firstName = el;
+                }}
+                autoComplete="off"
+                value={firstName}
+                onChange={(e) => {
+                  setFirstName(e.target.value);
+                  setFieldErrors((f) => ({ ...f, firstName: undefined }));
+                }}
+                data-autofocus={!editing}
+                aria-required
+                aria-describedby={describedBy}
+                invalid={Boolean(fieldErrors.firstName)}
+              />
+            )}
+          </Field>
+          <Field label="Nachname" required error={fieldErrors.lastName}>
+            {(id, describedBy) => (
+              <Input
+                id={id}
+                ref={(el) => {
+                  fieldRefs.current.lastName = el;
+                }}
+                autoComplete="off"
+                value={lastName}
+                onChange={(e) => {
+                  setLastName(e.target.value);
+                  setFieldErrors((f) => ({ ...f, lastName: undefined }));
+                }}
+                aria-required
+                aria-describedby={describedBy}
+                invalid={Boolean(fieldErrors.lastName)}
+              />
+            )}
+          </Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Telefon" hint="Für Rückfragen">
             {(id) => <Input id={id} type="tel" autoComplete="off" value={phone} onChange={(e) => setPhone(e.target.value)} />}
           </Field>
-          <Field label="E-Mail" hint="Bestätigung, Erinnerungen und Verwaltungslink">
-            {(id) => <Input id={id} type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />}
+          <Field label="E-Mail" hint="Bestätigung, Erinnerungen und Verwaltungslink" error={fieldErrors.email}>
+            {(id, describedBy) => (
+              <Input
+                id={id}
+                ref={(el) => {
+                  fieldRefs.current.email = el;
+                }}
+                type="email"
+                autoComplete="off"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setFieldErrors((f) => ({ ...f, email: undefined }));
+                }}
+                aria-describedby={describedBy}
+                invalid={Boolean(fieldErrors.email)}
+              />
+            )}
           </Field>
         </div>
         {!editing && (
@@ -454,13 +592,35 @@ export function AppointmentDrawer({
           {(id) => <Textarea id={id} value={note} onChange={(e) => setNote(e.target.value)} />}
         </Field>
 
-        {error && <Notice tone={outsideHours && !error.startsWith("Der Zeitraum") ? "warn" : "danger"}>{error}</Notice>}
+        {error && (
+          <Notice tone={outsideHours && !error.startsWith("Der Zeitraum") ? "warn" : "danger"}>
+            {error}
+            {suggestions.length > 0 && (
+              <span className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span>Nächste freie Zeiten:</span>
+                {suggestions.map((sug) => (
+                  <button
+                    key={`${sug.date} ${sug.time}`}
+                    type="button"
+                    onClick={() => {
+                      pick(sug.date, sug.time);
+                      setError(null);
+                    }}
+                    className="tnum min-h-8 rounded-lg border border-line-strong bg-surface-raised px-2.5 text-[12px] font-medium text-text hover:border-brand max-md:min-h-11"
+                  >
+                    {when(sug.date, sug.time)}
+                  </button>
+                ))}
+              </span>
+            )}
+          </Notice>
+        )}
         {editing && (
           <p className="flex items-center gap-1.5 text-[12px] text-text-faint">
             <Icon name="lock" size={12} /> Persönliche Daten liegen verschlüsselt in der Datenbank; jede Änderung steht im Audit-Log.
           </p>
         )}
-      </div>
+      </form>
 
       {editing && (
         <Dialog open={confirmCancel} onClose={() => setConfirmCancel(false)} title="Termin absagen?" confirmLabel="Absagen" danger busy={pending} onConfirm={cancelNow}>

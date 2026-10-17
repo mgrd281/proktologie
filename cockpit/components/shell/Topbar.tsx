@@ -1,13 +1,19 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { authClient } from "@/lib/auth/client";
 import { cn } from "@/lib/cn";
 import { Icon } from "@/components/ui/Icon";
 import { Kbd } from "@/components/ui/Bits";
 
 const ROLE_LABEL: Record<string, string> = { arzt: "Arzt", empfang: "Empfang", admin: "Administration" };
+
+const noSubscribe = () => () => {};
+/** Mac zeigt ⌘, alle anderen Strg – auf dem Server erst einmal Strg. */
+function useIsMac(): boolean {
+  return useSyncExternalStore(noSubscribe, () => /Mac|iPhone|iPad/.test(navigator.platform), () => false);
+}
 
 export function Topbar({
   user,
@@ -20,6 +26,7 @@ export function Topbar({
   onSearch: () => void;
   title?: string;
 }) {
+  const mac = useIsMac();
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-surface/85 px-4 backdrop-blur-md md:px-6">
       <button type="button" onClick={onMenu} aria-label="Navigation öffnen" className="rounded-full p-2 text-text-muted hover:bg-surface-sunken lg:hidden">
@@ -34,8 +41,8 @@ export function Topbar({
       >
         <Icon name="search" size={15} />
         <span className="hidden sm:inline">Suchen oder springen</span>
-        <span className="hidden items-center gap-1 sm:flex">
-          <Kbd>⌘</Kbd>
+        <span className="hidden items-center gap-1 sm:flex" aria-hidden="true">
+          <Kbd>{mac ? "⌘" : "Strg"}</Kbd>
           <Kbd>K</Kbd>
         </span>
       </button>

@@ -105,6 +105,14 @@ export function addDays(dateKeyStr: string, days: number): string {
   return `${x.getUTCFullYear()}-${String(x.getUTCMonth() + 1).padStart(2, "0")}-${String(x.getUTCDate()).padStart(2, "0")}`;
 }
 
+/** Monate weiter, am Monatsende gekappt: 30.11. + 3 → 28.02. bzw. 29.02. */
+export function addMonths(dateKeyStr: string, months: number): string {
+  const { y, m, d } = parseDateKey(dateKeyStr);
+  const lastDay = new Date(Date.UTC(y, m - 1 + months + 1, 0)).getUTCDate();
+  const x = new Date(Date.UTC(y, m - 1 + months, Math.min(d, lastDay)));
+  return `${x.getUTCFullYear()}-${String(x.getUTCMonth() + 1).padStart(2, "0")}-${String(x.getUTCDate()).padStart(2, "0")}`;
+}
+
 export function isoWeekday(dateKeyStr: string): number {
   const { y, m, d } = parseDateKey(dateKeyStr);
   const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 = So

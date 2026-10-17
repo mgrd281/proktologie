@@ -43,6 +43,19 @@ export function CalendarView(p: Props) {
   const [exceptionOpen, setExceptionOpen] = useState(p.openException);
   const [removing, setRemoving] = useState<ExceptionView | null>(null);
 
+  // Die Adresse ändert sich auch, während der Kalender offen ist: „n“, ein
+  // Treffer der Suche (?id=), „Blocker / Urlaub eintragen“ aus der Palette
+  const request = p.openNew ? `neu:${p.date}` : p.openId ? `id:${p.openId}` : p.openException ? "ausnahme" : "";
+  const [handled, setHandled] = useState(request);
+  if (request !== handled) {
+    setHandled(request);
+    if (p.openNew) setDrawer({ mode: "new", date: p.date });
+    else if (p.openId) {
+      const a = p.appointments.find((x) => x.id === p.openId);
+      if (a) setDrawer({ mode: "edit", appointment: a });
+    } else if (p.openException) setExceptionOpen(true);
+  }
+
   const go = useCallback(
     (view: CalendarViewMode, date: string) => router.push(`/termine?v=${view}&d=${date}`),
     [router],
@@ -74,11 +87,15 @@ export function CalendarView(p: Props) {
 
   // Stabil über Neuberechnungen hinweg: Das Termin-Fenster setzt sich nur bei
   // einem neuen Öffnen zurück, nicht, weil die Seite sich aktualisiert hat.
-  const { openNew, openId, view, date } = p;
+  const { openNew, openId, openException, view, date } = p;
   const closeDrawer = useCallback(() => {
     setDrawer(null);
     if (openNew || openId) router.replace(`/termine?v=${view}&d=${date}`);
   }, [openNew, openId, view, date, router]);
+  const closeException = useCallback(() => {
+    setExceptionOpen(false);
+    if (openException) router.replace(`/termine?v=${view}&d=${date}`);
+  }, [openException, view, date, router]);
   const drawerTypes = useMemo(
     () => p.types.filter((t) => t.active || (drawer?.mode === "edit" && drawer.appointment.typeId === t.id)),
     [p.types, drawer],
@@ -152,7 +169,7 @@ export function CalendarView(p: Props) {
         onClose={closeDrawer}
         onFollowUp={(prefill) => setDrawer({ mode: "new", date: p.today, prefill })}
       />
-      <ExceptionDrawer open={exceptionOpen} date={p.date} onClose={() => setExceptionOpen(false)} />
+      <ExceptionDrawer open={exceptionOpen} date={p.date} onClose={closeException} />
       <RemoveExceptionDialog exception={removing} onClose={() => setRemoving(null)} />
     </>
   );

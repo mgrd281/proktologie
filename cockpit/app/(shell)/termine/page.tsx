@@ -1,5 +1,5 @@
 import { requireActorOrRedirect } from "@/lib/auth/actor";
-import { listAppointments, listExceptions, listHours, listTypes } from "@/lib/booking/repo";
+import { getAppointment, listAppointments, listExceptions, listHours, listTypes } from "@/lib/booking/repo";
 import { addDays, dateKey, startOfDay, startOfWeek } from "@/lib/time";
 import { CalendarView, type CalendarViewMode } from "@/components/calendar/CalendarView";
 
@@ -14,7 +14,9 @@ export default async function TerminePage({
   const sp = await searchParams;
   const now = new Date();
   const today = dateKey(now);
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(sp.d ?? "") ? sp.d! : today;
+  // ?id= (Suche, Warteliste): der Termin samt seinem Tag – egal, was sonst in der Adresse steht
+  const target = sp.id ? await getAppointment(sp.id) : null;
+  const date = target ? dateKey(new Date(target.startsAt)) : /^\d{4}-\d{2}-\d{2}$/.test(sp.d ?? "") ? sp.d! : today;
   const view: CalendarViewMode = sp.v === "woche" || sp.v === "agenda" ? sp.v : "tag";
 
   const rangeStart = view === "tag" ? date : startOfWeek(date);
@@ -41,7 +43,7 @@ export default async function TerminePage({
       hours={hours}
       openNew={sp.neu === "1"}
       openException={sp.ausnahme === "1"}
-      openId={sp.id ?? null}
+      openId={target?.id ?? null}
     />
   );
 }

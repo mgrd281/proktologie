@@ -83,12 +83,16 @@ export function Sidebar({ demoCount, mobileOpen, onMobileClose }: { demoCount: n
         </nav>
 
         {demoCount > 0 && (
-          <div className={cn("mx-2 mb-2 rounded-xl border border-warn/40 bg-warn/10 text-warn", collapsed ? "p-2 text-center" : "px-3 py-2.5")}>
+          // Warnfarbe nur am Rand und am Punkt – Text in voller Schriftfarbe (Kontrast auf dem Warnton)
+          <div className={cn("mx-2 mb-2 rounded-xl border border-warn/40 bg-warn/10 text-text", collapsed ? "p-2 text-center" : "px-3 py-2.5")}>
             {collapsed ? (
               <span className="text-[10px] font-bold tracking-[0.1em]">DEMO</span>
             ) : (
               <>
-                <p className="text-[11px] font-bold tracking-[0.14em] uppercase">Demo-Daten aktiv</p>
+                <p className="flex items-center gap-1.5 text-[11px] font-bold tracking-[0.14em] uppercase">
+                  <span aria-hidden="true" className="size-1.5 rounded-full bg-warn" />
+                  Demo-Daten aktiv
+                </p>
                 <p className="mt-0.5 text-[12px] leading-snug text-text-muted">
                   {demoCount} Vorführdatensätze. Live-Betrieb ist gesperrt.{" "}
                   <Link href="/einstellungen/demo" className="font-medium text-brand underline underline-offset-2">

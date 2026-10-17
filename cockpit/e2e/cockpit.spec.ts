@@ -67,8 +67,8 @@ test("Einladung annehmen, Passkey und TOTP einrichten", async ({ page }) => {
 
   // ⌘K → Termine
   await page.keyboard.press("ControlOrMeta+k");
-  await expect(page.getByRole("dialog", { name: "Befehle" })).toBeVisible();
-  await page.getByLabel("Befehl suchen").fill("Termine");
+  await expect(page.getByRole("dialog", { name: "Suchen oder springen" })).toBeVisible();
+  await page.getByRole("combobox", { name: "Suchen oder springen" }).fill("Termine");
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/termine/);
 
@@ -287,7 +287,8 @@ async function createByHand(page: Page, v: { first: string; last: string; email?
   const drawer = page.getByRole("dialog", { name: "Termin anlegen" });
   await expect(drawer.getByLabel("Vorname", { exact: true })).toBeFocused();
   await drawer.getByLabel("Datum", { exact: true }).fill(DAY);
-  await expect(drawer.getByText(/^Frei am /)).toBeVisible();
+  // Die Leiste „Nächste freie Zeiten“ lädt ab dem eingetragenen Tag neu
+  await expect(drawer.getByText("Freie Zeiten werden geladen …")).toHaveCount(0);
   await drawer.getByRole("button", { name: /^\d\d:\d\d$/ }).first().click();
   await drawer.getByLabel("Vorname", { exact: true }).fill(v.first);
   await drawer.getByLabel("Nachname", { exact: true }).fill(v.last);
@@ -391,6 +392,107 @@ test("Erledigter Termin ist nur lesbar – weiter geht es mit „Folgetermin anl
   await context.close();
 });
 
+/** Uhrzeit des Telefontermins aus dem nächsten Test – für Suche und Überschneidung */
+let phoneBooked = { time: "" };
+
+test("Telefonbuchung nur mit Tastatur: „n“, die erste freie Zeit steht schon da, drei Felder, Enter", async ({ browser }) => {
+  const { context, page } = await teamPage(browser);
+  await page.goto(`/termine?v=woche&d=${DAY}`);
+  await page.keyboard.press("n");
+  const drawer = page.getByRole("dialog", { name: "Termin anlegen" });
+  await expect(drawer.getByLabel("Vorname", { exact: true })).toBeFocused();
+  // Vorausgewählt: die erste freie Zeit ab dem angezeigten Tag – ohne Vorlauf der Website
+  const chosen = drawer.getByRole("button", { pressed: true, name: /^\d\d:\d\d$/ });
+  await expect(chosen).toHaveCount(1);
+  phoneBooked = { time: (await chosen.textContent())!.trim() };
+  await expect(drawer.getByLabel("Datum", { exact: true })).toHaveValue(DAY);
+  await expect(drawer.getByLabel("Uhrzeit", { exact: true })).toHaveValue(phoneBooked.time);
+  await page.keyboard.type("Dora");
+  await page.keyboard.press("Tab");
+  await page.keyboard.type("Direkt");
+  await page.keyboard.press("Tab");
+  await page.keyboard.type("040 111 2222");
+  await page.keyboard.press("Enter");
+  await expect(page.getByText(/Termin angelegt · PE-/)).toBeVisible();
+  await expect(drawer).toBeHidden();
+  // Ansicht und Tag bleiben, wie sie waren
+  await expect(page).toHaveURL(new RegExp(`/termine\\?v=woche&d=${DAY}$`));
+  const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+  expect(axe.violations, JSON.stringify(axe.violations.map((v) => `${v.id}: ${v.nodes.length}`))).toEqual([]);
+  await context.close();
+});
+
+test("Suche: Name in beliebiger Reihenfolge, Telefon und Referenz öffnen den Termin an seinem Tag", async ({ browser }) => {
+  const { context, page } = await teamPage(browser);
+  await page.goto("/");
+  await page.keyboard.press("Control+k");
+  const box = page.getByRole("combobox", { name: "Suchen oder springen" });
+  await box.fill("direkt dora");
+  const hit = page.getByRole("option", { name: /Direkt, Dora/ });
+  await expect(hit).toBeVisible();
+  await expect(box).toHaveAttribute("aria-activedescendant", (await hit.getAttribute("id"))!);
+  const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+  expect(axe.violations, JSON.stringify(axe.violations.map((v) => `${v.id}: ${v.nodes.length}`))).toEqual([]);
+  await box.press("Enter");
+  await expect(page).toHaveURL(/\/termine\?id=/);
+  const drawer = page.getByRole("dialog", { name: /Direkt, Dora/ });
+  await expect(drawer).toBeVisible();
+  const ref = (await drawer.getByText(/^PE-/).first().textContent())!.match(/PE-[A-Z0-9]+/)![0];
+  // Solange das Fenster offen ist, ruhen die Kürzel
+  await page.keyboard.press("Control+k");
+  await expect(page.getByRole("combobox", { name: "Suchen oder springen" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(drawer).toBeHidden();
+
+  for (const query of ["+49 40 1112222", ref.toLowerCase()]) {
+    await page.keyboard.press("Control+k");
+    await page.getByRole("combobox", { name: "Suchen oder springen" }).fill(query);
+    await expect(page.getByRole("option", { name: /Direkt, Dora/ }), query).toBeVisible();
+    await page.keyboard.press("Escape");
+  }
+  // Ein einzelnes Wort reicht für die Namenssuche nicht – das sagt die Palette
+  await page.keyboard.press("Control+k");
+  await page.getByRole("combobox", { name: "Suchen oder springen" }).fill("Direkt");
+  await expect(page.getByText("Für die Namenssuche bitte Nachname und Vorname eingeben, z. B. „Müller Anna“.")).toBeVisible();
+  await context.close();
+});
+
+test("Überschneidung: Das Fenster nennt die nächsten freien Zeiten – Ladefehler stehen da, mit neuem Versuch", async ({ browser }) => {
+  const { context, page } = await teamPage(browser);
+  await page.goto(`/termine?d=${DAY}`);
+  // Erst ein Ladefehler der Leiste: Server-Aktionen blockiert
+  await page.route("**/termine**", (route) => (route.request().method() === "POST" ? route.abort("failed") : route.continue()));
+  await page.getByRole("button", { name: "Neuer Termin" }).click();
+  const drawer = page.getByRole("dialog", { name: "Termin anlegen" });
+  await expect(drawer.getByText("Die freien Zeiten konnten gerade nicht geladen werden.")).toBeVisible();
+  await page.unroute("**/termine**");
+  await drawer.getByRole("button", { name: "Erneut versuchen" }).click();
+  await expect(drawer.getByRole("button", { pressed: true, name: /^\d\d:\d\d$/ })).toHaveCount(1);
+
+  // Derselbe Platz wie „Dora Direkt“: belegt – darunter die drei nächsten freien Zeiten
+  await drawer.getByLabel("Datum", { exact: true }).fill(DAY);
+  await drawer.getByLabel("Uhrzeit", { exact: true }).fill(phoneBooked.time);
+  await drawer.getByLabel("Vorname", { exact: true }).fill("Emil");
+  await drawer.getByLabel("Nachname", { exact: true }).fill("Eng");
+  await drawer.getByLabel("Nachname", { exact: true }).press("Enter");
+  await expect(drawer.getByText("Der Zeitraum ist bereits belegt.")).toBeVisible();
+  const suggestions = drawer.getByRole("button", { name: /^\w\w\.?, \d\d\.\d\d\. \d\d:\d\d$/ });
+  await expect(suggestions).toHaveCount(3);
+  const pickedLabel = (await suggestions.first().textContent())!;
+  await suggestions.first().click();
+  await expect(drawer.getByLabel("Uhrzeit", { exact: true })).toHaveValue(pickedLabel.slice(-5));
+  await drawer.getByRole("button", { name: /^(Trotzdem anlegen|Anlegen)$/ }).click();
+  await expect(page.getByText(/Termin angelegt · PE-/)).toBeVisible();
+
+  // Pflichtfelder: Der Fehler steht am Feld, der Fokus geht hin
+  await page.getByRole("button", { name: "Neuer Termin" }).click();
+  await drawer.getByLabel("Vorname", { exact: true }).press("Enter");
+  await expect(drawer.getByText("Vorname fehlt")).toBeVisible();
+  await expect(drawer.getByText("Nachname fehlt")).toBeVisible();
+  await expect(drawer.getByLabel("Vorname", { exact: true })).toBeFocused();
+  await context.close();
+});
+
 test("Urlaub über gebuchte Termine: erst die Liste, dann „Trotzdem eintragen“ – Entfernen nur mit Rückfrage", async ({ browser }) => {
   const { context, page } = await teamPage(browser);
   await page.goto(`/termine?d=${DAY}`);
@@ -450,7 +552,8 @@ test("Abmeldung mit Ausweg: Hinweis vorher, danach „Neu anmelden“ im neuen T
   const other = new Date(`${DAY}T12:00:00Z`);
   other.setUTCDate(other.getUTCDate() + 7);
   await drawer.getByLabel("Datum", { exact: true }).fill(other.toISOString().slice(0, 10));
-  await expect(drawer.getByText(/^(Frei am |An diesem Tag ist)/)).toBeVisible();
+  await expect(drawer.getByText("Nächste freie Zeiten")).toBeVisible();
+  await expect(drawer.getByText("Freie Zeiten werden geladen …")).toHaveCount(0);
   await check();
   await page.waitForTimeout(1_500);
   await expect(page.getByText("Gleich werden Sie abgemeldet")).toBeHidden();
@@ -502,6 +605,7 @@ test("Abmeldung mit Ausweg: Hinweis vorher, danach „Neu anmelden“ im neuen T
   await expect(page.getByText("Sie wurden abgemeldet")).toBeHidden();
   await expect(page.getByText("Wieder angemeldet")).toBeVisible();
   await drawer.getByLabel("Datum", { exact: true }).fill(DAY);
+  await expect(drawer.getByText("Freie Zeiten werden geladen …")).toHaveCount(0);
   await drawer.getByRole("button", { name: /^\d\d:\d\d$/ }).first().click();
   await drawer.getByLabel("Nachname", { exact: true }).fill("Dranbleiben");
   await drawer.getByLabel("Telefon", { exact: true }).fill("040 000 0000");

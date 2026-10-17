@@ -2,15 +2,21 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { searchAppointmentsAction, type SearchHit } from "@/app/actions/appointments";
 import { cn } from "@/lib/cn";
+import { STATUS_LABEL } from "@/lib/booking/model";
+import { fmtShortDate } from "@/lib/time";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Kbd } from "@/components/ui/Bits";
 import { NAV } from "./nav";
 
 /**
- * ⌘K: springen, anlegen, suchen – alles über eine Eingabe. Dazu die
- * Zwei-Tasten-Kürzel „g“ + Buchstabe (wie in Linear/GitHub), die auch
- * ohne geöffnete Palette funktionieren.
+ * ⌘K / Strg K: suchen, springen, anlegen – alles über eine Eingabe. Gesucht
+ * werden Termine nach Name (Nachname + Vorname), Telefon, E-Mail oder
+ * Referenz; exakt über die Blind-Indizes, Treffer öffnen den Termin. Dazu
+ * die Zwei-Tasten-Kürzel „g“ + Buchstabe (wie in Linear/GitHub), die auch
+ * ohne geöffnete Palette funktionieren – solange kein Drawer oder Dialog
+ * offen ist.
  */
 interface Command {
   id: string;
@@ -19,60 +25,39 @@ interface Command {
   icon: IconName;
   keys?: string[];
   run: () => void;
-  group: "Springen" | "Anlegen" | "Ansicht";
+  group: Group;
+}
+
+type Group = "Termine" | "Springen" | "Anlegen" | "Ansicht";
+const GROUPS: Group[] = ["Termine", "Springen", "Anlegen", "Ansicht"];
+
+/** Liegt eine Ebene (Drawer, Dialog) über der Oberfläche? Dann ruhen die Kürzel (Overlay.tsx). */
+const layerOpen = () => Boolean(document.getElementById("cockpit-shell")?.inert);
+
+/** Auf /termine bleiben Ansicht und Datum stehen – „n“ legt am angezeigten Tag an. */
+function termineHref(param: "neu" | "ausnahme"): string {
+  const params = new URLSearchParams(location.pathname === "/termine" ? location.search : "");
+  for (const key of ["neu", "ausnahme", "id"]) params.delete(key);
+  params.set(param, "1");
+  return `/termine?${params}`;
 }
 
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const router = useRouter();
-  const [q, setQ] = useState("");
-  const [cursor, setCursor] = useState(0);
-  const input = useRef<HTMLInputElement>(null);
   const pendingG = useRef(false);
-
-  const commands = useMemo<Command[]>(
-    () => [
-      ...NAV.map<Command>((n) => ({
-        id: `go:${n.href}`,
-        label: n.label,
-        hint: n.phase ? `Phase ${n.phase}` : undefined,
-        icon: n.icon,
-        keys: ["g", n.key],
-        group: "Springen",
-        run: () => router.push(n.href),
-      })),
-      { id: "new:appt", label: "Neuen Termin anlegen", icon: "plus", keys: ["n"], group: "Anlegen", run: () => router.push("/termine?neu=1") },
-      { id: "new:blocker", label: "Blocker / Urlaub eintragen", icon: "clock", group: "Anlegen", run: () => router.push("/termine?ausnahme=1") },
-      { id: "new:invite", label: "Mitarbeitende einladen", icon: "users", group: "Anlegen", run: () => router.push("/einstellungen/benutzer?einladen=1") },
-      { id: "view:print", label: "Tagesblatt drucken", icon: "printer", group: "Ansicht", run: () => window.print() },
-    ],
-    [router],
-  );
-
-  const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return commands;
-    return commands.filter((c) => c.label.toLowerCase().includes(s) || c.hint?.toLowerCase().includes(s));
-  }, [q, commands]);
-
-  useEffect(() => {
-    if (open) {
-      setQ("");
-      setCursor(0);
-      setTimeout(() => input.current?.focus(), 10);
-    }
-  }, [open]);
 
   // Globale Kürzel
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const typing = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable);
+      if (layerOpen()) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         onOpenChange(!open);
         return;
       }
-      if (open || typing) return;
+      if (open || typing || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "g") {
         pendingG.current = true;
         setTimeout(() => (pendingG.current = false), 1200);
@@ -89,7 +74,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       }
       if (e.key === "n") {
         e.preventDefault();
-        router.push("/termine?neu=1");
+        router.push(termineHref("neu"));
       }
       if (e.key === "/") {
         e.preventDefault();
@@ -100,24 +85,114 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onOpenChange, router]);
 
-  if (!open) return null;
+  // Bei jedem Öffnen frisch: leere Eingabe, erster Eintrag
+  return open ? <Palette onClose={() => onOpenChange(false)} /> : null;
+}
 
+interface SearchResult {
+  q: string;
+  hits: SearchHit[];
+  needsFullName: boolean;
+  failed: boolean;
+}
+
+function Palette({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
+  const [q, setQ] = useState("");
+  const [cursor, setCursor] = useState(0);
+  const [search, setSearch] = useState<SearchResult | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    input.current?.focus();
+  }, []);
+
+  // Termine suchen – kurz nach dem letzten Tastendruck
+  const query = q.trim();
+  useEffect(() => {
+    if (query.length < 2) return;
+    let alive = true;
+    const timer = window.setTimeout(() => {
+      void searchAppointmentsAction(query).then(
+        (r) => alive && setSearch({ q: query, hits: r.ok ? r.data.hits : [], needsFullName: r.ok && r.data.needsFullName, failed: !r.ok }),
+        () => alive && setSearch({ q: query, hits: [], needsFullName: false, failed: true }),
+      );
+    }, 250);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [query]);
+  const result = search && search.q === query ? search : null;
+  const searching = query.length >= 2 && !result;
+
+  const commands = useMemo<Command[]>(
+    () => [
+      ...NAV.map<Command>((n) => ({
+        id: `go:${n.href}`,
+        label: n.label,
+        hint: n.phase ? `Phase ${n.phase}` : undefined,
+        icon: n.icon,
+        keys: ["g", n.key],
+        group: "Springen",
+        run: () => router.push(n.href),
+      })),
+      { id: "new:appt", label: "Neuen Termin anlegen", icon: "plus", keys: ["n"], group: "Anlegen", run: () => router.push(termineHref("neu")) },
+      { id: "new:blocker", label: "Blocker / Urlaub eintragen", icon: "clock", group: "Anlegen", run: () => router.push(termineHref("ausnahme")) },
+      { id: "new:invite", label: "Mitarbeitende einladen", icon: "users", group: "Anlegen", run: () => router.push("/einstellungen/benutzer?einladen=1") },
+      { id: "view:print", label: "Tagesblatt drucken", icon: "printer", group: "Ansicht", run: () => window.print() },
+    ],
+    [router],
+  );
+
+  const items = useMemo<Command[]>(() => {
+    const s = query.toLowerCase();
+    const hits: Command[] = (result?.hits ?? []).map((h) => ({
+      id: `appt:${h.id}`,
+      label: h.name,
+      hint: `${fmtShortDate(new Date(`${h.date}T12:00:00Z`))} ${h.time} · ${h.typeLabel}${h.status === "cancelled" || h.status === "no_show" ? ` · ${STATUS_LABEL[h.status]}` : ""}${h.isDemo ? " · Demo" : ""}`,
+      icon: "calendar",
+      group: "Termine",
+      run: () => router.push(`/termine?id=${encodeURIComponent(h.id)}`),
+    }));
+    const matching = s ? commands.filter((c) => c.label.toLowerCase().includes(s) || c.hint?.toLowerCase().includes(s)) : commands;
+    return [...hits, ...matching];
+  }, [query, result, commands, router]);
+
+  const active = Math.min(cursor, Math.max(0, items.length - 1));
   const run = (c: Command) => {
-    onOpenChange(false);
+    onClose();
     c.run();
   };
 
-  const groups = ["Springen", "Anlegen", "Ansicht"] as const;
+  // Zustand für Screenreader: Treffer, Suche läuft, Hinweis zur Namenssuche
+  const status = searching
+    ? "Suche …"
+    : result?.failed
+      ? "Die Suche ist gerade nicht erreichbar."
+      : result?.hits.length
+        ? `${result.hits.length} ${result.hits.length === 1 ? "Termin" : "Termine"} gefunden`
+        : items.length === 0 && result?.needsFullName
+          ? "Für die Namenssuche bitte Nachname und Vorname eingeben, z. B. „Müller Anna“."
+          : items.length === 0 && query
+            ? "Nichts gefunden."
+            : "";
 
   return (
     <div className="fixed inset-0 z-[90] flex items-start justify-center px-4 pt-[12vh]">
-      <div className="absolute inset-0 bg-deep/40 backdrop-blur-[2px]" onClick={() => onOpenChange(false)} aria-hidden="true" />
-      <div role="dialog" aria-modal="true" aria-label="Befehle" className="rise-in elevated relative w-full max-w-xl overflow-hidden rounded-2xl border border-line bg-surface-raised text-text">
+      <div className="absolute inset-0 bg-deep/40 backdrop-blur-[2px]" onClick={onClose} aria-hidden="true" />
+      <div role="dialog" aria-modal="true" aria-label="Suchen oder springen" className="rise-in elevated relative w-full max-w-xl overflow-hidden rounded-2xl border border-line bg-surface-raised text-text">
         <div className="flex items-center gap-3 border-b border-line px-4">
           <Icon name="search" size={18} className="text-text-faint" />
           <input
             ref={input}
             value={q}
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="palette-list"
+            aria-autocomplete="list"
+            aria-activedescendant={items.length ? `palette-${active}` : undefined}
+            aria-describedby="palette-status"
             onChange={(e) => {
               setQ(e.target.value);
               setCursor(0);
@@ -125,56 +200,63 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             onKeyDown={(e) => {
               if (e.key === "ArrowDown") {
                 e.preventDefault();
-                setCursor((c) => Math.min(filtered.length - 1, c + 1));
+                setCursor(Math.min(items.length - 1, active + 1));
               } else if (e.key === "ArrowUp") {
                 e.preventDefault();
-                setCursor((c) => Math.max(0, c - 1));
-              } else if (e.key === "Enter" && filtered[cursor]) {
+                setCursor(Math.max(0, active - 1));
+              } else if (e.key === "Enter" && items[active]) {
                 e.preventDefault();
-                run(filtered[cursor]!);
+                run(items[active]!);
               } else if (e.key === "Escape") {
-                onOpenChange(false);
+                e.preventDefault();
+                onClose();
+              } else if (e.key === "Tab") {
+                // Die Eingabe ist der einzige Halt im Dialog – Tab bleibt hier
+                e.preventDefault();
               }
             }}
-            placeholder="Wohin? Was anlegen?"
-            aria-label="Befehl suchen"
-            className="h-13 w-full bg-transparent text-[15px] outline-none placeholder:text-text-faint"
+            placeholder="Name, Telefon, E-Mail, Ref – oder wohin?"
+            aria-label="Suchen oder springen"
+            className="h-13 w-full bg-transparent text-[16px] outline-none placeholder:text-text-faint md:text-[15px]"
           />
           <Kbd>Esc</Kbd>
         </div>
-        <ul role="listbox" className="max-h-[50vh] overflow-y-auto p-2">
-          {groups.map((g) => {
-            const items = filtered.filter((c) => c.group === g);
-            if (!items.length) return null;
+        <ul id="palette-list" role="listbox" aria-label="Ergebnisse" className="max-h-[50vh] overflow-y-auto p-2">
+          {GROUPS.map((g) => {
+            const groupItems = items.filter((c) => c.group === g);
+            if (!groupItems.length) return null;
             return (
               <li key={g} role="presentation">
-                <p className="px-3 pt-2 pb-1 text-[10px] font-semibold tracking-[0.16em] text-text-faint uppercase">{g}</p>
-                <ul role="group">
-                  {items.map((c) => {
-                    const idx = filtered.indexOf(c);
-                    const active = idx === cursor;
+                <p className="px-3 pt-2 pb-1 text-[11px] font-semibold tracking-[0.16em] text-text-faint uppercase" aria-hidden="true">
+                  {g}
+                </p>
+                <ul role="group" aria-label={g}>
+                  {groupItems.map((c) => {
+                    const idx = items.indexOf(c);
+                    const isActive = idx === active;
                     return (
-                      <li key={c.id} role="option" aria-selected={active}>
-                        <button
-                          type="button"
-                          onMouseEnter={() => setCursor(idx)}
-                          onClick={() => run(c)}
-                          className={cn(
-                            "flex h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-[14px]",
-                            active ? "bg-brand-soft text-text" : "text-text-muted",
-                          )}
-                        >
-                          <Icon name={c.icon} size={16} className={active ? "text-brand" : "text-text-faint"} />
-                          <span className="flex-1">{c.label}</span>
-                          {c.hint && <span className="text-[11px] text-text-faint">{c.hint}</span>}
-                          {c.keys && (
-                            <span className="flex gap-1">
-                              {c.keys.map((k) => (
-                                <Kbd key={k}>{k}</Kbd>
-                              ))}
-                            </span>
-                          )}
-                        </button>
+                      <li
+                        key={c.id}
+                        id={`palette-${idx}`}
+                        role="option"
+                        aria-selected={isActive}
+                        onMouseEnter={() => setCursor(idx)}
+                        onClick={() => run(c)}
+                        className={cn(
+                          "flex min-h-10 cursor-pointer items-center gap-3 rounded-xl px-3 py-1.5 text-left text-[14px]",
+                          isActive ? "bg-brand-soft text-text" : "text-text-muted",
+                        )}
+                      >
+                        <Icon name={c.icon} size={16} className={isActive ? "text-brand" : "text-text-faint"} />
+                        <span className="min-w-0 flex-1 truncate">{c.label}</span>
+                        {c.hint && <span className="tnum shrink-0 text-[12px] text-text-faint">{c.hint}</span>}
+                        {c.keys && (
+                          <span className="hidden gap-1 sm:flex" aria-hidden="true">
+                            {c.keys.map((k) => (
+                              <Kbd key={k}>{k}</Kbd>
+                            ))}
+                          </span>
+                        )}
                       </li>
                     );
                   })}
@@ -182,8 +264,10 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
               </li>
             );
           })}
-          {filtered.length === 0 && <li className="px-3 py-6 text-center text-[13px] text-text-muted">Nichts gefunden.</li>}
         </ul>
+        <p id="palette-status" role="status" className={cn("px-5 pb-3 text-[13px] text-text-muted", !status && "sr-only")}>
+          {status}
+        </p>
       </div>
     </div>
   );

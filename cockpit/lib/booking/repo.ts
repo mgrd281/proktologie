@@ -7,7 +7,8 @@ import { getDb } from "../db/client.ts";
 import * as t from "../db/schema.ts";
 import { makeRef } from "../ref.ts";
 import { addDays, dateKey, startOfDay, startOfWeek } from "../time.ts";
-import { dayIsClosed, findConflicts, generateSlots, openingSummary, overlaps, withinOpeningHours, type BusySpan, type ExceptionSpan, type OpeningSummary } from "./engine.ts";
+import { dayIsClosed, findConflicts, generateSlots, openingSummary, overlaps, withinOpeningHours, type BusySpan, type ExceptionSpan, type OpeningSummary, type TypeSpec } from "./engine.ts";
+import type { SearchPlan } from "./search.ts";
 import {
   ACTIVE_STATUSES,
   type AppointmentSource,
@@ -269,6 +270,22 @@ export async function slotOpenInCalendar(startsAt: Date, endsAt: Date): Promise<
   );
 }
 
+/**
+ * Vorlauf und Horizont gelten für Online-Buchungen. Das Team am Telefon bucht
+ * auch heute, morgen und die Kontrolle in drei Monaten.
+ */
+const TEAM_HORIZON_DAYS = 400;
+
+function slotSpec(type: TypeView, team = false): TypeSpec {
+  return {
+    id: type.id,
+    durationMin: type.durationMin,
+    bufferMin: type.bufferMin,
+    leadTimeHours: team ? 0 : type.leadTimeHours,
+    maxAheadDays: team ? TEAM_HORIZON_DAYS : type.maxAheadDays,
+  };
+}
+
 export async function availability(typeId: string, date: string, now = new Date()) {
   const type = await getType(typeId);
   if (!type || !type.active) return [];
@@ -276,15 +293,37 @@ export async function availability(typeId: string, date: string, now = new Date(
   const from = startOfDay(date);
   const to = startOfDay(addDays(date, 1));
   const [hours, exceptions, busy] = await Promise.all([listHours(), exceptionSpans(from, to), busySpans(from, to)]);
-  return generateSlots({
-    date,
-    type: { id: type.id, durationMin: type.durationMin, bufferMin: type.bufferMin, leadTimeHours: type.leadTimeHours, maxAheadDays: type.maxAheadDays },
-    hours,
-    exceptions,
-    busy,
-    stepMin: settings.slotStepMin,
-    now,
-  });
+  return generateSlots({ date, type: slotSpec(type), hours, exceptions, busy, stepMin: settings.slotStepMin, now });
+}
+
+/**
+ * Die nächsten Tage mit freien Zeiten fürs Team (Telefonbuchung): ab
+ * `fromDate` bis zu `days` Praxistage, gesucht über höchstens `scanDays`
+ * Kalendertage – ohne Vorlauf und Horizont der Website. Belegung und
+ * Ausnahmen kommen in einer Abfrage, der Motor läuft je Tag. `exceptId`:
+ * Beim Verschieben belegt der Termin seinen eigenen Platz nicht.
+ */
+export async function nextFreeDays(
+  typeId: string,
+  fromDate: string,
+  opts: { days?: number; scanDays?: number; exceptId?: string; now?: Date } = {},
+): Promise<Array<{ date: string; times: string[] }>> {
+  const { days = 10, scanDays = 90, exceptId, now = new Date() } = opts;
+  const type = await getType(typeId);
+  if (!type) return [];
+  const settings = await getSettings();
+  const today = dateKey(now);
+  const start = fromDate < today ? today : fromDate;
+  const from = startOfDay(start);
+  const to = startOfDay(addDays(start, scanDays));
+  const [hours, exceptions, busy] = await Promise.all([listHours(), exceptionSpans(from, to), busySpans(from, to, exceptId)]);
+  const spec = slotSpec(type, true);
+  const out: Array<{ date: string; times: string[] }> = [];
+  for (let i = 0, date = start; i < scanDays && out.length < days; i++, date = addDays(date, 1)) {
+    const slots = generateSlots({ date, type: spec, hours, exceptions, busy, stepMin: settings.slotStepMin, now });
+    if (slots.length) out.push({ date, times: slots.map((x) => x.time) });
+  }
+  return out;
 }
 
 /**
@@ -298,7 +337,7 @@ export async function availabilityRange(typeId: string, fromDate: string, toDate
   const from = startOfDay(fromDate);
   const to = startOfDay(addDays(toDate, 1));
   const [hours, exceptions, busy] = await Promise.all([listHours(), exceptionSpans(from, to), busySpans(from, to)]);
-  const spec = { id: type.id, durationMin: type.durationMin, bufferMin: type.bufferMin, leadTimeHours: type.leadTimeHours, maxAheadDays: type.maxAheadDays };
+  const spec = slotSpec(type);
   const out: Array<{ date: string; slots: string[] }> = [];
   for (let date = fromDate; date <= toDate; date = addDays(date, 1)) {
     const slots = generateSlots({ date, type: spec, hours, exceptions, busy, stepMin: settings.slotStepMin, now });
@@ -379,6 +418,35 @@ export async function getAppointment(id: string): Promise<AppointmentView | null
     .leftJoin(t.appointmentTypes, eq(t.appointments.typeId, t.appointmentTypes.id))
     .where(eq(t.appointments.id, id));
   return r ? toView(r.a, r.type) : null;
+}
+
+/**
+ * Termine zu einer Suche aus der Befehlspalette (lib/booking/search.ts):
+ * exakt über die Blind-Indizes – Nachname + Vorname, E-Mail, Telefon – oder
+ * die Referenz. Kommende Termine zuerst (ab heute, aufsteigend), dann die
+ * jüngsten vergangenen.
+ */
+export async function searchAppointments(plan: SearchPlan, now = new Date(), limit = 8): Promise<AppointmentView[]> {
+  const conditions = [
+    plan.ref ? eq(t.appointments.ref, plan.ref) : undefined,
+    plan.email ? eq(t.appointments.emailHash, emailHash(plan.email)) : undefined,
+    plan.phone ? eq(t.appointments.phoneHash, phoneHash(plan.phone)) : undefined,
+    plan.names.length ? inArray(t.appointments.nameKey, plan.names.map((n) => nameKey(n.last, n.first))) : undefined,
+  ].filter((c) => c !== undefined);
+  if (conditions.length === 0) return [];
+  const db = await getDb();
+  const rows = await db
+    .select({ a: t.appointments, type: { label: t.appointmentTypes.label, color: t.appointmentTypes.color } })
+    .from(t.appointments)
+    .leftJoin(t.appointmentTypes, eq(t.appointments.typeId, t.appointmentTypes.id))
+    .where(or(...conditions))
+    .orderBy(desc(t.appointments.startsAt))
+    .limit(100);
+  const views = rows.map((r) => toView(r.a, r.type));
+  const today = startOfDay(dateKey(now)).getTime();
+  const upcoming = views.filter((a) => new Date(a.startsAt).getTime() >= today).reverse();
+  const past = views.filter((a) => new Date(a.startsAt).getTime() < today);
+  return [...upcoming, ...past].slice(0, limit);
 }
 
 export interface CreateAppointmentInput {

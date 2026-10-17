@@ -5,9 +5,10 @@ import { z } from "zod";
 import { ActorError, requireActor } from "@/lib/auth/actor";
 import { afterBooked, afterCancelled, afterRescheduled, resendConfirmation } from "@/lib/booking/lifecycle";
 import * as repo from "@/lib/booking/repo";
-import type { AppointmentView, ExceptionView } from "@/lib/booking/model";
+import type { AppointmentStatus, AppointmentView, ExceptionView } from "@/lib/booking/model";
+import { planSearch } from "@/lib/booking/search";
 import { maybeTick } from "@/lib/jobs/tick";
-import { zonedToUtc } from "@/lib/time";
+import { dateKey, timeKey, zonedToUtc } from "@/lib/time";
 
 /**
  * Server Actions des Terminmotors. Jede Action: Sitzung + Rolle prüfen,
@@ -214,5 +215,56 @@ export async function availabilityAction(typeId: string, date: string): Promise<
     await requireActor();
     const slots = await repo.availability(z.string().parse(typeId), z.string().regex(/^\d{4}-\d{2}-\d{2}$/).parse(date));
     return slots.map((s) => s.time);
+  });
+}
+
+const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Datum ungültig");
+
+/**
+ * Telefonbuchung: die nächsten Tage mit freien Zeiten ab einem Datum – fürs
+ * Team ohne Vorlauf und Horizont der Website. Beim Verschieben zählt der
+ * Termin selbst nicht als belegt.
+ */
+export async function nextFreeTimesAction(input: { typeId: string; from: string; exceptId?: string }): Promise<ActionResult<Array<{ date: string; times: string[] }>>> {
+  return guard(async () => {
+    await requireActor();
+    const v = z.object({ typeId: z.string().min(1), from: dateSchema, exceptId: z.string().min(1).optional() }).parse(input);
+    return repo.nextFreeDays(v.typeId, v.from, { exceptId: v.exceptId });
+  });
+}
+
+export interface SearchHit {
+  id: string;
+  ref: string;
+  date: string;
+  time: string;
+  name: string;
+  typeLabel: string;
+  status: AppointmentStatus;
+  isDemo: boolean;
+}
+
+/**
+ * Suche in der Befehlspalette: Termine zu Name (Nachname + Vorname),
+ * Telefon, E-Mail oder Referenz – exakt, über die Blind-Indizes.
+ */
+export async function searchAppointmentsAction(query: string): Promise<ActionResult<{ hits: SearchHit[]; needsFullName: boolean }>> {
+  return guard(async () => {
+    await requireActor();
+    const plan = planSearch(z.string().max(200).parse(query));
+    const found = await repo.searchAppointments(plan);
+    return {
+      needsFullName: Boolean(plan.needsFullName),
+      hits: found.map((a) => ({
+        id: a.id,
+        ref: a.ref,
+        date: dateKey(new Date(a.startsAt)),
+        time: timeKey(new Date(a.startsAt)),
+        name: `${a.pii.lastName}, ${a.pii.firstName}`,
+        typeLabel: a.typeLabel,
+        status: a.status,
+        isDemo: a.isDemo,
+      })),
+    };
   });
 }
