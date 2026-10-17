@@ -435,13 +435,25 @@ test("Erinnerungen: Tippfehler werden am Feld gemeldet, statt still alle abzusch
 });
 
 test("Abmeldung mit Ausweg: Hinweis vorher, danach „Neu anmelden“ im neuen Tab – die Eingaben bleiben", async ({ browser, request }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(240_000);
   const { context, page } = await teamPage(browser);
   await page.goto(`/termine?d=${DAY}`);
   await page.getByRole("button", { name: "Neuer Termin" }).click();
   const drawer = page.getByRole("dialog", { name: "Termin anlegen" });
   await drawer.getByLabel("Vorname", { exact: true }).fill("Dora");
   const check = () => page.evaluate(() => window.dispatchEvent(new Event("cockpit:session-check")));
+
+  // Arbeiten verlängert die Anmeldung: Eine Aktion (hier: freie Zeiten laden)
+  // nach Ablauf des 60-s-Zwischenspeichers schiebt das Ende wieder eine Stunde hinaus
+  await e2e(request, { action: "session-expires", email: TEAM.email, minutes: 4 });
+  await page.waitForTimeout(61_000);
+  const other = new Date(`${DAY}T12:00:00Z`);
+  other.setUTCDate(other.getUTCDate() + 7);
+  await drawer.getByLabel("Datum", { exact: true }).fill(other.toISOString().slice(0, 10));
+  await expect(drawer.getByText(/^(Frei am |An diesem Tag ist)/)).toBeVisible();
+  await check();
+  await page.waitForTimeout(1_500);
+  await expect(page.getByText("Gleich werden Sie abgemeldet")).toBeHidden();
 
   // Noch vier Minuten: Hinweis mit „Angemeldet bleiben“ – bedienbar, obwohl der Drawer offen ist
   await e2e(request, { action: "session-expires", email: TEAM.email, minutes: 4 });

@@ -36,7 +36,12 @@ function asRole(value: unknown): Role {
 export async function getActor(): Promise<Actor | null> {
   await getDb();
   const h = await headers();
-  const s = await auth.api.getSession({ headers: h });
+  // Verlängert wird die Sitzung nur in Server Actions: Nur dort lässt sich
+  // auch das Cookie neu setzen. Beim Seitenaufbau verlängerte sonst allein die
+  // Datenbank – das Cookie lief trotzdem ab, und der Sitzungswächter
+  // (components/shell/SessionGuard.tsx) hätte zu spät gewarnt.
+  const inAction = Boolean(h.get("next-action"));
+  const s = await auth.api.getSession({ headers: h, query: inAction ? undefined : { disableRefresh: true } });
   if (!s) return null;
   const created = new Date(s.session.createdAt);
   // Absolute Obergrenze: nach 12 h ist Schluss, egal wie aktiv

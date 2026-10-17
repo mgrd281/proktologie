@@ -6,8 +6,9 @@ import { Icon } from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toast";
 
 /**
- * Sitzungswächter. Die Anmeldung endet nach 60 Minuten ohne Serverkontakt
- * (gleitend) und spätestens nach der absoluten Obergrenze. Früher scheiterte
+ * Sitzungswächter. Die Anmeldung endet 60 Minuten nach dem letzten
+ * Speichern bzw. der letzten Aktion (gleitend, lib/auth/actor.ts) und
+ * spätestens nach der absoluten Obergrenze. Früher scheiterte
  * dann die nächste Aktion still mit „Bitte anmelden.“ – ohne Ausweg, und wer
  * neu lud, verlor seine Eingaben. Jetzt:
  * - 5 Minuten vorher ein Hinweis mit „Angemeldet bleiben“;
@@ -123,7 +124,7 @@ export function SessionGuard({ absoluteSeconds }: { absoluteSeconds: number }) {
             ? "Ihre Eingaben auf dieser Seite bleiben erhalten. Melden Sie sich in einem neuen Tab an – danach geht es hier weiter."
             : session?.absolute
               ? `Aus Sicherheitsgründen endet die Anmeldung nach ${Math.round(absoluteSeconds / 3600)} Stunden – in ${minutes(left)}. Bitte offene Eingaben speichern.`
-              : `Seit fast einer Stunde kam nichts beim Server an. In ${minutes(left)} endet die Anmeldung.`}
+              : `Ihre Anmeldung endet in ${minutes(left)}.`}
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {phase === "warn" && !session?.absolute ? (
