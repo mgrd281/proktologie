@@ -1,5 +1,6 @@
 "use server";
 
+import { and, eq, like } from "drizzle-orm";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -7,6 +8,8 @@ import { audit } from "@/lib/audit";
 import { ActorError, requireActor } from "@/lib/auth/actor";
 import { auth, ROLES } from "@/lib/auth/auth";
 import { acceptInvite, createInvite, revokeInvite } from "@/lib/auth/invites";
+import { getDb } from "@/lib/db/client";
+import { passkey, twoFactor, user, verification } from "@/lib/db/schema";
 import type { ActionResult } from "./appointments";
 
 async function guard<T>(fn: () => Promise<T>): Promise<ActionResult<T>> {
@@ -88,6 +91,39 @@ export async function setDisabledAction(input: z.input<typeof banSchema>): Promi
       await auth.api.unbanUser({ body: { userId: v.userId }, headers: h });
     }
     await audit({ actorId: actor.id, action: v.disabled ? "user.disable" : "user.enable", entity: "user", entityId: v.userId });
+    revalidatePath("/einstellungen/benutzer");
+    return null;
+  });
+}
+
+const resetSchema = z.object({ userId: z.string().min(1) });
+
+/**
+ * Zugang verloren (Handy weg, Gerät defekt): Passkeys, Authenticator-App und
+ * „vertraute Geräte“ der Person entfernen und alle ihre Sitzungen beenden.
+ * Das Passwort bleibt; bei der nächsten Anmeldung verlangt das Cockpit die
+ * Einrichtung neu (lib/auth/actor.ts, securityComplete).
+ */
+export async function resetSecurityAction(input: z.input<typeof resetSchema>): Promise<ActionResult<null>> {
+  return guard(async () => {
+    const actor = await requireActor({ roles: ["admin"], fresh: true });
+    const v = resetSchema.parse(input);
+    if (v.userId === actor.id) throw new Error("Die eigene Sicherheit verwalten Sie unter Einstellungen → Sicherheit.");
+    const db = await getDb();
+    const removed = await db.transaction(async (tx) => {
+      const [target] = await tx.update(user).set({ twoFactorEnabled: false }).where(eq(user.id, v.userId)).returning({ id: user.id });
+      if (!target) throw new Error("Dieses Konto gibt es nicht mehr.");
+      const keys = await tx.delete(passkey).where(eq(passkey.userId, v.userId)).returning({ id: passkey.id });
+      const app = await tx.delete(twoFactor).where(eq(twoFactor.userId, v.userId)).returning({ id: twoFactor.id });
+      // Better Auth merkt sich vertraute Geräte als „trust-device-…“ mit der Konto-ID – sonst übersprängen sie später den Code
+      const trusted = await tx
+        .delete(verification)
+        .where(and(eq(verification.value, v.userId), like(verification.identifier, "trust-device-%")))
+        .returning({ id: verification.id });
+      return { passkeys: keys.length, authenticator: app.length > 0, trustedDevices: trusted.length };
+    });
+    await auth.api.revokeUserSessions({ body: { userId: v.userId }, headers: await headers() });
+    await audit({ actorId: actor.id, action: "user.security_reset", entity: "user", entityId: v.userId, meta: removed });
     revalidatePath("/einstellungen/benutzer");
     return null;
   });

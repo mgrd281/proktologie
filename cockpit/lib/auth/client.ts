@@ -7,11 +7,9 @@ import { passkeyClient } from "@better-auth/passkey/client";
 export const authClient = createAuthClient({
   plugins: [
     adminClient(),
-    twoFactorClient({
-      onTwoFactorRedirect() {
-        window.location.assign("/login/zweiter-faktor");
-      },
-    }),
+    // Zum zweiten Faktor leitet die Anmeldung selbst weiter (LoginForm) – samt Rücksprungadresse.
+    // Eine eigene Weiterleitung hier lief ihr früher davon und verlor sie.
+    twoFactorClient(),
     passkeyClient(),
   ],
 });

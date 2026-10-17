@@ -3,10 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { authClient } from "@/lib/auth/client";
+import { TZ, timeKey } from "@/lib/time";
 import { Card, Eyebrow, Notice } from "@/components/ui/Bits";
 import { Button, IconButton } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toast";
+import { useNow } from "@/components/ui/useNow";
+import { BackupCodesDrawer } from "./BackupCodesDrawer";
+import { PasswordDrawer } from "./PasswordDrawer";
 
 interface PasskeyRow {
   id: string;
@@ -16,10 +20,28 @@ interface PasskeyRow {
   backedUp: boolean;
 }
 
-export function SecurityPanel({ passkeys, twoFactor, sessionStartedAt, chain, name }: { passkeys: PasskeyRow[]; twoFactor: boolean; sessionStartedAt: string; chain: { length: number; broken: number[] } | null; name: string }) {
+export function SecurityPanel({
+  passkeys,
+  twoFactor,
+  sessionStartedAt,
+  chain,
+  name,
+  email,
+  now: serverNow,
+}: {
+  passkeys: PasskeyRow[];
+  twoFactor: boolean;
+  sessionStartedAt: string;
+  chain: { length: number; broken: number[] } | null;
+  name: string;
+  email: string;
+  /** Uhrzeit des Servers – gleiches HTML beim Hydrieren, danach tickt die Uhr hier */
+  now: string;
+}) {
   const router = useRouter();
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
+  const [drawer, setDrawer] = useState<"password" | "codes" | null>(null);
 
   const add = async () => {
     setBusy(true);
@@ -46,12 +68,12 @@ export function SecurityPanel({ passkeys, twoFactor, sessionStartedAt, chain, na
   };
 
   const started = new Date(sessionStartedAt);
-  const ageMin = Math.round((Date.now() - started.getTime()) / 60000);
+  const ageMin = Math.round((useNow(serverNow) - started.getTime()) / 60000);
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       <Card>
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-4 max-md:flex-col max-md:gap-3">
           <div>
             <Eyebrow>Passkeys</Eyebrow>
             <p className="mt-1 text-[13px] text-text-muted">Phishing-sichere Anmeldung per Gerät. Ein Passkey je Gerät, das Sie nutzen.</p>
@@ -66,10 +88,10 @@ export function SecurityPanel({ passkeys, twoFactor, sessionStartedAt, chain, na
                 <p className="truncate font-medium text-text">{p.name ?? "Passkey"}</p>
                 <p className="text-[12px] text-text-muted">
                   {p.deviceType === "multiDevice" ? "synchronisiert" : "an dieses Gerät gebunden"}
-                  {p.createdAt ? ` · seit ${new Date(p.createdAt).toLocaleDateString("de-DE")}` : ""}
+                  {p.createdAt ? ` · seit ${new Date(p.createdAt).toLocaleDateString("de-DE", { timeZone: TZ })}` : ""}
                 </p>
               </div>
-              <IconButton label="Passkey entfernen" icon="trash" size={32} onClick={() => remove(p)} disabled={busy} />
+              <IconButton label="Passkey entfernen" icon="trash" size={32} className="max-md:!size-11" onClick={() => remove(p)} disabled={busy} />
             </li>
           ))}
         </ul>
@@ -81,13 +103,35 @@ export function SecurityPanel({ passkeys, twoFactor, sessionStartedAt, chain, na
           <Icon name={twoFactor ? "shield" : "alert"} size={18} />
           {twoFactor ? "Authenticator-App ist aktiv" : "Noch nicht eingerichtet"}
         </p>
-        <p className="mt-2 text-[13px] leading-relaxed text-text-muted">Wird bei der Passwort-Anmeldung verlangt; Passkeys gelten bereits als zwei Faktoren. Backup-Codes wurden bei der Einrichtung einmalig angezeigt.</p>
-        <div className="mt-5 border-t border-line pt-4">
-          <Eyebrow>Diese Sitzung</Eyebrow>
-          <p className="tnum mt-2 text-[13px] text-text-muted">
-            Angemeldet seit {started.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr ({ageMin} min). Nach 60 Minuten ohne Aktivität und spätestens nach 12 Stunden endet die Sitzung automatisch. Nutzerverwaltung und Löschungen verlangen eine Anmeldung, die jünger als 10 Minuten ist.
-          </p>
+        <p className="mt-2 text-[13px] leading-relaxed text-text-muted">
+          Wird bei der Passwort-Anmeldung verlangt; Passkeys gelten bereits als zwei Faktoren. Backup-Codes helfen, wenn die App nicht greifbar ist – neue ersetzen die bisherigen.
+        </p>
+        {twoFactor && (
+          <div className="mt-4">
+            <Button size="sm" variant="secondary" icon="refresh" onClick={() => setDrawer("codes")}>
+              Neue Backup-Codes
+            </Button>
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <div className="flex items-start justify-between gap-4 max-md:flex-col max-md:gap-3">
+          <div>
+            <Eyebrow>Passwort</Eyebrow>
+            <p className="mt-1 text-[13px] text-text-muted">Für die Anmeldung ohne Passkey, zusammen mit dem Code aus der App. Mindestens 12 Zeichen.</p>
+          </div>
+          <Button size="sm" variant="secondary" icon="lock" onClick={() => setDrawer("password")}>
+            Passwort ändern
+          </Button>
         </div>
+      </Card>
+
+      <Card>
+        <Eyebrow>Diese Sitzung</Eyebrow>
+        <p className="tnum mt-2 text-[13px] text-text-muted">
+          Angemeldet seit {timeKey(started)} Uhr ({ageMin} min). Nach 60 Minuten ohne Aktivität und spätestens nach 12 Stunden endet die Sitzung automatisch. Nutzerverwaltung und Löschungen verlangen eine Anmeldung, die jünger als 10 Minuten ist.
+        </p>
       </Card>
 
       {chain && (
@@ -102,6 +146,9 @@ export function SecurityPanel({ passkeys, twoFactor, sessionStartedAt, chain, na
           )}
         </Card>
       )}
+
+      {drawer === "password" && <PasswordDrawer email={email} onClose={() => setDrawer(null)} />}
+      {drawer === "codes" && <BackupCodesDrawer email={email} name={name} onClose={() => setDrawer(null)} />}
     </div>
   );
 }

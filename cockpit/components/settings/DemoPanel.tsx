@@ -7,6 +7,7 @@ import type { MessageLogRow } from "@/lib/booking/repo";
 import { Card, Eyebrow, Notice } from "@/components/ui/Bits";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Switch, Textarea } from "@/components/ui/Field";
+import { useFreshLogin } from "@/components/ui/FreshLogin";
 import { Dialog } from "@/components/ui/Overlay";
 import { useToast } from "@/components/ui/Toast";
 
@@ -62,6 +63,7 @@ export function DemoPanel({
   cronConfigured,
   voiceConfigured,
   unknownTopics,
+  freshLeftMs,
 }: {
   canEdit: boolean;
   /** Technische Hinweise (Variablen, Dienste) nur für die Administration */
@@ -75,9 +77,12 @@ export function DemoPanel({
   /** Ist ein Sprachanbieter eingerichtet? Ohne ihn zeigt die Website kein Mikrofon. */
   voiceConfigured: boolean;
   unknownTopics: Array<{ topic: string; label: string; count: number }>;
+  /** Restzeit der frischen Anmeldung – das Löschen der Demo-Daten verlangt sie */
+  freshLeftMs: number;
 }) {
   const router = useRouter();
   const { toast } = useToast();
+  const fresh = useFreshLogin(freshLeftMs);
   const [pending, start] = useTransition();
   const [confirmPurge, setConfirmPurge] = useState(false);
   const [s, setS] = useState(settings);
@@ -99,8 +104,7 @@ export function DemoPanel({
       const r = await purgeDemoAction();
       setConfirmPurge(false);
       if (!r.ok) {
-        toast({ title: "Nicht gelöscht", description: r.error, tone: "danger" });
-        if (/erneut anmelden/i.test(r.error)) router.push("/login?grund=frisch&weiter=/einstellungen/demo");
+        if (!fresh.handled(r.error)) toast({ title: "Nicht gelöscht", description: r.error, tone: "danger" });
         return;
       }
       toast({ title: `${r.data.removed} Demo-Datensätze gelöscht`, tone: "ok" });
@@ -126,8 +130,7 @@ export function DemoPanel({
         chatEnabled: s.chatEnabled,
       });
       if (!r.ok) {
-        toast({ title: "Nicht gespeichert", description: r.error, tone: "danger" });
-        if (/erneut anmelden/i.test(r.error)) router.push("/login?grund=frisch&weiter=/einstellungen/demo");
+        if (!fresh.handled(r.error)) toast({ title: "Nicht gespeichert", description: r.error, tone: "danger" });
         return;
       }
       toast({ title: "Einstellungen gespeichert", tone: "ok" });
@@ -154,7 +157,7 @@ export function DemoPanel({
         {canEdit && (
           <div className="mt-5 flex flex-wrap gap-2">
             <Button variant="secondary" icon="sparkle" onClick={seed} loading={pending} disabled={settings.bookingLive}>Demo-Daten anlegen</Button>
-            <Button variant="danger" icon="trash" onClick={() => setConfirmPurge(true)} disabled={demoCount === 0 || pending}>Alle Demo-Daten löschen</Button>
+            <Button variant="danger" icon="trash" onClick={() => fresh.ensure(() => setConfirmPurge(true))} disabled={demoCount === 0 || pending}>Alle Demo-Daten löschen</Button>
           </div>
         )}
       </Card>
@@ -350,6 +353,7 @@ export function DemoPanel({
       <Dialog open={confirmPurge} onClose={() => setConfirmPurge(false)} title="Alle Demo-Daten löschen?" confirmLabel="Endgültig löschen" danger busy={pending} onConfirm={purge}>
         {demoCount} Datensätze werden entfernt. Echte Termine, Einstellungen und das Audit-Log bleiben unberührt. Diese Aktion verlangt eine frische Anmeldung.
       </Dialog>
+      {fresh.dialog}
     </div>
   );
 }

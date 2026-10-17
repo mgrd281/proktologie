@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { authClient } from "@/lib/auth/client";
 import { Icon } from "@/components/ui/Icon";
+import { BackupCodes } from "@/components/settings/BackupCodes";
 import { AuthCard, darkInput, darkLabel, darkPrimary, darkSecondary } from "../../AuthCard";
 
 export function SetupWizard({ hasPasskey, hasTotp, name }: { hasPasskey: boolean; hasTotp: boolean; name: string }) {
@@ -19,6 +20,8 @@ export function SetupWizard({ hasPasskey, hasTotp, name }: { hasPasskey: boolean
   const [totpUri, setTotpUri] = useState<string | null>(null);
   const [qr, setQr] = useState<string | null>(null);
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [codesSaved, setCodesSaved] = useState(false);
+  const [codesError, setCodesError] = useState<string>();
   const [code, setCode] = useState("");
 
   useEffect(() => {
@@ -61,11 +64,18 @@ export function SetupWizard({ hasPasskey, hasTotp, name }: { hasPasskey: boolean
     }
     setTotpUri(r.data.totpURI);
     setBackupCodes(r.data.backupCodes);
+    setCodesSaved(false);
+    setCodesError(undefined);
     setPassword("");
   };
 
   const verifyTotp = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Die Codes erscheinen nur hier – ohne sie hilft bei verlorenem Handy nur noch die Praxisleitung
+    if (backupCodes.length > 0 && !codesSaved) {
+      setCodesError("Bitte die Backup-Codes sichern und „Ich habe sie gespeichert“ ankreuzen.");
+      return;
+    }
     setBusy(true);
     setError(null);
     const r = await authClient.twoFactor.verifyTotp({ code: code.replace(/\s/g, "") });
@@ -92,7 +102,7 @@ export function SetupWizard({ hasPasskey, hasTotp, name }: { hasPasskey: boolean
           <p className="text-[14px] leading-relaxed text-cream/75">
             Ein Passkey ersetzt Passwörter durch Fingerabdruck, Gesicht oder Geräte-PIN – phishing-sicher und an dieses Gerät gebunden. Sie können später weitere Geräte hinzufügen.
           </p>
-          <button type="button" onClick={addPasskey} disabled={busy} className={darkPrimary} data-autofocus>
+          <button type="button" onClick={addPasskey} disabled={busy} className={darkPrimary} autoFocus>
             <Icon name="key" size={18} />
             {busy ? "Warte auf Gerät …" : "Passkey jetzt anlegen"}
           </button>
@@ -108,7 +118,7 @@ export function SetupWizard({ hasPasskey, hasTotp, name }: { hasPasskey: boolean
             <label htmlFor="pw" className={darkLabel}>
               Passwort
             </label>
-            <input id="pw" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} className={darkInput} data-autofocus />
+            <input id="pw" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} className={darkInput} autoFocus />
           </div>
           <button type="submit" disabled={busy} className={darkPrimary}>
             {busy ? "Vorbereiten …" : "QR-Code anzeigen"}
@@ -139,17 +149,25 @@ export function SetupWizard({ hasPasskey, hasTotp, name }: { hasPasskey: boolean
             <label htmlFor="code" className={darkLabel}>
               Code aus der App
             </label>
-            <input id="code" inputMode="numeric" autoComplete="one-time-code" required value={code} onChange={(e) => setCode(e.target.value)} className={`${darkInput} tnum text-center text-[22px] tracking-[0.3em]`} data-autofocus />
+            <input id="code" inputMode="numeric" autoComplete="one-time-code" required value={code} onChange={(e) => setCode(e.target.value)} className={`${darkInput} tnum text-center text-[22px] tracking-[0.3em]`} autoFocus />
           </div>
           {backupCodes.length > 0 && (
             <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
               <p className="text-[11px] font-semibold tracking-[0.14em] text-accent uppercase">Backup-Codes – jetzt sicher aufbewahren</p>
               <p className="mt-1 text-[12px] text-cream/60">Jeder Code gilt einmal, falls die App nicht verfügbar ist. Sie werden nicht erneut angezeigt.</p>
-              <ul className="tnum mt-3 grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-[13px] text-cream">
-                {backupCodes.map((c) => (
-                  <li key={c}>{c}</li>
-                ))}
-              </ul>
+              <div className="mt-3">
+                <BackupCodes
+                  dark
+                  codes={backupCodes}
+                  who={name}
+                  saved={codesSaved}
+                  onSaved={(v) => {
+                    setCodesSaved(v);
+                    if (v) setCodesError(undefined);
+                  }}
+                  error={codesError}
+                />
+              </div>
             </div>
           )}
           <button type="submit" disabled={busy} className={darkPrimary}>

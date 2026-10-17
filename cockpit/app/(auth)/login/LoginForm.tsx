@@ -1,10 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { authClient } from "@/lib/auth/client";
 import { Icon } from "@/components/ui/Icon";
 import { AuthCard, darkInput, darkLabel, darkPrimary, darkSecondary } from "../AuthCard";
+
+const noChanges = () => () => {};
 
 export function LoginForm({ next, reason }: { next: string; reason?: string }) {
   const router = useRouter();
@@ -13,11 +15,12 @@ export function LoginForm({ next, reason }: { next: string; reason?: string }) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [passkeySupported, setPasskeySupported] = useState(true);
-
-  useEffect(() => {
-    setPasskeySupported(typeof window !== "undefined" && "PublicKeyCredential" in window);
-  }, []);
+  // Ändert sich nicht, solange die Seite offen ist – auf dem Server erst einmal „ja“
+  const passkeySupported = useSyncExternalStore(
+    noChanges,
+    () => "PublicKeyCredential" in window,
+    () => true,
+  );
 
   const finish = () => {
     router.replace(next);
@@ -63,11 +66,11 @@ export function LoginForm({ next, reason }: { next: string; reason?: string }) {
       )}
       {mode === "passkey" ? (
         <div className="space-y-3">
-          <button type="button" onClick={withPasskey} disabled={busy || !passkeySupported} className={darkPrimary} data-autofocus>
+          <button type="button" onClick={withPasskey} disabled={busy || !passkeySupported} className={darkPrimary} autoFocus>
             <Icon name="key" size={18} />
             Mit Passkey anmelden
           </button>
-          {!passkeySupported && <p className="text-[12px] text-cream/60">Dieser Browser unterstützt keine Passkeys.</p>}
+          {!passkeySupported && <p className="text-[12px] text-cream/75">Dieser Browser unterstützt keine Passkeys.</p>}
           <button type="button" onClick={() => setMode("password")} className={darkSecondary}>
             Mit Passwort anmelden
           </button>
@@ -78,7 +81,7 @@ export function LoginForm({ next, reason }: { next: string; reason?: string }) {
             <label htmlFor="email" className={darkLabel}>
               E-Mail-Adresse
             </label>
-            <input id="email" name="email" type="email" autoComplete="username webauthn" required value={email} onChange={(e) => setEmail(e.target.value)} className={darkInput} data-autofocus />
+            <input id="email" name="email" type="email" autoComplete="username webauthn" required value={email} onChange={(e) => setEmail(e.target.value)} className={darkInput} autoFocus />
           </div>
           <div>
             <label htmlFor="password" className={darkLabel}>
@@ -90,7 +93,7 @@ export function LoginForm({ next, reason }: { next: string; reason?: string }) {
             {busy ? "Anmelden …" : "Anmelden"}
             {!busy && <Icon name="arrow-right" size={16} />}
           </button>
-          <button type="button" onClick={() => setMode("passkey")} className="w-full py-2 text-center text-[13px] text-cream/60 underline-offset-4 hover:text-cream hover:underline">
+          <button type="button" onClick={() => setMode("passkey")} className="min-h-11 w-full py-2 text-center text-[13px] text-cream/75 underline-offset-4 hover:text-cream hover:underline">
             Zurück zum Passkey
           </button>
         </form>
@@ -100,6 +103,7 @@ export function LoginForm({ next, reason }: { next: string; reason?: string }) {
           {error}
         </p>
       )}
+      <p className="mt-6 border-t border-white/10 pt-4 text-[13px] text-cream/75">Zugang verloren? Bitte an die Praxisleitung wenden.</p>
     </AuthCard>
   );
 }

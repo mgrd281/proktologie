@@ -54,6 +54,10 @@ test("Einladung annehmen, Passkey und TOTP einrichten", async ({ page }) => {
   expect(totpSecret.length).toBeGreaterThan(10);
   await expect(page.getByText("Backup-Codes")).toBeVisible();
   await page.getByLabel("Code aus der App").fill(totp(totpSecret));
+  // Die Codes erscheinen nur hier – ohne „Ich habe sie gespeichert“ geht es nicht weiter
+  await page.getByRole("button", { name: /Aktivieren und ins Cockpit/ }).click();
+  await expect(page.getByText("Bitte die Backup-Codes sichern und „Ich habe sie gespeichert“ ankreuzen.")).toBeVisible();
+  await page.getByLabel("Ich habe sie gespeichert").check();
   await page.getByRole("button", { name: /Aktivieren und ins Cockpit/ }).click();
 
   // Im Cockpit. Der erste Aufruf kompiliert im Dev-Server die Seite und stößt
@@ -154,12 +158,15 @@ test("Anmeldung mit Passwort verlangt den zweiten Faktor", async ({ page }) => {
   await page.getByLabel("Passwort").fill("Sehr-sicheres-Passwort-1");
   await page.getByRole("button", { name: "Anmelden" }).click();
   await expect(page.getByRole("heading", { name: "Code aus der App" })).toBeVisible();
-  await page.getByLabel("6-stelliger Code").fill("000000");
-  await page.getByRole("button", { name: "Bestätigen" }).click();
+  const code = page.getByLabel("6-stelliger Code");
+  await expect(code).toBeFocused();
+  // Sechs Ziffern prüfen sich ohne Klick; ein falscher Code leert das Feld für den nächsten Versuch
+  await code.fill("000000");
   // Next dev hat einen eigenen Routen-Ansager mit role=alert – gezielt auf unsere Meldung filtern
   await expect(page.getByRole("alert").filter({ hasText: "nicht gültig" })).toBeVisible();
-  await page.getByLabel("6-stelliger Code").fill(totp(totpSecret));
-  await page.getByRole("button", { name: "Bestätigen" }).click();
+  await expect(code).toHaveValue("");
+  await expect(code).toBeFocused();
+  await code.fill(totp(totpSecret));
   await expect(page.getByText(/Termine heute/)).toBeVisible();
   await page.screenshot({ path: "e2e/shots/login-2fa-ok.png" });
 });
@@ -213,7 +220,6 @@ test("Rückruf aus dem Chat erscheint im Posteingang und lässt sich abschließe
   // höchstens 31 Sekunden, dafür ohne Rateversuche.
   await page.waitForTimeout(31_000 - (Date.now() % 30_000));
   await page.getByLabel("6-stelliger Code").fill(totp(totpSecret));
-  await page.getByRole("button", { name: "Bestätigen" }).click();
   await expect(page.getByText(/Termine heute/)).toBeVisible({ timeout: 20_000 });
 
   await page.goto("/anfragen");
@@ -272,7 +278,6 @@ async function signIn(page: Page) {
   await page.getByRole("button", { name: "Anmelden" }).click();
   await page.waitForTimeout(31_000 - (Date.now() % 30_000));
   await page.getByLabel("6-stelliger Code").fill(totp(totpSecret));
-  await page.getByRole("button", { name: "Bestätigen" }).click();
 }
 
 async function teamPage(browser: Browser) {
@@ -583,8 +588,8 @@ test("Abmeldung mit Ausweg: Hinweis vorher, danach „Neu anmelden“ im neuen T
   await tab.getByLabel("E-Mail-Adresse").fill(TEAM.email);
   await tab.getByLabel("Passwort").fill(TEAM.password);
   await tab.getByRole("button", { name: "Anmelden" }).click();
-  // Dieses Gerät gilt nach dem ersten zweiten Faktor als vertraut – dann fragt
-  // die Anmeldung nicht erneut nach dem Code und springt gleich zurück
+  // Ein Gerät gilt nur als vertraut, wenn beim zweiten Faktor „Diesem Gerät
+  // vertrauen“ angekreuzt war – dann fragt die Anmeldung nicht nach dem Code
   const target = new RegExp(`/termine\\?d=${DAY}`);
   const code = tab.getByLabel("6-stelliger Code");
   const step = await Promise.race([
@@ -595,7 +600,6 @@ test("Abmeldung mit Ausweg: Hinweis vorher, danach „Neu anmelden“ im neuen T
   if (step === "code") {
     await tab.waitForTimeout(31_000 - (Date.now() % 30_000));
     await code.fill(totp(totpSecret));
-    await tab.getByRole("button", { name: "Bestätigen" }).click();
   }
   await expect(tab).toHaveURL(target, { timeout: 20_000 });
 
@@ -614,4 +618,135 @@ test("Abmeldung mit Ausweg: Hinweis vorher, danach „Neu anmelden“ im neuen T
   if (await retry.isVisible().catch(() => false)) await retry.click();
   await expect(page.getByText(/Termin angelegt · PE-/)).toBeVisible();
   await context.close();
+});
+
+// ---------- Anmeldung und Zugang – nur mit Test-Konten, nie mit dem echten Admin ----------
+
+const KONTO = { email: "konto-test@example.invalid", name: "Konto Test", password: "Erstes-Test-Passwort-1", next: "Zweites-Test-Passwort-2" };
+const LEITUNG = { email: "leitung-test@example.invalid", name: "Leitung Test", password: "Sehr-sicheres-Passwort-1" };
+
+/** Einladung annehmen, Passkey (virtuell) und App einrichten – mit „Ich habe sie gespeichert“. */
+async function newAccount(page: Page, request: APIRequestContext, who: { email: string; name: string; password: string }, role: "empfang" | "admin") {
+  await virtualAuthenticator(page);
+  const { inviteLink } = (await e2e(request, { inviteEmail: who.email, role })) as { inviteLink: string };
+  await page.goto(inviteLink);
+  await page.getByLabel("Vollständiger Name").fill(who.name);
+  await page.getByLabel("Passwort (mindestens 12 Zeichen)").fill(who.password);
+  await page.getByLabel("Passwort wiederholen").fill(who.password);
+  await page.getByRole("button", { name: "Konto anlegen" }).click();
+  await expect(page.getByRole("button", { name: /Passkey jetzt anlegen/ })).toBeFocused({ timeout: 30_000 });
+  await page.getByRole("button", { name: /Passkey jetzt anlegen/ }).click();
+  await page.getByLabel("Passwort").fill(who.password);
+  await page.getByRole("button", { name: "QR-Code anzeigen" }).click();
+  await expect(page.getByLabel("Code aus der App")).toBeFocused();
+  await page.getByText("Code manuell eingeben").click();
+  const secret = (await page.locator("code").first().textContent())?.trim() ?? "";
+  await page.getByLabel("Code aus der App").fill(totp(secret));
+  await page.getByLabel("Ich habe sie gespeichert").check();
+  await page.getByRole("button", { name: /Aktivieren und ins Cockpit/ }).click();
+  await expect(page.getByText(/Termine heute/)).toBeVisible({ timeout: 45_000 });
+}
+
+test("Zugang: Passwort ändern, neue Backup-Codes – und nach der Anmeldung zurück zur vollen Adresse", async ({ browser, request }) => {
+  test.setTimeout(180_000);
+  const context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const page = await context.newPage();
+  await newAccount(page, request, KONTO, "empfang");
+
+  // Passwort ändern: geprüft am Feld, bestätigt mit dem bisherigen
+  await page.goto("/einstellungen/sicherheit");
+  await page.getByRole("button", { name: "Passwort ändern" }).click();
+  const pw = page.getByRole("dialog", { name: "Passwort ändern" });
+  await expect(pw.getByLabel("Bisheriges Passwort")).toBeFocused();
+  await pw.getByLabel("Bisheriges Passwort").fill("Falsches-Passwort-123");
+  await pw.getByLabel("Neues Passwort", { exact: true }).fill(KONTO.next);
+  await pw.getByLabel("Neues Passwort wiederholen").fill(`${KONTO.next}!`);
+  await pw.getByRole("button", { name: "Passwort ändern" }).click();
+  await expect(pw.getByText("Die beiden neuen Passwörter sind nicht gleich.")).toBeVisible();
+  await pw.getByLabel("Neues Passwort wiederholen").fill(KONTO.next);
+  await pw.getByRole("button", { name: "Passwort ändern" }).click();
+  await expect(pw.getByText("Das bisherige Passwort stimmt nicht.")).toBeVisible();
+  await pw.getByLabel("Bisheriges Passwort").fill(KONTO.password);
+  await pw.getByRole("button", { name: "Passwort ändern" }).click();
+  await expect(page.getByText("Passwort geändert")).toBeVisible();
+  await expect(pw).toHaveCount(0);
+
+  // Neue Backup-Codes: erst nach „Ich habe sie gespeichert“ fertig
+  await page.getByRole("button", { name: "Neue Backup-Codes" }).click();
+  const bc = page.getByRole("dialog", { name: "Neue Backup-Codes" });
+  await bc.getByLabel("Passwort").fill(KONTO.next);
+  await bc.getByRole("button", { name: "Neue Codes erzeugen" }).click();
+  await expect(bc.locator("li")).toHaveCount(10);
+  const backupCode = (await bc.locator("li").first().textContent())?.trim() ?? "";
+  await bc.getByRole("button", { name: "Kopieren" }).click();
+  await expect(bc.getByText("Kopiert.")).toBeVisible();
+  await bc.getByRole("button", { name: "Fertig" }).click();
+  await expect(bc.getByText("Bitte die Codes zuerst sichern und ankreuzen.")).toBeVisible();
+  const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+  expect(axe.violations, JSON.stringify(axe.violations.map((v) => `${v.id}: ${v.nodes.length}`))).toEqual([]);
+  await bc.getByLabel("Ich habe sie gespeichert").check();
+  await bc.getByRole("button", { name: "Fertig" }).click();
+  await expect(bc).toHaveCount(0);
+
+  // Abgemeldet auf eine Wochenansicht: Nach der Anmeldung – neues Passwort, neuer Backup-Code – genau dorthin
+  await page.getByRole("button", { name: /Konto Test/ }).click();
+  await page.getByRole("menuitem", { name: "Abmelden" }).click();
+  await expect(page).toHaveURL(/\/login/);
+  const deep = `/termine?v=woche&d=${DAY}`;
+  await page.goto(deep);
+  await expect(page).toHaveURL(`/login?weiter=${encodeURIComponent(deep)}`);
+  await expect(page.getByRole("button", { name: "Mit Passkey anmelden" })).toBeFocused();
+  await expect(page.getByText("Zugang verloren? Bitte an die Praxisleitung wenden.")).toBeVisible();
+  await page.getByRole("button", { name: "Mit Passwort anmelden" }).click();
+  await expect(page.getByLabel("E-Mail-Adresse")).toBeFocused();
+  await page.getByLabel("E-Mail-Adresse").fill(KONTO.email);
+  await page.getByLabel("Passwort").fill(KONTO.next);
+  await page.getByRole("button", { name: "Anmelden" }).click();
+  await page.getByRole("button", { name: /Backup-Code verwenden/ }).click();
+  await page.getByLabel("Einer Ihrer Backup-Codes").fill(backupCode);
+  await page.getByRole("button", { name: "Bestätigen" }).click();
+  await expect(page).toHaveURL(deep);
+  await context.close();
+});
+
+test("Administration: „Sicherheit zurücksetzen“ nur mit frischer Anmeldung – danach richtet die Person alles neu ein", async ({ browser, request }) => {
+  test.setTimeout(180_000);
+  const context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+  const page = await context.newPage();
+  await newAccount(page, request, LEITUNG, "admin");
+
+  // Anmeldung älter als 10 Minuten: erst fragen, dann zurück an dieselbe Stelle
+  await e2e(request, { action: "session-age", email: LEITUNG.email, minutes: 11 });
+  await context.clearCookies({ name: /session_data/ });
+  await page.goto("/einstellungen/benutzer");
+  const row = page.getByRole("row").filter({ hasText: KONTO.email });
+  await row.getByRole("button", { name: "Sicherheit zurücksetzen" }).click();
+  const fresh = page.getByRole("alertdialog", { name: "Bitte kurz neu anmelden" });
+  await expect(fresh).toBeVisible();
+  await fresh.getByRole("button", { name: "Jetzt neu anmelden" }).click();
+  await expect(page).toHaveURL("/login?grund=frisch&weiter=%2Feinstellungen%2Fbenutzer");
+  await expect(page.getByText(/frische Anmeldung nötig/)).toBeVisible();
+  await page.getByRole("button", { name: "Mit Passkey anmelden" }).click();
+  await expect(page).toHaveURL("/einstellungen/benutzer");
+
+  await row.getByRole("button", { name: "Sicherheit zurücksetzen" }).click();
+  const confirm = page.getByRole("alertdialog", { name: `Sicherheit von ${KONTO.name} zurücksetzen?` });
+  await expect(confirm).toContainText("Das Passwort bleibt");
+  await confirm.getByRole("button", { name: "Zurücksetzen" }).click();
+  await expect(page.getByText(`${KONTO.name}: Sicherheit zurückgesetzt`)).toBeVisible();
+  await expect(row).toContainText("Einrichtung offen");
+  await context.close();
+
+  // Die Person meldet sich mit ihrem Passwort an: kein Code mehr, sofort die Einrichtung
+  const k = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+  const kp = await k.newPage();
+  await kp.goto("/login");
+  await kp.getByRole("button", { name: "Mit Passwort anmelden" }).click();
+  await kp.getByLabel("E-Mail-Adresse").fill(KONTO.email);
+  await kp.getByLabel("Passwort").fill(KONTO.next);
+  await kp.getByRole("button", { name: "Anmelden" }).click();
+  await expect(kp).toHaveURL("/sicherheit/einrichten");
+  await expect(kp.getByRole("heading", { name: "Passkey anlegen" })).toBeVisible();
+  await k.close();
 });

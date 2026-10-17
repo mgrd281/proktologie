@@ -22,6 +22,8 @@ export default async function SecurityPage() {
       sessionStartedAt={actor.sessionCreatedAt.toISOString()}
       chain={chain}
       name={actor.name}
+      email={actor.email}
+      now={new Date().toISOString()}
     />
   );
 }

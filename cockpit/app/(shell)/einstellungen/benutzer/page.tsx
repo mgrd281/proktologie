@@ -1,5 +1,5 @@
 import { headers } from "next/headers";
-import { requireActorOrRedirect } from "@/lib/auth/actor";
+import { freshLeftMs, requireActorOrRedirect } from "@/lib/auth/actor";
 import { auth } from "@/lib/auth/auth";
 import { listOpenInvites } from "@/lib/auth/invites";
 import { UsersManager, type UserRow } from "@/components/settings/UsersManager";
@@ -30,6 +30,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
       users={users}
       invites={invites.map((i) => ({ ...i, expiresAt: i.expiresAt.toISOString(), createdAt: i.createdAt.toISOString() }))}
       openInvite={sp.einladen === "1"}
+      freshLeftMs={freshLeftMs(actor)}
     />
   );
 }

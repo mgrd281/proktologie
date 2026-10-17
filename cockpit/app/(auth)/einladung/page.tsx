@@ -62,7 +62,7 @@ export default function InvitePage() {
           <label htmlFor="name" className={darkLabel}>
             Vollständiger Name
           </label>
-          <input id="name" autoComplete="name" required value={name} onChange={(e) => setName(e.target.value)} className={darkInput} data-autofocus />
+          <input id="name" autoComplete="name" required value={name} onChange={(e) => setName(e.target.value)} className={darkInput} autoFocus />
         </div>
         <div>
           <label htmlFor="pw" className={darkLabel}>

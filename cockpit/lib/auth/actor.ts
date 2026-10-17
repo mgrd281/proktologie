@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getDb } from "../db/client.ts";
 import { passkey as passkeyTable } from "../db/schema.ts";
 import { ABSOLUTE_SECONDS, FRESH_SECONDS, ROLES, auth, type Role } from "./auth.ts";
+import { RETURN_HEADER, STALE_MESSAGE, freshLoginHref, safeNext } from "./next.ts";
 
 /**
  * Der handelnde Mensch hinter einer Anfrage – Sitzung, Rolle, Frische.
@@ -72,7 +73,12 @@ export async function securityComplete(actor: Actor): Promise<boolean> {
 }
 
 export function isFresh(actor: Actor): boolean {
-  return Date.now() - actor.sessionCreatedAt.getTime() < FRESH_SECONDS * 1000;
+  return freshLeftMs(actor) > 0;
+}
+
+/** Wie lange die Anmeldung noch als frisch gilt – damit die Seite vorher fragen kann statt nachher zu scheitern. */
+export function freshLeftMs(actor: Actor): number {
+  return Math.max(0, FRESH_SECONDS * 1000 - (Date.now() - actor.sessionCreatedAt.getTime()));
 }
 
 interface Requirement {
@@ -94,21 +100,22 @@ export async function requireActor(req: Requirement = {}): Promise<Actor> {
     throw new ActorError("forbidden", "Dafür fehlt die Berechtigung.");
   }
   if (req.fresh && !isFresh(actor)) {
-    throw new ActorError("stale", "Bitte erneut anmelden, um diese Aktion auszuführen.");
+    throw new ActorError("stale", STALE_MESSAGE);
   }
   return actor;
 }
 
-/** Für Seiten: leitet um statt zu werfen. */
+/** Für Seiten: leitet um statt zu werfen – zur Anmeldung samt Rücksprung an dieselbe Stelle (proxy.ts). */
 export async function requireActorOrRedirect(req: Requirement = {}): Promise<Actor> {
   try {
     return await requireActor(req);
   } catch (e) {
     if (e instanceof ActorError) {
-      if (e.code === "unauthenticated") redirect("/login");
+      const here = safeNext((await headers()).get(RETURN_HEADER));
+      if (e.code === "unauthenticated") redirect(here === "/" ? "/login" : `/login?weiter=${encodeURIComponent(here)}`);
       if (e.code === "setup") redirect("/sicherheit/einrichten");
       if (e.code === "forbidden") redirect("/?fehler=berechtigung");
-      if (e.code === "stale") redirect("/login?grund=frisch");
+      if (e.code === "stale") redirect(freshLoginHref(here));
     }
     throw e;
   }

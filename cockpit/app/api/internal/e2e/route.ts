@@ -24,10 +24,12 @@ import { runTick } from "@/lib/jobs/tick";
  * - "requests":     viele erledigte Anfragen plus offene anlegen (Posteingang unter Last)
  * - "session-expires": Sitzungen einer Person in `minutes` Minuten ablaufen lassen
  *                   (negativ = schon abgelaufen) – für den Sitzungswächter
+ * - "session-age":  Anmeldungen einer Person `minutes` Minuten älter machen – für
+ *                   „Jetzt neu anmelden“ bei Aktionen, die eine frische Anmeldung brauchen
  */
 type Body = {
   secret?: string;
-  action?: "bootstrap" | "seed-demo" | "golive" | "tick" | "state" | "expire-holds" | "settings" | "requests" | "session-expires";
+  action?: "bootstrap" | "seed-demo" | "golive" | "tick" | "state" | "expire-holds" | "settings" | "requests" | "session-expires" | "session-age";
   inviteEmail?: string;
   role?: "arzt" | "empfang" | "admin";
   settings?: { bookingLive?: boolean; bookingPaused?: boolean; bannerText?: string | null; chatEnabled?: boolean };
@@ -103,6 +105,16 @@ export async function POST(req: Request) {
     const rows = await db
       .update(sessionTable)
       .set({ expiresAt: new Date(Date.now() + (body.minutes ?? 0) * 60_000) })
+      .where(eq(sessionTable.userId, u.id))
+      .returning({ id: sessionTable.id });
+    return NextResponse.json({ updated: rows.length });
+  }
+  if (body.action === "session-age") {
+    const [u] = await db.select({ id: userTable.id }).from(userTable).where(eq(userTable.email, body.email ?? ""));
+    if (!u) return NextResponse.json({ updated: 0 });
+    const rows = await db
+      .update(sessionTable)
+      .set({ createdAt: new Date(Date.now() - (body.minutes ?? 0) * 60_000) })
       .where(eq(sessionTable.userId, u.id))
       .returning({ id: sessionTable.id });
     return NextResponse.json({ updated: rows.length });

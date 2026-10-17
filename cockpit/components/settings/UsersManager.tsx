@@ -2,12 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { createInviteAction, revokeInviteAction, setDisabledAction, setRoleAction } from "@/app/actions/users";
+import { createInviteAction, resetSecurityAction, revokeInviteAction, setDisabledAction, setRoleAction } from "@/app/actions/users";
 import { ROLES, type Role } from "@/lib/auth/auth-shared";
 import { Card, EmptyState, Eyebrow, Notice } from "@/components/ui/Bits";
 import { Button, IconButton } from "@/components/ui/Button";
 import { DataTable } from "@/components/ui/DataTable";
 import { Field, Input, Select } from "@/components/ui/Field";
+import { useFreshLogin } from "@/components/ui/FreshLogin";
 import { Icon } from "@/components/ui/Icon";
 import { Dialog, Drawer } from "@/components/ui/Overlay";
 import { useToast } from "@/components/ui/Toast";
@@ -36,11 +37,28 @@ const ROLE_HELP: Record<Role, string> = {
   admin: "Zusätzlich Benutzer, Einladungen und Sicherheit.",
 };
 
-export function UsersManager({ me, isAdmin, users, invites, openInvite }: { me: string; isAdmin: boolean; users: UserRow[]; invites: InviteRow[]; openInvite: boolean }) {
+export function UsersManager({
+  me,
+  isAdmin,
+  users,
+  invites,
+  openInvite,
+  freshLeftMs,
+}: {
+  me: string;
+  isAdmin: boolean;
+  users: UserRow[];
+  invites: InviteRow[];
+  openInvite: boolean;
+  /** Restzeit der frischen Anmeldung – Einladen, Rollen, Deaktivieren und Zurücksetzen verlangen sie */
+  freshLeftMs: number;
+}) {
   const router = useRouter();
   const { toast } = useToast();
+  const fresh = useFreshLogin(freshLeftMs);
   const [pending, start] = useTransition();
-  const [drawer, setDrawer] = useState(openInvite);
+  // Über ⌘K „Mitarbeitende einladen“ – aber nicht ins Formular, wenn die Anmeldung dafür zu alt ist
+  const [drawer, setDrawer] = useState(openInvite && freshLeftMs > 15_000);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("empfang");
   const [link, setLink] = useState<string | null>(null);
@@ -61,7 +79,7 @@ export function UsersManager({ me, isAdmin, users, invites, openInvite }: { me: 
       setError(null);
       const r = await createInviteAction({ email, role });
       if (!r.ok) {
-        setError(r.error);
+        if (!fresh.handled(r.error)) setError(r.error);
         return;
       }
       setLink(r.data.link);
@@ -81,6 +99,7 @@ export function UsersManager({ me, isAdmin, users, invites, openInvite }: { me: 
   const changeRole = (u: UserRow, next: Role) =>
     start(async () => {
       const r = await setRoleAction({ userId: u.id, role: next });
+      if (!r.ok && fresh.handled(r.error)) return;
       toast(r.ok ? { title: `${u.name}: ${ROLE_LABEL[next]}`, tone: "ok" } : { title: "Nicht geändert", description: r.error, tone: "danger" });
       router.refresh();
     });
@@ -88,7 +107,20 @@ export function UsersManager({ me, isAdmin, users, invites, openInvite }: { me: 
   const toggle = (u: UserRow) =>
     start(async () => {
       const r = await setDisabledAction({ userId: u.id, disabled: !u.banned });
+      if (!r.ok && fresh.handled(r.error)) return;
       toast(r.ok ? { title: `${u.name} ${u.banned ? "aktiviert" : "deaktiviert"}`, tone: u.banned ? "ok" : "warn" } : { title: "Nicht geändert", description: r.error, tone: "danger" });
+      router.refresh();
+    });
+
+  const reset = (u: UserRow) =>
+    start(async () => {
+      const r = await resetSecurityAction({ userId: u.id });
+      if (!r.ok && fresh.handled(r.error)) return;
+      toast(
+        r.ok
+          ? { title: `${u.name}: Sicherheit zurückgesetzt`, description: "Bei der nächsten Anmeldung mit Passwort richtet die Person Passkey und App neu ein.", tone: "ok" }
+          : { title: "Nicht zurückgesetzt", description: r.error, tone: "danger" },
+      );
       router.refresh();
     });
 
@@ -98,7 +130,19 @@ export function UsersManager({ me, isAdmin, users, invites, openInvite }: { me: 
         <p className="max-w-xl text-[13px] leading-relaxed text-text-muted">
           Konten entstehen nur per Einladung. Der Link enthält ein einmaliges Token, gilt 72 Stunden und verrät nichts über die Person – den Namen trägt sie selbst ein. Nach der Annahme sind Passkey und Authenticator Pflicht.
         </p>
-        <Button variant="primary" size="sm" icon="plus" onClick={() => { setLink(null); setDrawer(true); }}>Einladen</Button>
+        <Button
+          variant="primary"
+          size="sm"
+          icon="plus"
+          onClick={() =>
+            fresh.ensure(() => {
+              setLink(null);
+              setDrawer(true);
+            })
+          }
+        >
+          Einladen
+        </Button>
       </div>
 
       <DataTable<UserRow>
@@ -127,12 +171,14 @@ export function UsersManager({ me, isAdmin, users, invites, openInvite }: { me: 
                 disabled={u.id === me || pending}
                 onChange={(e) => {
                   const next = e.target.value as Role;
-                  setConfirm({
-                    title: `Rolle von ${u.name} ändern?`,
-                    text: `Neue Rolle: ${ROLE_LABEL[next]}.${next === "admin" ? " Administration darf Konten einladen, Rollen ändern und deaktivieren." : ""}`,
-                    label: "Rolle ändern",
-                    run: () => changeRole(u, next),
-                  });
+                  fresh.ensure(() =>
+                    setConfirm({
+                      title: `Rolle von ${u.name} ändern?`,
+                      text: `Neue Rolle: ${ROLE_LABEL[next]}.${next === "admin" ? " Administration darf Konten einladen, Rollen ändern und deaktivieren." : ""}`,
+                      label: "Rolle ändern",
+                      run: () => changeRole(u, next),
+                    }),
+                  );
                 }}
                 className="h-8 rounded-lg border border-line bg-surface-raised px-2 text-[13px] text-text disabled:opacity-60"
               >
@@ -160,23 +206,46 @@ export function UsersManager({ me, isAdmin, users, invites, openInvite }: { me: 
               <span className="flex items-center justify-end gap-2">
                 <span className={`text-[12px] ${u.banned ? "text-danger" : "text-text-muted"}`}>{u.banned ? "deaktiviert" : "aktiv"}</span>
                 {u.id !== me && (
-                  <IconButton
-                    label={u.banned ? "Konto aktivieren" : "Konto deaktivieren"}
-                    icon={u.banned ? "refresh" : "lock"}
-                    size={30}
-                    disabled={pending}
-                    onClick={() =>
-                      u.banned
-                        ? toggle(u)
-                        : setConfirm({
-                            title: `${u.name} deaktivieren?`,
-                            text: "Die Person wird sofort abgemeldet und kann sich nicht mehr anmelden, bis das Konto wieder aktiviert wird.",
-                            label: "Deaktivieren",
+                  <>
+                    <IconButton
+                      label="Sicherheit zurücksetzen"
+                      icon="shield"
+                      size={30}
+                      className="max-md:!size-11"
+                      disabled={pending}
+                      onClick={() =>
+                        fresh.ensure(() =>
+                          setConfirm({
+                            title: `Sicherheit von ${u.name} zurücksetzen?`,
+                            text: "Für ein verlorenes Handy oder Gerät: Passkeys und Authenticator-App dieses Kontos werden entfernt, die Person wird überall abgemeldet. Das Passwort bleibt; bei der nächsten Anmeldung richtet sie beides neu ein. Bitte nur, wenn die Bitte sicher von ihr selbst kommt.",
+                            label: "Zurücksetzen",
                             danger: true,
-                            run: () => toggle(u),
-                          })
-                    }
-                  />
+                            run: () => reset(u),
+                          }),
+                        )
+                      }
+                    />
+                    <IconButton
+                      label={u.banned ? "Konto aktivieren" : "Konto deaktivieren"}
+                      icon={u.banned ? "refresh" : "lock"}
+                      size={30}
+                      className="max-md:!size-11"
+                      disabled={pending}
+                      onClick={() =>
+                        fresh.ensure(() =>
+                          u.banned
+                            ? toggle(u)
+                            : setConfirm({
+                                title: `${u.name} deaktivieren?`,
+                                text: "Die Person wird sofort abgemeldet und kann sich nicht mehr anmelden, bis das Konto wieder aktiviert wird.",
+                                label: "Deaktivieren",
+                                danger: true,
+                                run: () => toggle(u),
+                              }),
+                        )
+                      }
+                    />
+                  </>
                 )}
               </span>
             ),
@@ -198,6 +267,7 @@ export function UsersManager({ me, isAdmin, users, invites, openInvite }: { me: 
                 label="Einladung zurückziehen"
                 icon="trash"
                 size={32}
+                className="max-md:!size-11"
                 disabled={pending}
                 onClick={() =>
                   setConfirm({
@@ -267,6 +337,7 @@ export function UsersManager({ me, isAdmin, users, invites, openInvite }: { me: 
       >
         {confirm?.text}
       </Dialog>
+      {fresh.dialog}
     </div>
   );
 }

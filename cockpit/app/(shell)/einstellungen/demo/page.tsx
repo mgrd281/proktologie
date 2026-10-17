@@ -1,4 +1,4 @@
-import { requireActorOrRedirect } from "@/lib/auth/actor";
+import { freshLeftMs, requireActorOrRedirect } from "@/lib/auth/actor";
 import { countDemo, getSettings, recentMessages, unknownChatTopics } from "@/lib/booking/repo";
 import { TOPIC_LABELS } from "@/content/praxis-wissen";
 import { pendingCount } from "@/lib/jobs/queue";
@@ -42,6 +42,7 @@ export default async function DemoPage() {
         ...r,
         label: TOPIC_LABELS[r.topic as keyof typeof TOPIC_LABELS] ?? r.topic,
       }))}
+      freshLeftMs={freshLeftMs(actor)}
     />
   );
 }
