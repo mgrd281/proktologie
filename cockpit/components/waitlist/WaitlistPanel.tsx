@@ -164,7 +164,7 @@ export function WaitlistPanel({
       />
 
       <div className="mt-8">
-        <button type="button" onClick={() => setShowClosed((v) => !v)} className="flex items-center gap-2 text-[13px] font-medium text-text-muted hover:text-text">
+        <button type="button" onClick={() => setShowClosed((v) => !v)} aria-expanded={showClosed} className="flex min-h-11 items-center gap-2 text-[13px] font-medium text-text-muted hover:text-text md:min-h-8">
           <Icon name={showClosed ? "chevron-down" : "chevron-right"} size={14} />
           Abgeschlossene Einträge ({closed.length})
         </button>

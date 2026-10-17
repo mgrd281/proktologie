@@ -10,7 +10,7 @@ export default function NotFound() {
         <p className="text-[11px] font-semibold tracking-[0.18em] text-text-muted uppercase">Praxis-Cockpit</p>
         <h1 className="font-display mt-3 text-[28px] font-medium text-text">Diese Seite gibt es nicht (mehr).</h1>
         <p className="mt-2 text-[14px] text-text-muted">Vielleicht ein alter Link oder ein Tippfehler in der Adresse.</p>
-        <Link href="/" className="mt-6 inline-flex min-h-11 items-center rounded-full bg-brand-fill px-6 text-sm font-semibold text-deep hover:bg-[#76a81f]">
+        <Link href="/" className="mt-6 inline-flex min-h-11 items-center rounded-full bg-brand-fill px-6 text-sm font-semibold text-deep hover:bg-brand-fill-hover">
           Zu „Heute“
         </Link>
       </div>

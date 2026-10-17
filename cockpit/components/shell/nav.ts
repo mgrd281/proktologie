@@ -5,21 +5,23 @@ export interface NavItem {
   href: string;
   label: string;
   icon: IconName;
-  /** Kürzel nach „g“ */
-  key: string;
-  /** Kommt in einer späteren Phase – Seite ist ein gestalteter Platzhalter. */
-  phase?: number;
+  /** Kürzel nach „g“ – Bereiche in Vorbereitung haben keins */
+  key?: string;
+  /** Noch in Vorbereitung: ehrlich beschriftete Platzhalterseite, eigene Gruppe am Ende */
+  preparing?: true;
+  /** Zähler in der Seitenleiste (offene Anfragen, wartende Personen) */
+  count?: "requests" | "waitlist";
 }
 
 export const NAV: NavItem[] = [
   { href: "/", label: "Heute", icon: "home", key: "h" },
   { href: "/termine", label: "Termine", icon: "calendar", key: "t" },
-  { href: "/anfragen", label: "Anfragen", icon: "inbox", key: "a" },
-  { href: "/warteliste", label: "Warteliste", icon: "hourglass", key: "w" },
-  { href: "/website", label: "Website", icon: "globe", key: "s", phase: 3 },
-  { href: "/aufnahme", label: "Aufnahme", icon: "file-text", key: "u", phase: 4 },
-  { href: "/statistik", label: "Statistik", icon: "chart", key: "k", phase: 5 },
+  { href: "/anfragen", label: "Anfragen", icon: "inbox", key: "a", count: "requests" },
+  { href: "/warteliste", label: "Warteliste", icon: "hourglass", key: "w", count: "waitlist" },
   { href: "/einstellungen", label: "Einstellungen", icon: "settings", key: "e" },
+  { href: "/website", label: "Website", icon: "globe", preparing: true },
+  { href: "/aufnahme", label: "Aufnahme", icon: "file-text", preparing: true },
+  { href: "/statistik", label: "Statistik", icon: "chart", preparing: true },
 ];
 
 export const SETTINGS_TABS = [
@@ -27,5 +29,5 @@ export const SETTINGS_TABS = [
   { href: "/einstellungen/sprechzeiten", label: "Sprechzeiten" },
   { href: "/einstellungen/benutzer", label: "Benutzer" },
   { href: "/einstellungen/sicherheit", label: "Sicherheit" },
-  { href: "/einstellungen/demo", label: "Demo & Betrieb" },
+  { href: "/einstellungen/demo", label: "Online-Buchung & Betrieb" },
 ];

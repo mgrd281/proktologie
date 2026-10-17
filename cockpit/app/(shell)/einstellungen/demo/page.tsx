@@ -6,7 +6,7 @@ import { emailChannel } from "@/lib/messaging/email";
 import { voiceConfigured } from "@/lib/voice/openai";
 import { DemoPanel } from "@/components/settings/DemoPanel";
 
-export const metadata = { title: "Demo & Betrieb" };
+export const metadata = { title: "Online-Buchung & Betrieb" };
 
 export default async function DemoPage() {
   const actor = await requireActorOrRedirect();
@@ -21,6 +21,7 @@ export default async function DemoPage() {
   return (
     <DemoPanel
       canEdit={actor.role !== "empfang"}
+      isAdmin={actor.role === "admin"}
       demoCount={demoCount}
       settings={{
         slotStepMin: settings.slotStepMin,

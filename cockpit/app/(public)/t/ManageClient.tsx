@@ -36,7 +36,7 @@ async function call<T>(body: Record<string, unknown>): Promise<{ ok: true; data:
 }
 
 const btn = "inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50";
-const primary = `${btn} bg-accent font-semibold text-deep hover:bg-[#76a81f]`;
+const primary = `${btn} bg-accent font-semibold text-deep hover:bg-brand-fill-hover`;
 const secondary = `${btn} border border-cream/30 text-cream hover:border-accent hover:text-accent`;
 const danger = `${btn} border border-red-300/40 text-red-200 hover:bg-red-400/10`;
 const quiet = `${btn} px-4 text-cream/85 hover:bg-cream/5 hover:text-accent`;

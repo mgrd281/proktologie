@@ -104,7 +104,7 @@ export function SessionGuard({ absoluteSeconds }: { absoluteSeconds: number }) {
   };
   const loginHref = `/login?weiter=${encodeURIComponent(window.location.pathname + window.location.search)}`;
   const relogin = (
-    <a href={loginHref} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-brand-fill px-6 text-sm font-semibold tracking-wide text-deep transition-colors hover:bg-[#76a81f]">
+    <a href={loginHref} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-brand-fill px-6 text-sm font-semibold tracking-wide text-deep transition-colors hover:bg-brand-fill-hover">
       <Icon name="external" size={16} />
       Neu anmelden
       <span className="sr-only">(öffnet einen neuen Tab)</span>

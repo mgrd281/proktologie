@@ -13,7 +13,7 @@ const sizes: Record<Size, string> = {
   md: "min-h-11 px-6 text-sm",
 };
 const variants: Record<Variant, string> = {
-  primary: "bg-brand-fill font-semibold text-deep hover:bg-[#76a81f]",
+  primary: "bg-brand-fill font-semibold text-deep hover:bg-brand-fill-hover",
   secondary: "border border-line-strong text-text hover:border-brand hover:text-brand",
   ghost: "text-text-muted hover:bg-surface-sunken hover:text-text",
   danger: "border border-danger/40 text-danger hover:bg-danger/10",

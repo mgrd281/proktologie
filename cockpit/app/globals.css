@@ -76,8 +76,14 @@ body {
   }
 }
 
-/* Druck: Tagesblatt & Listen – schwarz auf weiß, ohne Chrome */
+/* Druck: Tagesblatt & Listen – schwarz auf weiß, ohne Oberfläche drumherum
+   (Seitenleiste, Kopfzeile, Knöpfe, Meldungen, Sitzungshinweis) */
 @media print {
   body { background: #fff; color: #000; }
-  .no-print { display: none !important; }
+  .no-print,
+  #cockpit-shell > aside,
+  #cockpit-shell header,
+  #cockpit-main button,
+  [aria-live] { display: none !important; }
+  #cockpit-main { padding: 0 !important; }
 }

@@ -164,7 +164,8 @@ export function Dialog({
   children?: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
-  onConfirm: () => void | Promise<void>;
+  /** Ohne onConfirm: ein reiner Hinweis (role="dialog") mit nur einem Knopf */
+  onConfirm?: () => void | Promise<void>;
   danger?: boolean;
   busy?: boolean;
 }) {
@@ -176,18 +177,20 @@ export function Dialog({
   return createPortal(
     <div ref={root} className="fixed inset-0 z-[75] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-deep/40 backdrop-blur-[2px]" onClick={onClose} aria-hidden="true" />
-      <div ref={panel} role="alertdialog" aria-modal="true" aria-labelledby="dialog-title" tabIndex={-1} className={cn("rise-in elevated relative w-full max-w-md rounded-2xl bg-surface-raised p-6 text-text outline-none")}>
+      <div ref={panel} role={onConfirm ? "alertdialog" : "dialog"} aria-modal="true" aria-labelledby="dialog-title" tabIndex={-1} className={cn("rise-in elevated relative w-full max-w-md rounded-2xl bg-surface-raised p-6 text-text outline-none")}>
         <h2 id="dialog-title" className="font-display text-[20px] leading-tight font-medium">
           {title}
         </h2>
         {children && <div className="mt-3 text-[14px] leading-relaxed text-text-muted">{children}</div>}
         <div className="mt-6 flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose} data-autofocus>
+          <Button variant={onConfirm ? "ghost" : "secondary"} onClick={onClose} data-autofocus>
             {cancelLabel}
           </Button>
-          <Button variant={danger ? "danger" : "primary"} onClick={onConfirm} loading={busy}>
-            {confirmLabel}
-          </Button>
+          {onConfirm && (
+            <Button variant={danger ? "danger" : "primary"} onClick={onConfirm} loading={busy}>
+              {confirmLabel}
+            </Button>
+          )}
         </div>
       </div>
     </div>,

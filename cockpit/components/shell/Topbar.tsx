@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { authClient } from "@/lib/auth/client";
 import { cn } from "@/lib/cn";
+import { initialsOf } from "@/lib/names";
 import { Icon } from "@/components/ui/Icon";
 import { Kbd } from "@/components/ui/Bits";
 
@@ -103,12 +104,7 @@ function UserMenu({ user }: { user: { name: string; email: string; role: string 
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
-  const initials = user.name
-    .split(/\s+/)
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
+  const initials = initialsOf(user.name);
   return (
     <div ref={ref} className="relative">
       <button
@@ -120,7 +116,7 @@ function UserMenu({ user }: { user: { name: string; email: string; role: string 
       >
         <span className="flex size-7 items-center justify-center rounded-full bg-deep text-[11px] font-semibold text-cream">{initials || "•"}</span>
         <span className="hidden max-w-32 truncate font-medium text-text sm:inline">{user.name}</span>
-        <Icon name="chevron-down" size={14} className="text-text-faint" />
+        <Icon name="chevron-down" size={14} className="text-text-muted" />
       </button>
       {open && (
         <div role="menu" className={cn("rise-in elevated absolute right-0 mt-2 w-64 rounded-2xl border border-line bg-surface-raised p-1.5 text-[13px]")}>

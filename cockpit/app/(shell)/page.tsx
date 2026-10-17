@@ -3,11 +3,13 @@ import { requireActorOrRedirect } from "@/lib/auth/actor";
 import { listTypes, nextFreeSlots, todayOverview } from "@/lib/booking/repo";
 import { addDays, fmtLongDate, fmtShortDate, timeKey, WEEKDAYS_SHORT_DE } from "@/lib/time";
 import { cn } from "@/lib/cn";
+import { firstNameOf } from "@/lib/names";
 import { Card, Eyebrow, PageTitle } from "@/components/ui/Bits";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { KpiTile } from "@/components/ui/Kpi";
 import { TodayList } from "@/components/calendar/TodayList";
+import { PrintOnLoad } from "./PrintOnLoad";
 
 export const metadata = { title: "Heute" };
 
@@ -18,7 +20,8 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
  * zu tun ist – jeder Hinweis führt direkt hin. Dann der Tagesplan, erst
  * danach die Zahlen. Progressive Disclosure.
  */
-export default async function TodayPage() {
+export default async function TodayPage({ searchParams }: { searchParams: Promise<{ drucken?: string }> }) {
+  const print = (await searchParams).drucken === "1";
   const actor = await requireActorOrRedirect();
   const now = new Date();
   const [ov, types] = await Promise.all([todayOverview(now), listTypes()]);
@@ -30,7 +33,7 @@ export default async function TodayPage() {
 
   const hour = Number(new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "numeric", hourCycle: "h23" }).format(now));
   const greeting = hour < 11 ? "Guten Morgen" : hour < 17 ? "Guten Tag" : "Guten Abend";
-  const firstName = actor.name.split(/\s+/)[0] ?? actor.name;
+  const firstName = firstNameOf(actor.name);
 
   const allGood = ov.counts.open === 0 && ov.openRequests === 0;
   const summary =
@@ -84,7 +87,8 @@ export default async function TodayPage() {
         }
       />
 
-      <section aria-label="Lage heute" className={cn("mb-6 rounded-2xl px-5 py-4", allGood ? "bg-brand-soft text-text" : "bg-surface-raised text-text ring-1 ring-line")}>
+      {print && <PrintOnLoad />}
+      <section aria-label="Lage heute" className={cn("no-print mb-6 rounded-2xl px-5 py-4", allGood ? "bg-brand-soft text-text" : "bg-surface-raised text-text ring-1 ring-line")}>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className={cn("size-2.5 shrink-0 rounded-full", allGood ? "bg-brand-fill" : "bg-warn")} aria-hidden="true" />
           <p className="min-w-0 flex-1 text-[15px] max-md:basis-[calc(100%-1.5rem)]">{summary}</p>
@@ -133,7 +137,7 @@ export default async function TodayPage() {
           <TodayList appointments={ov.appointments} now={now.toISOString()} />
         </Card>
 
-        <div className="space-y-6">
+        <div className="no-print space-y-6">
           <Card>
             <Eyebrow>Nächster freier Termin</Eyebrow>
             <ul className="mt-3 divide-y divide-line">
@@ -210,7 +214,7 @@ export default async function TodayPage() {
       </div>
 
       {/* Die Zahlen zuletzt – jede führt zur Liste dahinter */}
-      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="no-print mt-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
         <KpiTile label="Termine heute" value={ov.counts.total} spark={ov.weekLoad.map((d) => d.count)} sub="Verlauf dieser Woche" href={today} />
         <KpiTile label="Unbestätigt" value={ov.counts.open} tone={ov.counts.open > 0 ? "warn" : "ok"} sub={ov.counts.open > 0 ? "Erinnerung ausstehend" : "Alle bestätigt"} href={today} />
         <KpiTile label="Wahrgenommen" value={ov.counts.completed} tone="ok" sub={`${ov.counts.noShow} nicht erschienen`} href={today} />

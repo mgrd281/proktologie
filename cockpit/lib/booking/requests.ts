@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { asc, count, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { audit } from "../audit.ts";
 import { currentKeyVersion, decryptJson, encryptJson } from "../crypto/aead.ts";
@@ -183,10 +183,11 @@ export async function setRequestStatus(id: string, status: RequestStatus, actorI
   return view;
 }
 
+/** Offene Anfragen zählen – läuft bei jedem Seitenaufruf (Zähler in der Seitenleiste). */
 export async function countOpenRequests(): Promise<number> {
   const db = await getDb();
-  const rows = await db.select({ id: t.requests.id }).from(t.requests).where(inArray(t.requests.status, OPEN_REQUEST_STATUSES));
-  return rows.length;
+  const [row] = await db.select({ n: count() }).from(t.requests).where(inArray(t.requests.status, OPEN_REQUEST_STATUSES));
+  return Number(row?.n ?? 0);
 }
 
 export async function purgeDemoRequests(): Promise<number> {

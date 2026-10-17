@@ -4,13 +4,26 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { replaceHoursAction } from "@/app/actions/settings";
 import { KIND_LABEL, type ExceptionView, type HoursRow } from "@/lib/booking/model";
-import { fmtShortDate, timeKey, WEEKDAYS_DE } from "@/lib/time";
+import { dateKey, fmtShortDate, timeKey, WEEKDAYS_DE } from "@/lib/time";
 import { Card, DemoBadge, Eyebrow, Notice } from "@/components/ui/Bits";
 import { Button, IconButton } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
 import { useToast } from "@/components/ui/Toast";
 import { ExceptionDrawer } from "@/components/calendar/ExceptionDrawer";
 import { RemoveExceptionDialog } from "@/components/calendar/RemoveExceptionDialog";
+
+/** Zeitraum einer Ausnahme – mehrtägige Sperren mit Enddatum, nicht nur mit Uhrzeit. */
+function spanLabel(e: ExceptionView): string {
+  const start = new Date(e.startsAt);
+  const end = new Date(e.endsAt);
+  if (e.allDay) {
+    const last = new Date(end.getTime() - 1);
+    return dateKey(start) === dateKey(last) ? fmtShortDate(start) : `${fmtShortDate(start)} – ${fmtShortDate(last)}`;
+  }
+  return dateKey(start) === dateKey(end)
+    ? `${fmtShortDate(start)} ${timeKey(start)} – ${timeKey(end)}`
+    : `${fmtShortDate(start)} ${timeKey(start)} – ${fmtShortDate(end)} ${timeKey(end)}`;
+}
 
 export function HoursEditor({ hours, exceptions, canEdit, today }: { hours: HoursRow[]; exceptions: ExceptionView[]; canEdit: boolean; today: string }) {
   const router = useRouter();
@@ -40,7 +53,10 @@ export function HoursEditor({ hours, exceptions, canEdit, today }: { hours: Hour
         <div className="flex items-start justify-between gap-4">
           <div>
             <Eyebrow>Regelmäßige Sprechzeiten</Eyebrow>
-            <p className="mt-1 text-[13px] text-text-muted">Mehrere Fenster pro Tag sind möglich (z. B. Vormittag und Nachmittag). Die Website übernimmt diese Zeiten in Phase 3.</p>
+            <p className="mt-1 text-[13px] text-text-muted">
+              Mehrere Fenster pro Tag sind möglich (z. B. Vormittag und Nachmittag). Die Website zeigt diese Zeiten und bietet online nur darin Termine an.
+              {!canEdit && " Ändern können Arzt und Administration."}
+            </p>
           </div>
         </div>
         <ul className="mt-5 divide-y divide-line">
@@ -51,11 +67,11 @@ export function HoursEditor({ hours, exceptions, canEdit, today }: { hours: Hour
               <li key={wd} className="grid grid-cols-[110px_1fr] items-start gap-3 py-3">
                 <span className="pt-2 text-[14px] font-medium text-text">{name}</span>
                 <div className="space-y-2">
-                  {dayRows.length === 0 && <p className="pt-2 text-[13px] text-text-faint">geschlossen</p>}
+                  {dayRows.length === 0 && <p className="pt-2 text-[13px] text-text-muted">geschlossen</p>}
                   {dayRows.map(({ r, idx }) => (
                     <div key={idx} className="flex items-center gap-2">
                       <Input type="time" step={900} value={r.opens} disabled={!canEdit} onChange={(e) => setRows(rows.map((x, j) => (j === idx ? { ...x, opens: e.target.value } : x)))} className="tnum !min-h-9 !w-28 !px-3" aria-label={`${name} öffnet`} />
-                      <span className="text-text-faint">–</span>
+                      <span className="text-text-muted">–</span>
                       <Input type="time" step={900} value={r.closes} disabled={!canEdit} onChange={(e) => setRows(rows.map((x, j) => (j === idx ? { ...x, closes: e.target.value } : x)))} className="tnum !min-h-9 !w-28 !px-3" aria-label={`${name} schließt`} />
                       {canEdit && <IconButton label="Fenster entfernen" icon="trash" size={32} onClick={() => setRows(rows.filter((_, j) => j !== idx))} />}
                     </div>
@@ -83,12 +99,12 @@ export function HoursEditor({ hours, exceptions, canEdit, today }: { hours: Hour
         <div className="flex items-start justify-between gap-4">
           <div>
             <Eyebrow>Ausnahmen</Eyebrow>
-            <p className="mt-1 text-[13px] text-text-muted">Urlaub, Blocker, Feiertage, extern belegte Zeiten – ab heute.</p>
+            <p className="mt-1 text-[13px] text-text-muted">Urlaub, Blocker und extern belegte Zeiten – ab heute. Gesetzliche Feiertage in Hamburg sind automatisch geschlossen.</p>
           </div>
           <Button size="sm" variant="secondary" icon="plus" onClick={() => setDrawer(true)}>Eintragen</Button>
         </div>
         <ul className="mt-4 divide-y divide-line">
-          {exceptions.length === 0 && <li className="py-6 text-center text-[13px] text-text-faint">Keine Ausnahmen eingetragen.</li>}
+          {exceptions.length === 0 && <li className="py-6 text-center text-[13px] text-text-muted">Keine Ausnahmen eingetragen.</li>}
           {exceptions.map((e) => (
             <li key={e.id} className="flex items-center gap-3 py-2.5 text-[13px]">
               <div className="min-w-0 flex-1">
@@ -97,11 +113,7 @@ export function HoursEditor({ hours, exceptions, canEdit, today }: { hours: Hour
                   {e.label && <span className="font-normal text-text-muted">· {e.label}</span>}
                   {e.isDemo && <DemoBadge />}
                 </p>
-                <p className="tnum text-[12px] text-text-muted">
-                  {e.allDay
-                    ? `${fmtShortDate(new Date(e.startsAt))} – ${fmtShortDate(new Date(new Date(e.endsAt).getTime() - 1))}`
-                    : `${fmtShortDate(new Date(e.startsAt))} ${timeKey(new Date(e.startsAt))} – ${timeKey(new Date(e.endsAt))}`}
-                </p>
+                <p className="tnum text-[12px] text-text-muted">{spanLabel(e)}</p>
               </div>
               <IconButton label="Ausnahme löschen" icon="trash" size={32} onClick={() => setRemoving(e)} disabled={pending} />
             </li>

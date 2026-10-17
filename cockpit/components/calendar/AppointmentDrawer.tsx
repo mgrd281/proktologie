@@ -283,7 +283,9 @@ export function AppointmentDrawer({
         action: {
           label: "Rückgängig",
           onClick: async () => {
-            await setStatusAction({ id: editing.id, status: previous });
+            const undone = await setStatusAction({ id: editing.id, status: previous });
+            // Scheitert es, sagt die Meldung es – statt still den alten Stand zu zeigen
+            if (!undone.ok) throw new Error(undone.error);
             router.refresh();
           },
         },

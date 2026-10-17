@@ -53,6 +53,7 @@ function parseOffsets(text: string): { ok: true; hours: number[] } | { ok: false
 
 export function DemoPanel({
   canEdit,
+  isAdmin,
   demoCount,
   settings,
   channel,
@@ -63,6 +64,8 @@ export function DemoPanel({
   unknownTopics,
 }: {
   canEdit: boolean;
+  /** Technische Hinweise (Variablen, Dienste) nur für die Administration */
+  isAdmin: boolean;
   demoCount: number;
   settings: S;
   channel: { label: string; live: boolean };
@@ -134,6 +137,11 @@ export function DemoPanel({
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
+      {!canEdit && (
+        <div className="lg:col-span-2">
+          <Notice tone="info">Diese Einstellungen ändern Arzt und Administration – hier steht der aktuelle Stand.</Notice>
+        </div>
+      )}
       <Card>
         <Eyebrow>Vorführdaten</Eyebrow>
         <p className="mt-2 text-[13px] leading-relaxed text-text-muted">
@@ -224,8 +232,14 @@ export function DemoPanel({
               </span>
             </div>
           </div>
-          {!settings.bookingLive && <Notice tone="info">Solange die Buchung nicht live ist, zeigt die Website Wunschtermine zur Anfrage. Die Website muss zusätzlich mit NEXT_PUBLIC_BOOKING_PROVIDER=cockpit gebaut sein (siehe README).</Notice>}
-          {!voiceConfigured && (
+          {!settings.bookingLive && (
+            <Notice tone="info">
+              Solange die Buchung nicht live ist, zeigt die Website Wunschtermine zur Anfrage.
+              {isAdmin && " Die Website muss zusätzlich mit NEXT_PUBLIC_BOOKING_PROVIDER=cockpit gebaut sein (siehe README)."}
+            </Notice>
+          )}
+          {!voiceConfigured && !isAdmin && <Notice tone="info">Sprechen statt tippen ist noch nicht eingerichtet – das übernimmt die Administration.</Notice>}
+          {!voiceConfigured && isAdmin && (
             <Notice tone="info">
               Im Chatfenster erscheint kein Mikrofon, solange kein Sprachanbieter eingerichtet ist – ein Knopf,
               hinter dem nichts passiert, wäre schlimmer als keiner. Zum Einschalten in Vercel im
@@ -256,19 +270,25 @@ export function DemoPanel({
           <div>
             <Eyebrow>Versand &amp; Automatik</Eyebrow>
             <p className="mt-2 text-[13px] leading-relaxed text-text-muted">
-              Bestätigungen, Absagen, Erinnerungen und Wartelisten-Angebote gehen über die Job-Warteschlange. Der Herzschlag kommt alle 15 Minuten von außen (GitHub Actions → Tick) und zusätzlich aus jedem Seitenaufruf im Cockpit.
+              {isAdmin
+                ? "Bestätigungen, Absagen, Erinnerungen und Wartelisten-Angebote gehen über die Job-Warteschlange. Der Herzschlag kommt alle 15 Minuten von außen (GitHub Actions → Tick) und zusätzlich aus jedem Seitenaufruf im Cockpit."
+                : "Bestätigungen, Absagen, Erinnerungen und Wartelisten-Angebote verschickt das Cockpit von selbst. Unten stehen die letzten Nachrichten."}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <span className={`rounded-full px-3 py-1 text-[12px] font-medium ${channel.live ? "bg-ok/12 text-ok" : "bg-warn/12 text-warn"}`}>E-Mail: {channel.label}</span>
-            <span className={`rounded-full px-3 py-1 text-[12px] font-medium ${cronConfigured ? "bg-ok/12 text-ok" : "bg-surface-sunken text-text-muted"}`}>Tick von außen: {cronConfigured ? "eingerichtet" : "nicht eingerichtet"}</span>
-            <span className="tnum rounded-full bg-surface-sunken px-3 py-1 text-[12px] font-medium text-text-muted">{pendingJobs} in der Warteschlange</span>
+            <span className={`rounded-full px-3 py-1 text-[12px] font-medium text-text ${channel.live ? "bg-ok/12" : "bg-warn/12"}`}>E-Mail: {channel.label}</span>
+            {isAdmin && (
+              <span className={`rounded-full px-3 py-1 text-[12px] font-medium text-text ${cronConfigured ? "bg-ok/12" : "bg-surface-sunken"}`}>Tick von außen: {cronConfigured ? "eingerichtet" : "nicht eingerichtet"}</span>
+            )}
+            <span className="tnum rounded-full bg-surface-sunken px-3 py-1 text-[12px] font-medium text-text-muted">{pendingJobs} warten auf Versand</span>
           </div>
         </div>
         {!channel.live && (
           <div className="mt-4">
             <Notice tone="warn">
-              Protokoll-Modus: Es verlässt keine E-Mail das System – jede Nachricht wird nur protokolliert. Für echten Versand in Vercel EMAIL_API_KEY (Brevo, EU-Anbieter mit AVV) sowie EMAIL_FROM setzen; SPF/DKIM/DMARC für die Absenderdomain nicht vergessen.
+              {isAdmin
+                ? "Protokoll-Modus: Es verlässt keine E-Mail das System – jede Nachricht wird nur protokolliert. Für echten Versand in Vercel EMAIL_API_KEY (Brevo, EU-Anbieter mit AVV) sowie EMAIL_FROM setzen; SPF/DKIM/DMARC für die Absenderdomain nicht vergessen."
+                : "Noch gehen keine E-Mails hinaus – jede Nachricht wird nur protokolliert. Das richtet die Administration ein."}
             </Notice>
           </div>
         )}
@@ -298,7 +318,7 @@ export function DemoPanel({
                       {m.status === "sent" ? "gesendet" : m.status === "failed" ? "fehlgeschlagen" : m.status === "bounced" ? "unzustellbar" : "wartet"}
                     </span>
                   </td>
-                  <td className="max-w-[320px] truncate px-4 text-text-faint" title={m.error ?? undefined}>{m.error ?? ""}</td>
+                  <td className="max-w-[320px] truncate px-4 text-text-muted" title={m.error ?? undefined}>{m.error ?? ""}</td>
                 </tr>
               ))}
             </tbody>

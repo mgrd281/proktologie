@@ -5,8 +5,9 @@ import { useId } from "react";
 import { cn } from "@/lib/cn";
 
 /** Formular-Primitive mit der Rezeptur der Website-Buchungskarte. */
+/** Am Handy 16 px – darunter zoomt iOS beim Tippen ins Feld */
 export const inputClass =
-  "w-full min-h-11 rounded-xl border border-line-strong bg-surface-raised px-4 py-2.5 text-[15px] text-text placeholder:text-text-faint transition-colors focus:border-primary disabled:opacity-60";
+  "w-full min-h-11 rounded-xl border border-line-strong bg-surface-raised px-4 py-2.5 text-[16px] text-text placeholder:text-text-faint transition-colors focus:border-primary disabled:opacity-60 md:text-[15px]";
 
 interface FieldProps {
   label: string;

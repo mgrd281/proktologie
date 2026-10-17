@@ -61,7 +61,8 @@ export function TypesManager({ types, canEdit }: { types: TypeView[]; canEdit: b
     <>
       <div className="mb-4 flex items-start justify-between gap-4">
         <p className="max-w-xl text-[13px] leading-relaxed text-text-muted">
-          Dauer, Puffer, Vorlauf und Horizont je Terminart bestimmen die Verfügbarkeit – im Cockpit und später auf der Website. Die Werte sind Praxisentscheidungen; die Startwerte sind bewusst neutral gewählt.
+          Dauer, Puffer, Vorlauf und Horizont je Terminart bestimmen die Verfügbarkeit – im Cockpit und auf der Website (Vorlauf und Horizont gelten nur für Online-Buchungen). Die Werte sind Praxisentscheidungen; die Startwerte sind bewusst neutral gewählt.
+          {!canEdit && " Ändern können Arzt und Administration."}
         </p>
         {canEdit && (
           <Button variant="primary" size="sm" icon="plus" onClick={() => setEdit(blank())}>
@@ -82,7 +83,7 @@ export function TypesManager({ types, canEdit }: { types: TypeView[]; canEdit: b
               <span className="flex items-center gap-2 font-medium text-text">
                 <TypeDot color={t.color} />
                 {t.label}
-                {!t.active && <span className="rounded-md bg-surface-sunken px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.1em] text-text-faint uppercase">inaktiv</span>}
+                {!t.active && <span className="rounded-md bg-surface-sunken px-1.5 py-0.5 text-[11px] font-semibold tracking-[0.1em] text-text-muted uppercase">inaktiv</span>}
               </span>
             ),
           },
@@ -97,7 +98,7 @@ export function TypesManager({ types, canEdit }: { types: TypeView[]; canEdit: b
       <Drawer
         open={edit !== null}
         onClose={() => setEdit(null)}
-        eyebrow={edit?.id ? `Terminart · ${edit.id}` : "Neue Terminart"}
+        eyebrow={edit?.id ? "Terminart bearbeiten" : "Neue Terminart"}
         title={edit?.label || "Terminart"}
         footer={
           <>

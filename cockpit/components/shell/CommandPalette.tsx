@@ -1,13 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { searchAppointmentsAction, type SearchHit } from "@/app/actions/appointments";
 import { cn } from "@/lib/cn";
 import { STATUS_LABEL } from "@/lib/booking/model";
 import { fmtShortDate } from "@/lib/time";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Kbd } from "@/components/ui/Bits";
+import { Dialog } from "@/components/ui/Overlay";
 import { NAV } from "./nav";
 
 /**
@@ -42,9 +43,19 @@ function termineHref(param: "neu" | "ausnahme"): string {
   return `/termine?${params}`;
 }
 
+/**
+ * Tagesblatt: auf „Heute“ gedruckt – dort steht der Tagesplan, der Rest der
+ * Seite und die Oberfläche bleiben beim Druck weg (globals.css).
+ */
+function printDaySheet(push: (href: string) => void) {
+  if (location.pathname === "/") window.print();
+  else push("/?drucken=1");
+}
+
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const router = useRouter();
   const pendingG = useRef(false);
+  const [help, setHelp] = useState(false);
 
   // Globale Kürzel
   useEffect(() => {
@@ -64,7 +75,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
         return;
       }
       if (pendingG.current) {
-        const item = NAV.find((n) => n.key === e.key);
+        const item = NAV.find((n) => n.key && n.key === e.key);
         if (item) {
           e.preventDefault();
           router.push(item.href);
@@ -80,13 +91,62 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
         e.preventDefault();
         onOpenChange(true);
       }
+      if (e.key === "?") {
+        e.preventDefault();
+        setHelp(true);
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onOpenChange, router]);
 
   // Bei jedem Öffnen frisch: leere Eingabe, erster Eintrag
-  return open ? <Palette onClose={() => onOpenChange(false)} /> : null;
+  return (
+    <>
+      {open && <Palette onClose={() => onOpenChange(false)} onHelp={() => setHelp(true)} />}
+      <ShortcutHelp open={help} onClose={() => setHelp(false)} />
+    </>
+  );
+}
+
+const noSubscribe = () => () => {};
+
+/** „?“: alle Tastenkürzel auf einen Blick. */
+function ShortcutHelp({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const mac = useSyncExternalStore(noSubscribe, () => /Mac|iPhone|iPad/.test(navigator.platform), () => false);
+  const mod = mac ? "⌘" : "Strg";
+  const rows: Array<[string[], string]> = [
+    [[mod, "K"], "Suchen oder springen (auch /)"],
+    [["g", "h"], "Heute"],
+    [["g", "t"], "Termine"],
+    [["g", "a"], "Anfragen"],
+    [["g", "w"], "Warteliste"],
+    [["g", "e"], "Einstellungen"],
+    [["n"], "Neuer Termin"],
+    [["←", "→"], "Kalender: zurück / weiter"],
+    [["t"], "Kalender: heute"],
+    [["Enter"], "Termin-Fenster: speichern"],
+    [[mod, "Enter"], "Speichern, auch aus der Notiz"],
+    [["Esc"], "Fenster schließen"],
+    [[mod, "Z"], "Letzte Aktion rückgängig"],
+  ];
+  return (
+    <Dialog open={open} onClose={onClose} title="Tastenkürzel" cancelLabel="Schließen">
+      <dl className="mt-1 grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 text-[14px] text-text">
+        {rows.map(([keys, label]) => (
+          <div key={label} className="contents">
+            <dt className="flex gap-1">
+              {keys.map((k) => (
+                <Kbd key={k}>{k}</Kbd>
+              ))}
+            </dt>
+            <dd>{label}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-4 text-[13px]">In offenen Fenstern ruhen die Kürzel – dort gilt nur Esc.</p>
+    </Dialog>
+  );
 }
 
 interface SearchResult {
@@ -96,7 +156,7 @@ interface SearchResult {
   failed: boolean;
 }
 
-function Palette({ onClose }: { onClose: () => void }) {
+function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void }) {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [cursor, setCursor] = useState(0);
@@ -131,18 +191,19 @@ function Palette({ onClose }: { onClose: () => void }) {
       ...NAV.map<Command>((n) => ({
         id: `go:${n.href}`,
         label: n.label,
-        hint: n.phase ? `Phase ${n.phase}` : undefined,
+        hint: n.preparing ? "in Vorbereitung" : undefined,
         icon: n.icon,
-        keys: ["g", n.key],
+        keys: n.key ? ["g", n.key] : undefined,
         group: "Springen",
         run: () => router.push(n.href),
       })),
       { id: "new:appt", label: "Neuen Termin anlegen", icon: "plus", keys: ["n"], group: "Anlegen", run: () => router.push(termineHref("neu")) },
       { id: "new:blocker", label: "Blocker / Urlaub eintragen", icon: "clock", group: "Anlegen", run: () => router.push(termineHref("ausnahme")) },
       { id: "new:invite", label: "Mitarbeitende einladen", icon: "users", group: "Anlegen", run: () => router.push("/einstellungen/benutzer?einladen=1") },
-      { id: "view:print", label: "Tagesblatt drucken", icon: "printer", group: "Ansicht", run: () => window.print() },
+      { id: "view:print", label: "Tagesblatt drucken", icon: "printer", group: "Ansicht", run: () => printDaySheet((href) => router.push(href)) },
+      { id: "view:keys", label: "Tastenkürzel anzeigen", icon: "command", keys: ["?"], group: "Ansicht", run: onHelp },
     ],
-    [router],
+    [router, onHelp],
   );
 
   const items = useMemo<Command[]>(() => {

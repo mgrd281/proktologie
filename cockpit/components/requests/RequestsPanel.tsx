@@ -12,6 +12,7 @@ import {
   type RequestStatus,
   type RequestView,
 } from "@/lib/booking/model";
+import { initialsOf } from "@/lib/names";
 import { fmtShortDate, timeKey } from "@/lib/time";
 import { Card, DemoBadge, EmptyState, Eyebrow, PageTitle } from "@/components/ui/Bits";
 import { Button } from "@/components/ui/Button";
@@ -48,12 +49,6 @@ const TIME_LABEL: Record<string, string> = { egal: "egal", vormittags: "vormitta
 
 function name(r: RequestView): string {
   return `${r.pii.firstName} ${r.pii.lastName}`.trim();
-}
-
-/** „Erika Musterfrau“ → „EM“ */
-function initials(full: string): string {
-  const parts = full.trim().split(/\s+/).filter(Boolean);
-  return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? (parts.at(-1)?.[0] ?? "") : "")).toUpperCase();
 }
 
 /** Telefon als Link – ein Tipp ruft an; in der Tabelle öffnet er nicht zusätzlich die Zeile. */
@@ -111,7 +106,7 @@ export function RequestsPanel({
         return;
       }
       setCurrent(r.data.status === "erledigt" ? null : r.data);
-      toast({ title: `Anfrage ${REQUEST_STATUS_LABEL[status].toLowerCase()}`, tone: "ok" });
+      toast({ title: `Anfrage: ${REQUEST_STATUS_LABEL[status]}`, tone: "ok" });
       router.refresh();
     });
 
@@ -129,7 +124,7 @@ export function RequestsPanel({
     },
     { key: "name", header: "Name", cell: (r) => name(r) },
     { key: "telefon", header: "Telefon", cell: (r) => <PhoneLink phone={r.pii.phone} /> },
-    { key: "erreichbar", header: "Erreichbar", hideBelow: "md", cell: (r) => <span className="text-text-muted">{TIME_LABEL[r.message?.preferredTime ?? "egal"] ?? "egal"}</span> },
+    { key: "erreichbar", header: "Erreichbar", cell: (r) => <span className="text-text-muted">{TIME_LABEL[r.message?.preferredTime ?? "egal"] ?? "egal"}</span> },
     { key: "frist", header: "Frist", cell: (r) => <DueCell r={r} now={nowMs} /> },
     {
       key: "status",
@@ -139,7 +134,7 @@ export function RequestsPanel({
           <StatusPill status={r.status} />
           {r.status === "in_arbeit" && r.assigneeId && names[r.assigneeId] && (
             <span title={`In Arbeit bei ${names[r.assigneeId]}`} className="inline-flex size-6 items-center justify-center rounded-full bg-surface-sunken text-[11px] font-semibold text-text">
-              <span aria-hidden="true">{initials(names[r.assigneeId]!)}</span>
+              <span aria-hidden="true">{initialsOf(names[r.assigneeId]!)}</span>
               <span className="sr-only">bei {names[r.assigneeId]}</span>
             </span>
           )}
@@ -173,7 +168,7 @@ export function RequestsPanel({
 
       {closed.length > 0 && (
         <Card>
-          <button type="button" onClick={() => setShowClosed((v) => !v)} className="flex w-full items-center justify-between text-left">
+          <button type="button" onClick={() => setShowClosed((v) => !v)} aria-expanded={showClosed} className="flex min-h-11 w-full items-center justify-between text-left md:min-h-8">
             <Eyebrow>Erledigt ({closed.length})</Eyebrow>
             <Icon name={showClosed ? "arrow-down" : "arrow-right"} size={16} className="text-text-muted" />
           </button>

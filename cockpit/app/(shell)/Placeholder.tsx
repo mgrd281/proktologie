@@ -2,15 +2,16 @@ import { Card, EmptyState, PageTitle } from "@/components/ui/Bits";
 import type { IconName } from "@/components/ui/Icon";
 
 /**
- * Gestaltete Platzhalter für Bereiche späterer Phasen – ehrlich beschriftet:
- * Was kommt, wann, und was es ersetzt. Keine Attrappen mit Scheindaten.
+ * Gestaltete Platzhalter für Bereiche in Vorbereitung – ehrlich beschriftet:
+ * Was kommt und was es ersetzt. Keine Attrappen mit Scheindaten, keine
+ * internen Phasennummern.
  */
-export function PhasePlaceholder({ title, icon, phase, text, bullets }: { title: string; icon: IconName; phase: number; text: string; bullets: string[] }) {
+export function PhasePlaceholder({ title, icon, text, bullets }: { title: string; icon: IconName; text: string; bullets: string[] }) {
   return (
     <>
-      <PageTitle eyebrow={`Phase ${phase}`} title={title} />
+      <PageTitle eyebrow="In Vorbereitung" title={title} />
       <Card>
-        <EmptyState icon={icon} title={`${title} kommt in Phase ${phase}`} text={text} compact />
+        <EmptyState icon={icon} title={`${title} ist in Vorbereitung`} text={text} compact />
         <ul className="mx-auto mt-2 max-w-md space-y-2 pb-6 text-[13px] text-text-muted">
           {bullets.map((b) => (
             <li key={b} className="flex gap-2">

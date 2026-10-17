@@ -47,7 +47,9 @@ export function TodayList({ appointments, now }: { appointments: AppointmentView
         action: {
           label: "Rückgängig",
           onClick: async () => {
-            await setStatusAction({ id: a.id, status: previous });
+            const undone = await setStatusAction({ id: a.id, status: previous });
+            // Scheitert es, sagt die Meldung es – statt still den alten Stand zu zeigen
+            if (!undone.ok) throw new Error(undone.error);
             router.refresh();
           },
         },

@@ -41,6 +41,7 @@
   --text-faint: rgb(32 37 32 / 0.64);
   --brand: #446628;            /* textsicheres Grün (AA auf mist) */
   --brand-fill: #86bc23;       /* Klinikgrün – nur als Fläche */
+  --brand-fill-hover: #76a81f; /* Fläche unter der Maus – gilt in beiden Themen */
   --brand-soft: rgb(82 122 50 / 0.1);
   --ok: #446628;
   --warn: #b45309;
@@ -106,6 +107,7 @@
   --color-text-faint: var(--text-faint);
   --color-brand: var(--brand);
   --color-brand-fill: var(--brand-fill);
+  --color-brand-fill-hover: var(--brand-fill-hover);
   --color-brand-soft: var(--brand-soft);
   --color-ok: var(--ok);
   --color-warn: var(--warn);
