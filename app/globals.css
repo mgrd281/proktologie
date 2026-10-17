@@ -1,6 +1,15 @@
 @import "tailwindcss";
 
 /*
+ * Tailwind sucht Klassennamen in allen Projektdateien. Skill-Texte und
+ * Projektdokumente enthalten Beispielklassen (h-screen, text-pretty …),
+ * die sonst ungenutzt im CSS der Website landen würden.
+ */
+@source not "../.claude";
+@source not "../docs";
+@source not "../*.md";
+
+/*
  * Design-Tokens. --color-accent ist das echte Klinikgrün (#86BC23).
  * Kontrastregeln: Akzent auf Deep 7,0:1 ✓ · Deep-Text auf Akzent-Fläche
  * 7,0:1 ✓ · auf hellen Flächen nur 2,3:1 → Akzent NIE als Text/Icon auf

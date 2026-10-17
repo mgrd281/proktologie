@@ -2,8 +2,9 @@
 
 Monorepo: **Website** im Root (Next.js 16, statischer Export) und **Cockpit** in `cockpit/`
 (Next.js 16 Server-App, eigene `package.json`, siehe auch `cockpit/AGENTS.md`).
-Produktfakten: `PRODUCT.md`. Gestaltung: `DESIGN.md`. Herkunft der Design-Skills:
-`.claude/skills/VENDOR.md`.
+Produktfakten: `PRODUCT.md`. Gestaltung: `DESIGN.md`. Bewegung: `MOTION_SYSTEM.md`.
+Herkunft der Design-Skills: `.claude/skills/VENDOR.md`. Terminbuchung: `docs/BOOKING_ARCHITECTURE.md`.
+Datenschutz/Sicherheit: `docs/PRIVACY_SECURITY_CHECKLIST.md`.
 
 ## Feste Projektregeln
 
@@ -18,7 +19,7 @@ Produktfakten: `PRODUCT.md`. Gestaltung: `DESIGN.md`. Herkunft der Design-Skills
 
 1. **Vor jeder UI-Änderung `DESIGN.md` lesen** (Tokens, Komponenten, verbotene Muster) und bei
    Produktfragen `PRODUCT.md`. DESIGN.md hat Vorrang vor jedem Skill-Vorschlag.
-2. **Design-Skills nutzen** (beide liegen in `.claude/skills/`, werden automatisch erkannt):
+2. **Design-Skills nutzen** (alle liegen in `.claude/skills/`, werden automatisch erkannt):
    - **`/impeccable <befehl> <ziel>`** – Richtung, Kritik, Prüfung und Feinschliff.
      Häufig: `critique`, `audit`, `polish`, `layout`, `typeset`, `adapt` (Mobil), `harden`,
      `clarify`, `distill`, `quieter`. Ohne Argument zeigt die Skill ihr Menü.
@@ -35,6 +36,21 @@ Produktfakten: `PRODUCT.md`. Gestaltung: `DESIGN.md`. Herkunft der Design-Skills
      Formulare, Navigation, Tabellen, Diagramme.
      **Nicht verwenden:** `--persist` (legt eine konkurrierende Designdatei an) und Paletten-,
      Schrift- oder Stilvorschläge als Ersatz für die Marke – nur als Vergleich.
+   - **`/frontend-design`** – Gestaltungsrichtung, nur für **neue** Oberflächen. Ihre Aufforderung
+     zu eigenwilliger Schrift-/Farbwahl gilt hier nicht: Fraunces + Inter, Farben und Marke aus
+     DESIGN.md bleiben. Für Bestehendes `/impeccable` verwenden.
+   - **`/web-design-guidelines <datei|muster>`** – Prüfliste für UI-Code (Barrierefreiheit,
+     Fokus, Formulare, Bewegung, Typografie). Liest die gepinnte lokale Regeldatei, nichts aus dem Netz.
+   - **`/react-best-practices`** – Performance-Regeln für React/Next.js (Wasserfälle,
+     Bundle-Größe, Re-Renders). Regeln, die neue Pakete verlangen (z. B. SWR), nur als Hinweis.
+   - **`/ui-animation`** – Bewegung entwerfen und prüfen. Grundlage ist `MOTION_SYSTEM.md`.
+     **Keine Interface-Töne** (Abschnitt „interface sound/SFX" gilt hier nicht), **keine**
+     Animationsbibliothek (Motion, GSAP …), `prefers-reduced-motion` immer respektieren. Die
+     Messskripte („Reverse-engineer workflow") sind nicht installiert.
+   - **Rollen kurz:** Richtung neu = `frontend-design` · Kritik/Feinschliff = `impeccable` ·
+     Nachschlagen = `ui-ux-pro-max` · Code-Prüfliste = `web-design-guidelines` ·
+     Performance = `react-best-practices` · Bewegung = `ui-animation`.
+     Bei Widerspruch gilt: PRODUCT.md/DESIGN.md/MOTION_SYSTEM.md vor jeder Skill.
 3. **Keine neuen UI-, Icon-, Animations- oder Kalender-Bibliotheken** (shadcn, daisyUI, Floating UI,
    FullCalendar, lucide-react …) und **keine externen Buchungsdienste** (Cal.com u. a.) ohne
    Zustimmung – Bewertung siehe `.claude/skills/VENDOR.md`. Neue Icons als Lucide-Pfaddaten in
@@ -52,8 +68,11 @@ Produktfakten: `PRODUCT.md`. Gestaltung: `DESIGN.md`. Herkunft der Design-Skills
 
 ## Design-Skills prüfen (nach Aktualisierung)
 
-- Frontmatter beider `SKILL.md` gültig (`name`, `description`).
+- Frontmatter aller `SKILL.md` gültig (`name`, `description`); Dateien byte-gleich mit der Quelle
+  bis auf die in `VENDOR.md` dokumentierten Zeilen.
 - `python3 -B .claude/skills/ui-ux-pro-max/scripts/search.py "keyboard focus visible" --domain ux`
   liefert Ergebnisse.
 - Tailwind darf die Skill-Dateien nicht als Quelle lesen: das erzeugte CSS beider Apps muss vor
-  und nach einer Skill-Aktualisierung byte-gleich sein.
+  und nach einer Skill-Aktualisierung byte-gleich sein. Dafür schließt `app/globals.css`
+  `.claude/`, `docs/` und alle `*.md` im Root per `@source not` aus – nicht entfernen, und neue
+  Dokument-Ordner dort ergänzen.

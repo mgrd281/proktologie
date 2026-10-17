@@ -132,6 +132,19 @@ Die Website darf Atmosphäre zeigen (Kamerafahrt, Fotografie, Serifen-Typografie
 ein Werkzeug: Dichte, Lesbarkeit und Tempo gehen vor Ausdruck; die Marke lebt dort in präzisen
 Details (Grünton, Fraunces in Überschriften, Rundungen), nicht in Dekoration.
 
+### Bildsprache & Fotografie
+- **Nur echte Praxis:** Räume, Empfang, Flur, Untersuchungsraum, Porträt des Arztes, Teamfotos
+  und die Bilder der Kamerafahrt (`public/images/`, `public/sequence/`; Austausch siehe
+  `public/images/README.txt`). Keine Stockfotos, keine KI-generierten Personen oder Räume.
+- **Nie:** Patientinnen/Patienten, anatomische Darstellungen, Untersuchungs- oder
+  Behandlungsszenen am Menschen, Vorher-/Nachher-Bilder, Instrumente in Nahaufnahme.
+- Personen nur mit deren Einverständnis und nur Praxisteam; Namen und Funktionen nur, wenn
+  vom Betreiber bestätigt.
+- Licht natürlich und ruhig; Verläufe nur als Leseschleier über Fotografie/Film.
+  Bewegung im Bild: siehe `MOTION_SYSTEM.md`.
+- Technik: WebP, feste Seitenverhältnisse (kein Layout-Springen), Alternativtext beschreibt den
+  Raum sachlich („Empfang der Praxis"), dekorative Ebenen `alt=""`.
+
 ## Colors
 
 ### Primary
