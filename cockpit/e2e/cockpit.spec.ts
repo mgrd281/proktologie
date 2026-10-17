@@ -233,7 +233,7 @@ test("Rückruf aus dem Chat erscheint im Posteingang und lässt sich abschließe
   // Auf den Namen – die Telefonnummer in der Zeile ist ein Anruf-Link
   await zeile.getByText("Paula Posteingang").click();
   await expect(page.getByText(`${ref} · Chat`)).toBeVisible();
-  await expect(page.getByText("nachmittags")).toBeVisible();
+  await expect(page.getByRole("dialog").getByText("nachmittags")).toBeVisible();
   await page.getByRole("button", { name: "Erledigt", exact: true }).click();
   await expect(page.getByRole("row").filter({ hasText: "Paula Posteingang" })).toHaveCount(0);
 });
