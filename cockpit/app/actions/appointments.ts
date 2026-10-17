@@ -6,6 +6,7 @@ import { ActorError, requireActor } from "@/lib/auth/actor";
 import { afterBooked, afterCancelled, afterRescheduled, resendConfirmation } from "@/lib/booking/lifecycle";
 import * as repo from "@/lib/booking/repo";
 import type { AppointmentStatus, AppointmentView, ExceptionView } from "@/lib/booking/model";
+import { setRequestStatus } from "@/lib/booking/requests";
 import { planSearch } from "@/lib/booking/search";
 import { maybeTick } from "@/lib/jobs/tick";
 import { dateKey, timeKey, zonedToUtc } from "@/lib/time";
@@ -45,6 +46,10 @@ const createSchema = z.object({
   note: z.string().trim().max(2000).optional(),
   source: z.enum(["cockpit", "telefon"]).default("cockpit"),
   ignoreOpeningHours: z.boolean().optional(),
+  /** Aus einer Anfrage angelegt: Sie ist damit erledigt */
+  requestId: z.string().uuid().optional(),
+  /** Von der Warteliste direkt gebucht: Der Eintrag ist damit „Gebucht“ */
+  waitlistId: z.string().min(1).optional(),
 });
 
 export async function createAppointmentAction(input: z.input<typeof createSchema>): Promise<ActionResult<AppointmentView>> {
@@ -64,6 +69,14 @@ export async function createAppointmentAction(input: z.input<typeof createSchema
       manageToken: email ? repo.newManageToken() : undefined,
     });
     await afterBooked(view);
+    if (v.requestId) {
+      await setRequestStatus(v.requestId, "erledigt", actor.id);
+      revalidatePath("/anfragen");
+    }
+    if (v.waitlistId) {
+      await repo.setWaitlistStatus(v.waitlistId, "booked", actor.id, { offeredAppointmentId: view.id });
+      revalidatePath("/warteliste");
+    }
     void maybeTick();
     revalidatePath("/");
     revalidatePath("/termine");
@@ -207,14 +220,6 @@ export async function deleteExceptionAction(id: string): Promise<ActionResult<nu
     revalidatePath("/termine");
     revalidatePath("/einstellungen/sprechzeiten");
     return null;
-  });
-}
-
-export async function availabilityAction(typeId: string, date: string): Promise<ActionResult<string[]>> {
-  return guard(async () => {
-    await requireActor();
-    const slots = await repo.availability(z.string().parse(typeId), z.string().regex(/^\d{4}-\d{2}-\d{2}$/).parse(date));
-    return slots.map((s) => s.time);
   });
 }
 

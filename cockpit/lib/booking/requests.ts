@@ -44,8 +44,6 @@ export {
  * steht verschlüsselt in `messageEnc` und verlässt den Server nur an
  * angemeldete Cockpit-Nutzer.
  */
-/** Standardfrist, bis sich das Team gemeldet haben soll. */
-const DEFAULT_SLA_HOURS = 24;
 
 const isUniqueViolation = (e: unknown) => {
   const err = e as { code?: string; cause?: { code?: string }; message?: string };
@@ -98,13 +96,15 @@ export async function createRequest(input: CreateRequestInput): Promise<RequestV
     email: input.pii.email?.trim() || undefined,
   };
   const now = new Date();
+  // Frist: Ende des nächsten Praxistags (repo.requestDeadline) – oder ausdrücklich in Stunden
+  const { requestDeadline } = await import("./repo.ts");
   const values = {
     id,
     kind: input.kind,
     status: "neu" as const,
     piiEnc: encryptJson(pii, `req:${id}`),
     messageEnc: input.message ? encryptJson(input.message, `reqmsg:${id}`) : null,
-    slaDueAt: new Date(now.getTime() + (input.slaHours ?? DEFAULT_SLA_HOURS) * 3600_000),
+    slaDueAt: input.slaHours ? new Date(now.getTime() + input.slaHours * 3600_000) : await requestDeadline(now),
     isDemo: input.isDemo ?? false,
     keyVersion: currentKeyVersion(),
   };
@@ -167,7 +167,13 @@ export async function setRequestStatus(id: string, status: RequestStatus, actorI
   const db = await getDb();
   const rows = await db
     .update(t.requests)
-    .set({ status, closedAt: status === "erledigt" ? new Date() : null, updatedAt: new Date() })
+    // „In Arbeit“ nimmt die Anfrage: Wer sie anfasst, steht daneben; „Neu“ gibt sie wieder frei
+    .set({
+      status,
+      closedAt: status === "erledigt" ? new Date() : null,
+      updatedAt: new Date(),
+      ...(status === "in_arbeit" && actorId ? { assigneeId: actorId } : status === "neu" ? { assigneeId: null } : {}),
+    })
     .where(eq(t.requests.id, id))
     .returning({ id: t.requests.id });
   if (!rows.length) throw new Error("Anfrage nicht gefunden");

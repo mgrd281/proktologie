@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
-import { availabilityAction } from "@/app/actions/appointments";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { nextFreeTimesAction } from "@/app/actions/appointments";
 import { createWaitlistAction, offerWaitlistAction, setWaitlistStatusAction } from "@/app/actions/waitlist";
 import { cn } from "@/lib/cn";
 import { SOURCE_LABEL, WAITLIST_STATUS_LABEL, type TypeView, type WaitlistStatus, type WaitlistView } from "@/lib/booking/model";
-import { addDays, dateKey, fmtLongDate, fmtShortDate, timeKey } from "@/lib/time";
-import { Card, DemoBadge, EmptyState, Eyebrow, Notice, PageTitle, TypeDot } from "@/components/ui/Bits";
+import { addDays, addMonths, dateKey, fmtLongDate, fmtShortDate, timeKey } from "@/lib/time";
+import { FreeTimes, type FreeTimesState } from "@/components/calendar/FreeTimes";
+import { DemoBadge, EmptyState, Notice, PageTitle, TypeDot } from "@/components/ui/Bits";
 import { Button } from "@/components/ui/Button";
 import { DataTable } from "@/components/ui/DataTable";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
@@ -130,21 +131,27 @@ export function WaitlistPanel({
         }
       />
 
-      <div className="mb-6 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <Card>
-          <Eyebrow>So läuft es automatisch</Eyebrow>
-          <p className="mt-2 text-[13px] leading-relaxed text-text-muted">
-            Wird ein Termin abgesagt oder verschoben, bekommt die älteste passende Person (Terminart, Wunschfenster, E-Mail vorhanden) den Platz sofort per E-Mail angeboten – <span className="tnum font-medium text-text">{holdHours} Stunden</span> reserviert, ein Klick genügt zur Annahme. Läuft die Frist ab, wird der Platz frei und die nächste Person angeschrieben. Reservierte Plätze stehen als Termin im Kalender und sind mit „Angebot“ markiert.
-          </p>
-        </Card>
-        <Card>
-          <Eyebrow>Hinweise</Eyebrow>
-          <ul className="mt-2 space-y-1.5 text-[13px] leading-relaxed text-text-muted">
-            <li>Automatische Angebote laufen nur im Live-Betrieb der Website-Buchung{bookingLive ? " – aktiv." : " – derzeit aus."}</li>
-            <li>„Platz anbieten“ funktioniert immer, auch ohne Live-Betrieb.</li>
-            <li>Ohne E-Mail-Adresse bleibt ein Eintrag sichtbar, wird aber nicht automatisch angeschrieben.</li>
-          </ul>
-        </Card>
+      {/* Der Stand in einer Zeile, die Erklärung zum Aufklappen – wer täglich hier arbeitet, kennt sie */}
+      <div className="mb-6 rounded-2xl bg-surface-raised px-5 py-4 ring-1 ring-line">
+        <p className="flex items-center gap-2 text-[14px] text-text">
+          <span aria-hidden="true" className={cn("size-2 rounded-full", bookingLive ? "bg-brand-fill" : "bg-text-faint")} />
+          Automatische Angebote: {bookingLive ? "aktiv" : "aus – sie laufen nur im Live-Betrieb der Website-Buchung"}
+        </p>
+        <details className="group mt-2">
+          <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-[13px] font-medium text-brand md:min-h-8">
+            <Icon name="chevron-right" size={14} className="transition-transform group-open:rotate-90" />
+            So läuft die Warteliste
+          </summary>
+          <div className="mt-2 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+            <p className="text-[13px] leading-relaxed text-text-muted">
+              Wird ein Termin abgesagt oder verschoben, bekommt die älteste passende Person (Terminart, Wunschfenster, E-Mail vorhanden) den Platz sofort per E-Mail angeboten – <span className="tnum font-medium text-text">{holdHours} Stunden</span> reserviert, ein Klick genügt zur Annahme. Läuft die Frist ab, wird der Platz frei und die nächste Person angeschrieben. Reservierte Plätze stehen als Termin im Kalender und sind mit „Angebot“ markiert.
+            </p>
+            <ul className="space-y-1.5 text-[13px] leading-relaxed text-text-muted">
+              <li>„Platz anbieten“ funktioniert immer, auch ohne Live-Betrieb.</li>
+              <li>Ohne E-Mail-Adresse bleibt ein Eintrag sichtbar, wird aber nicht automatisch angeschrieben – dann am Telefon: „Termin direkt anlegen“.</li>
+            </ul>
+          </div>
+        </details>
       </div>
 
       <DataTable<WaitlistView>
@@ -168,45 +175,55 @@ export function WaitlistPanel({
         )}
       </div>
 
-      <EntryDrawer entry={selected} today={today} onClose={() => setSelected(null)} />
-      <CreateDrawer open={creating} types={types} today={today} onClose={() => setCreating(false)} />
+      {/* Je Eintrag frisch: Ein Neuladen der Liste setzt ein angefangenes Angebot nicht zurück */}
+      {selected && <EntryDrawer key={selected.id} entry={selected} today={today} onClose={() => setSelected(null)} />}
+      {creating && <CreateDrawer types={types} today={today} onClose={() => setCreating(false)} />}
     </>
   );
 }
 
 // ---------- Detail & Angebot ----------
 
-function EntryDrawer({ entry, today, onClose }: { entry: WaitlistView | null; today: string; onClose: () => void }) {
+function EntryDrawer({ entry: e, today, onClose }: { entry: WaitlistView; today: string; onClose: () => void }) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, start] = useTransition();
   const [offering, setOffering] = useState(false);
-  const [date, setDate] = useState(addDays(today, 1));
+  // Angebote ab morgen – oder ab Beginn des Wunschfensters, wenn das später liegt
+  const tomorrow = addDays(today, 1);
+  const wishFrom = e.windowFrom ? dateKey(new Date(e.windowFrom)) : null;
+  const firstDay = wishFrom && wishFrom > tomorrow ? wishFrom : tomorrow;
+  const [from, setFrom] = useState(firstDay);
+  const [date, setDate] = useState("");
   const [time, setTime] = useState("");
-  const [free, setFree] = useState<string[] | null>(null);
+  const [freeReload, setFreeReload] = useState(0);
+  const [free, setFree] = useState<{ key: string; state: FreeTimesState } | null>(null);
+  const autoPick = useRef(true);
   const [error, setError] = useState<string | null>(null);
   const [confirmWithdraw, setConfirmWithdraw] = useState(false);
 
+  // Dieselbe Leiste wie beim Telefontermin: die nächsten freien Zeiten ab `from`
+  const freeKey = `${from}|${freeReload}`;
   useEffect(() => {
-    setOffering(false);
-    setConfirmWithdraw(false);
-    setError(null);
-    setTime("");
-    setDate(addDays(today, 1));
-  }, [entry, today]);
-
-  useEffect(() => {
-    if (!entry || !offering) return;
+    if (!offering) return;
     let alive = true;
-    setFree(null);
-    availabilityAction(entry.typeId, date).then((r) => alive && setFree(r.ok ? r.data : []));
+    void nextFreeTimesAction({ typeId: e.typeId, from }).then(
+      (r) => {
+        if (!alive) return;
+        setFree({ key: freeKey, state: r.ok ? { status: "ok", days: r.data } : { status: "error" } });
+        const first = r.ok ? r.data[0] : undefined;
+        if (autoPick.current && first) {
+          setDate(first.date);
+          setTime(first.times[0]!);
+        }
+      },
+      () => alive && setFree({ key: freeKey, state: { status: "error" } }),
+    );
     return () => {
       alive = false;
     };
-  }, [entry, offering, date]);
-
-  if (!entry) return null;
-  const e = entry;
+  }, [offering, e.typeId, from, freeKey]);
+  const freeState: FreeTimesState = free?.key === freeKey ? free.state : { status: "loading" };
 
   const setStatus = (status: "open" | "withdrawn") =>
     start(async () => {
@@ -220,7 +237,7 @@ function EntryDrawer({ entry, today, onClose }: { entry: WaitlistView | null; to
   const offer = () =>
     start(async () => {
       setError(null);
-      if (!time) return setError("Bitte eine Uhrzeit wählen.");
+      if (!date || !time) return setError("Bitte einen freien Platz wählen.");
       const r = await offerWaitlistAction({ id: e.id, date, time });
       if (!r.ok) return setError(r.error);
       toast({ title: `Angebot verschickt · ${r.data.ref}`, description: `${fmtLongDate(new Date(`${date}T12:00:00Z`))}, ${time} Uhr – reserviert.`, tone: "ok" });
@@ -229,6 +246,7 @@ function EntryDrawer({ entry, today, onClose }: { entry: WaitlistView | null; to
     });
 
   const offeredDate = e.offerExpiresAt ? new Date(e.offerExpiresAt) : null;
+  const book = () => router.push(`/termine?neu=1&warteliste=${encodeURIComponent(e.id)}`);
 
   return (
     <Drawer
@@ -257,8 +275,14 @@ function EntryDrawer({ entry, today, onClose }: { entry: WaitlistView | null; to
           <Button variant="ghost" onClick={onClose}>
             Schließen
           </Button>
+          {/* Am Telefon gleich buchen – für Einträge ohne E-Mail der einzige Weg */}
           {e.status === "open" && !offering && (
-            <Button variant="primary" icon="mail" onClick={() => setOffering(true)} disabled={!e.pii.email}>
+            <Button variant={e.pii.email ? "secondary" : "primary"} icon="calendar" onClick={book}>
+              Termin direkt anlegen
+            </Button>
+          )}
+          {e.status === "open" && !offering && e.pii.email && (
+            <Button variant="primary" icon="mail" onClick={() => setOffering(true)}>
               Platz anbieten
             </Button>
           )}
@@ -283,9 +307,17 @@ function EntryDrawer({ entry, today, onClose }: { entry: WaitlistView | null; to
           <dt className="text-text-muted">Wunschfenster</dt>
           <dd className="tnum text-text">{windowLabel(e)}</dd>
           <dt className="text-text-muted">E-Mail</dt>
-          <dd className="text-text">{e.pii.email ?? <span className="text-warn">keine – kein automatisches Angebot möglich</span>}</dd>
+          <dd className="text-text">{e.pii.email ?? <span className="text-text">keine – kein Angebot per E-Mail möglich</span>}</dd>
           <dt className="text-text-muted">Telefon</dt>
-          <dd className="tnum text-text">{e.pii.phone ?? "—"}</dd>
+          <dd className="tnum text-text">
+            {e.pii.phone ? (
+              <a href={`tel:${e.pii.phone.replace(/[^\d+]/g, "")}`} className="text-brand underline-offset-4 hover:underline">
+                {e.pii.phone}
+              </a>
+            ) : (
+              "—"
+            )}
+          </dd>
           {e.note && (
             <>
               <dt className="text-text-muted">Notiz</dt>
@@ -300,39 +332,50 @@ function EntryDrawer({ entry, today, onClose }: { entry: WaitlistView | null; to
             {e.offeredAppointmentId && (
               <>
                 {" "}
-                <Link href={`/termine?v=tag&d=${e.offeredAt ? dateKey(new Date(e.offeredAt)) : today}&id=${e.offeredAppointmentId}`} className="font-medium text-brand underline underline-offset-2">
+                <Link href={`/termine?id=${e.offeredAppointmentId}`} className="font-medium text-brand underline underline-offset-2">
                   Reservierten Termin öffnen
                 </Link>
               </>
             )}
           </Notice>
         )}
+        {e.status === "booked" && e.offeredAppointmentId && (
+          <Notice tone="ok">
+            Gebucht.{" "}
+            <Link href={`/termine?id=${e.offeredAppointmentId}`} className="font-medium text-brand underline underline-offset-2">
+              Termin öffnen
+            </Link>
+          </Notice>
+        )}
 
         {offering && (
           <div className="space-y-3 rounded-2xl bg-surface-sunken/60 p-4 ring-1 ring-line">
             <p className="text-[13px] font-medium text-text">Welchen Platz anbieten?</p>
-            <Field label="Datum">{(id) => <Input id={id} type="date" min={today} value={date} onChange={(ev) => setDate(ev.target.value)} className="tnum" />}</Field>
-            <div>
-              <p className="mb-1.5 text-[12px] text-text-muted">{free === null ? "Freie Zeiten werden geladen …" : free.length ? `Frei am ${fmtLongDate(new Date(`${date}T12:00:00Z`))}:` : "An diesem Tag ist für diese Terminart nichts frei."}</p>
-              {free && free.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {free.slice(0, 24).map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setTime(t)}
-                      className={cn(
-                        "tnum h-8 rounded-lg border px-2.5 text-[12px] font-medium transition-colors",
-                        time === t ? "border-brand-fill bg-brand-fill text-deep" : "border-line text-text-muted hover:border-line-strong hover:text-text",
-                      )}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <p className="text-[12px] text-text-faint">Die Person bekommt eine E-Mail mit Annahme-Link; der Platz ist so lange reserviert, wie in den Einstellungen festgelegt.</p>
+            <FreeTimes
+              state={freeState}
+              today={today}
+              from={from}
+              onFrom={(d) => setFrom(d)}
+              selected={{ date, time }}
+              onPick={(d, t) => {
+                autoPick.current = false;
+                setDate(d);
+                setTime(t);
+              }}
+              onRetry={() => setFreeReload((n) => n + 1)}
+              typeLabel={e.typeLabel}
+              starts={[
+                ["ab morgen", tomorrow],
+                ...(wishFrom && wishFrom > tomorrow ? ([["ab Wunschfenster", wishFrom]] as Array<[string, string]>) : []),
+                ["in 3 Monaten", addMonths(today, 3)],
+              ]}
+            />
+            {date && time && (
+              <p className="text-[13px] text-text">
+                Angebot: {fmtLongDate(new Date(`${date}T12:00:00Z`))}, {time} Uhr
+              </p>
+            )}
+            <p className="text-[12px] text-text-muted">Die Person bekommt eine E-Mail mit Annahme-Link; der Platz ist so lange reserviert, wie in den Einstellungen festgelegt.</p>
           </div>
         )}
 
@@ -358,7 +401,9 @@ function EntryDrawer({ entry, today, onClose }: { entry: WaitlistView | null; to
 
 // ---------- Neuer Eintrag (Telefon / vor Ort) ----------
 
-function CreateDrawer({ open, types, today, onClose }: { open: boolean; types: TypeView[]; today: string; onClose: () => void }) {
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function CreateDrawer({ types, today, onClose }: { types: TypeView[]; today: string; onClose: () => void }) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, start] = useTransition();
@@ -371,23 +416,21 @@ function CreateDrawer({ open, types, today, onClose }: { open: boolean; types: T
   const [windowFrom, setWindowFrom] = useState("");
   const [windowTo, setWindowTo] = useState("");
   const [note, setNote] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<{ firstName?: string; lastName?: string; email?: string }>({});
+  const refs = useRef<{ firstName?: HTMLInputElement | null; lastName?: HTMLInputElement | null; email?: HTMLInputElement | null }>({});
 
-  useEffect(() => {
-    if (!open) return;
-    setError(null);
-    setTypeId(types[0]?.id ?? "");
-    setFirstName("");
-    setLastName("");
-    setEmail("");
-    setPhone("");
-    setWindowFrom("");
-    setWindowTo("");
-    setNote("");
-  }, [open, types]);
-
-  if (!open) return null;
-
-  const save = () =>
+  const save = () => {
+    // Pflichtfelder vorab: Fehler am Feld, Fokus aufs erste
+    const errors: typeof fieldErrors = {};
+    if (!firstName.trim()) errors.firstName = "Vorname fehlt";
+    if (!lastName.trim()) errors.lastName = "Nachname fehlt";
+    if (email.trim() && !EMAIL.test(email.trim())) errors.email = "E-Mail ungültig";
+    setFieldErrors(errors);
+    const first = (["firstName", "lastName", "email"] as const).find((f) => errors[f]);
+    if (first) {
+      refs.current[first]?.focus();
+      return;
+    }
     start(async () => {
       setError(null);
       const r = await createWaitlistAction({ typeId, firstName, lastName, email, phone, windowFrom, windowTo, note, source: "telefon" });
@@ -396,6 +439,7 @@ function CreateDrawer({ open, types, today, onClose }: { open: boolean; types: T
       router.refresh();
       onClose();
     });
+  };
 
   return (
     <Drawer
@@ -409,13 +453,21 @@ function CreateDrawer({ open, types, today, onClose }: { open: boolean; types: T
           <Button variant="ghost" onClick={onClose}>
             Abbrechen
           </Button>
-          <Button variant="primary" icon="plus" onClick={save} loading={pending}>
+          <Button variant="primary" icon="plus" type="submit" form="waitlist-form" loading={pending}>
             Eintragen
           </Button>
         </>
       }
     >
-      <div className="space-y-5">
+      <form
+        id="waitlist-form"
+        noValidate
+        onSubmit={(ev) => {
+          ev.preventDefault();
+          save();
+        }}
+        className="space-y-5"
+      >
         <Field label="Terminart">
           {(id) => (
             <Select id={id} value={typeId} onChange={(e) => setTypeId(e.target.value)}>
@@ -428,12 +480,56 @@ function CreateDrawer({ open, types, today, onClose }: { open: boolean; types: T
           )}
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Vorname">{(id) => <Input id={id} autoComplete="off" value={firstName} onChange={(e) => setFirstName(e.target.value)} data-autofocus />}</Field>
-          <Field label="Nachname">{(id) => <Input id={id} autoComplete="off" value={lastName} onChange={(e) => setLastName(e.target.value)} />}</Field>
+          <Field label="Vorname" required error={fieldErrors.firstName}>
+            {(id, describedBy) => (
+              <Input
+                id={id}
+                ref={(el) => {
+                  refs.current.firstName = el;
+                }}
+                autoComplete="off"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                data-autofocus
+                aria-required
+                aria-describedby={describedBy}
+                invalid={Boolean(fieldErrors.firstName)}
+              />
+            )}
+          </Field>
+          <Field label="Nachname" required error={fieldErrors.lastName}>
+            {(id, describedBy) => (
+              <Input
+                id={id}
+                ref={(el) => {
+                  refs.current.lastName = el;
+                }}
+                autoComplete="off"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                aria-required
+                aria-describedby={describedBy}
+                invalid={Boolean(fieldErrors.lastName)}
+              />
+            )}
+          </Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="E-Mail" hint="Nötig für automatische Angebote">
-            {(id) => <Input id={id} type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />}
+          <Field label="E-Mail" hint="Nötig für automatische Angebote" error={fieldErrors.email}>
+            {(id, describedBy) => (
+              <Input
+                id={id}
+                ref={(el) => {
+                  refs.current.email = el;
+                }}
+                type="email"
+                autoComplete="off"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                aria-describedby={describedBy}
+                invalid={Boolean(fieldErrors.email)}
+              />
+            )}
           </Field>
           <Field label="Telefon">{(id) => <Input id={id} type="tel" autoComplete="off" value={phone} onChange={(e) => setPhone(e.target.value)} />}</Field>
         </div>
@@ -449,7 +545,7 @@ function CreateDrawer({ open, types, today, onClose }: { open: boolean; types: T
           {(id) => <Textarea id={id} value={note} onChange={(e) => setNote(e.target.value)} />}
         </Field>
         {error && <Notice tone="danger">{error}</Notice>}
-      </div>
+      </form>
     </Drawer>
   );
 }

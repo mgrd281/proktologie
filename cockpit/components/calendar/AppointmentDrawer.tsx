@@ -14,10 +14,12 @@ import { Dialog, Drawer } from "@/components/ui/Overlay";
 import { useToast } from "@/components/ui/Toast";
 import { FreeTimes, nextAfter, type FreeTimesState } from "./FreeTimes";
 
-/** Vorbelegung eines neuen Termins – etwa ein Folgetermin aus einem erledigten Besuch. */
+/** Vorbelegung eines neuen Termins – Folgetermin, Anfrage aus dem Posteingang, Wartelisten-Eintrag. */
 export interface NewPrefill {
-  typeId: string;
+  typeId?: string;
   pii: { firstName: string; lastName: string; email: string | null; phone: string | null };
+  /** Herkunft: Anfrage wird mit dem Anlegen erledigt, Wartelisten-Eintrag „Gebucht“ */
+  link?: { requestId?: string; waitlistId?: string; ref: string | null };
 }
 
 export type DrawerState =
@@ -109,7 +111,7 @@ export function AppointmentDrawer({
     const snap: FormSnapshot =
       state.mode === "new"
         ? {
-            typeId: state.prefill?.typeId ?? (typesRef.current.some((t) => t.id === state.typeId) ? state.typeId! : (typesRef.current[0]?.id ?? "")),
+            typeId: [state.prefill?.typeId, state.typeId].find((id) => id && typesRef.current.some((t) => t.id === id)) ?? typesRef.current[0]?.id ?? "",
             date: state.date,
             time: state.time ?? "",
             firstName: state.prefill?.pii.firstName ?? "",
@@ -226,7 +228,17 @@ export function AppointmentDrawer({
       const pii = { firstName, lastName, email, phone };
       const r = editing
         ? await updateAppointmentAction({ id: editing.id, typeId, date, time, pii, note })
-        : await createAppointmentAction({ typeId, date, time, pii, note, source, ignoreOpeningHours: outsideHours });
+        : await createAppointmentAction({
+            typeId,
+            date,
+            time,
+            pii,
+            note,
+            source,
+            ignoreOpeningHours: outsideHours,
+            requestId: state.mode === "new" ? state.prefill?.link?.requestId : undefined,
+            waitlistId: state.mode === "new" ? state.prefill?.link?.waitlistId : undefined,
+          });
       if (!r.ok) {
         if (/außerhalb der Sprechzeiten/.test(r.error) && !outsideHours) {
           setOutsideHours(true);
@@ -403,6 +415,12 @@ export function AppointmentDrawer({
         )}
 
         {state.mode === "new" && state.warning && <Notice tone="warn">{state.warning} Anlegen geht trotzdem.</Notice>}
+        {state.mode === "new" && state.prefill?.link?.requestId && (
+          <Notice tone="info">Aus der Anfrage {state.prefill.link.ref} – sie gilt mit dem Anlegen als erledigt.</Notice>
+        )}
+        {state.mode === "new" && state.prefill?.link?.waitlistId && (
+          <Notice tone="info">Von der Warteliste{state.prefill.link.ref ? ` (${state.prefill.link.ref})` : ""} – der Eintrag gilt mit dem Anlegen als gebucht.</Notice>
+        )}
 
         {editing?.holdUntil && isOpen && (
           <Notice tone="info">

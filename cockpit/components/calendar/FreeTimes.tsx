@@ -38,6 +38,7 @@ export function FreeTimes({
   onPick,
   onRetry,
   typeLabel,
+  starts,
 }: {
   state: FreeTimesState;
   today: string;
@@ -48,10 +49,12 @@ export function FreeTimes({
   onPick: (date: string, time: string) => void;
   onRetry: () => void;
   typeLabel?: string;
+  /** Schnellwahl „ab …“ – Standard: heute, in 1 Woche, in 3 Monaten */
+  starts?: Array<[label: string, date: string]>;
 }) {
   const [openDays, setOpenDays] = useState<string[]>([]);
   const [allRows, setAllRows] = useState(false);
-  const starts: Array<[string, string]> = [
+  const quick = starts ?? [
     ["ab heute", today],
     ["in 1 Woche", addDays(today, 7)],
     ["in 3 Monaten", addMonths(today, 3)],
@@ -64,7 +67,7 @@ export function FreeTimes({
           Nächste freie Zeiten{typeLabel ? <span className="font-normal text-text-muted"> · {typeLabel}</span> : null}
         </h3>
         <div className="flex flex-wrap gap-1" role="group" aria-label="Freie Zeiten suchen ab">
-          {starts.map(([label, date]) => (
+          {quick.map(([label, date]) => (
             <button
               key={label}
               type="button"

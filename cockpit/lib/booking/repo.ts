@@ -6,8 +6,8 @@ import { emailHash, nameKey, phoneHash } from "../crypto/blindIndex.ts";
 import { getDb } from "../db/client.ts";
 import * as t from "../db/schema.ts";
 import { makeRef } from "../ref.ts";
-import { addDays, dateKey, startOfDay, startOfWeek } from "../time.ts";
-import { dayIsClosed, findConflicts, generateSlots, openingSummary, overlaps, withinOpeningHours, type BusySpan, type ExceptionSpan, type OpeningSummary, type TypeSpec } from "./engine.ts";
+import { addDays, dateKey, startOfDay, startOfWeek, zonedToUtc } from "../time.ts";
+import { dayIsClosed, findConflicts, generateSlots, openingSummary, openWindows, overlaps, withinOpeningHours, type BusySpan, type ExceptionSpan, type OpeningSummary, type TypeSpec } from "./engine.ts";
 import type { SearchPlan } from "./search.ts";
 import {
   ACTIVE_STATUSES,
@@ -246,6 +246,31 @@ export async function busySpans(from: Date, to: Date, exceptId?: string): Promis
 async function exceptionSpans(from: Date, to: Date): Promise<ExceptionSpan[]> {
   const rows = await listExceptions(from, to);
   return rows.map((r) => ({ kind: r.kind, startsAt: new Date(r.startsAt), endsAt: new Date(r.endsAt), allDay: r.allDay }));
+}
+
+/**
+ * Frist einer Anfrage: Ende des nächsten Praxistags – freitags also Montag,
+ * vor Feiertagen und im Urlaub der Tag danach. Vorher galten pauschal 24 h,
+ * und montags stand alles vom Wochenende rot da. Ohne Sprechzeiten: 24 h.
+ */
+export async function requestDeadline(now = new Date()): Promise<Date> {
+  const today = dateKey(now);
+  const [hours, exceptions] = await Promise.all([listHours(), exceptionSpans(startOfDay(today), startOfDay(addDays(today, 22)))]);
+  for (let i = 1; i <= 21; i++) {
+    const date = addDays(today, i);
+    const last = openWindows(date, hours, exceptions).at(-1);
+    if (last) return zonedToUtc(date, last.to);
+  }
+  return new Date(now.getTime() + 24 * 3600_000);
+}
+
+/** Namen von Kolleg:innen (für „In Arbeit bei“) – keine Patientendaten. */
+export async function teamNames(ids: string[]): Promise<Record<string, string>> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length === 0) return {};
+  const db = await getDb();
+  const rows = await db.select({ id: t.user.id, name: t.user.name }).from(t.user).where(inArray(t.user.id, unique));
+  return Object.fromEntries(rows.map((r) => [r.id, r.name]));
 }
 
 /** Sprechzeit heute und nächste Öffnung (mit Urlaub, Schließtagen, Feiertagen) – für die Website. */
@@ -838,6 +863,8 @@ export async function setWaitlistStatus(
     set.offeredAppointmentId = null;
     set.offerExpiresAt = null;
   }
+  // Direkt gebucht (am Telefon): Der Eintrag zeigt auf den Termin
+  if (status === "booked" && extra.offeredAppointmentId) set.offeredAppointmentId = extra.offeredAppointmentId;
   await db.update(t.waitlist).set(set).where(eq(t.waitlist.id, id));
   await audit({ actorId, action: `waitlist.${status}`, entity: "waitlist", entityId: id });
   return (await getWaitlistEntry(id))!;

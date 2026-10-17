@@ -11,7 +11,7 @@ import { Button, IconButton } from "@/components/ui/Button";
 import { DataTable } from "@/components/ui/DataTable";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { useNow } from "@/components/ui/useNow";
-import { AppointmentDrawer, type DrawerState } from "./AppointmentDrawer";
+import { AppointmentDrawer, type DrawerState, type NewPrefill } from "./AppointmentDrawer";
 import { ExceptionDrawer } from "./ExceptionDrawer";
 import { RemoveExceptionDialog } from "./RemoveExceptionDialog";
 
@@ -32,6 +32,8 @@ interface Props {
   /** Vorbelegung aus „Nächster freier Termin“ (?t=, ?art=) */
   openTime: string | null;
   openType: string | null;
+  /** Aus einer Anfrage oder von der Warteliste (?anfrage=, ?warteliste=) */
+  openPrefill: NewPrefill | null;
   openException: boolean;
   openId: string | null;
 }
@@ -49,7 +51,7 @@ function useNarrow(): boolean {
 
 export function CalendarView(p: Props) {
   const router = useRouter();
-  const newFromAddress = (): DrawerState => ({ mode: "new", date: p.date, time: p.openTime ?? undefined, typeId: p.openType ?? undefined });
+  const newFromAddress = (): DrawerState => ({ mode: "new", date: p.date, time: p.openTime ?? undefined, typeId: p.openType ?? undefined, prefill: p.openPrefill ?? undefined });
   const [drawer, setDrawer] = useState<DrawerState>(
     p.openNew ? newFromAddress() : p.openId ? (() => {
       const a = p.appointments.find((x) => x.id === p.openId);
@@ -61,7 +63,14 @@ export function CalendarView(p: Props) {
 
   // Die Adresse ändert sich auch, während der Kalender offen ist: „n“, ein
   // Treffer der Suche (?id=), „Blocker / Urlaub eintragen“ aus der Palette
-  const request = p.openNew ? `neu:${p.date}:${p.openTime ?? ""}:${p.openType ?? ""}` : p.openId ? `id:${p.openId}` : p.openException ? "ausnahme" : "";
+  const linked = p.openPrefill?.link;
+  const request = p.openNew
+    ? `neu:${p.date}:${p.openTime ?? ""}:${p.openType ?? ""}:${linked?.requestId ?? linked?.waitlistId ?? ""}`
+    : p.openId
+      ? `id:${p.openId}`
+      : p.openException
+        ? "ausnahme"
+        : "";
   const [handled, setHandled] = useState(request);
   if (request !== handled) {
     setHandled(request);

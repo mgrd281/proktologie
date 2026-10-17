@@ -19,6 +19,7 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Icon } from "@/components/ui/Icon";
 import { Drawer } from "@/components/ui/Overlay";
 import { useToast } from "@/components/ui/Toast";
+import { useNow } from "@/components/ui/useNow";
 
 /**
  * Posteingang für alles, was kein Termin ist: Rückrufbitten aus dem Chat,
@@ -49,6 +50,26 @@ function name(r: RequestView): string {
   return `${r.pii.firstName} ${r.pii.lastName}`.trim();
 }
 
+/** „Erika Musterfrau“ → „EM“ */
+function initials(full: string): string {
+  const parts = full.trim().split(/\s+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? (parts.at(-1)?.[0] ?? "") : "")).toUpperCase();
+}
+
+/** Telefon als Link – ein Tipp ruft an; in der Tabelle öffnet er nicht zusätzlich die Zeile. */
+function PhoneLink({ phone }: { phone?: string }) {
+  if (!phone) return <span className="text-text-muted">—</span>;
+  return (
+    <a
+      href={`tel:${phone.replace(/[^\d+]/g, "")}`}
+      onClick={(e) => e.stopPropagation()}
+      className="tnum inline-flex min-h-11 items-center text-brand underline-offset-4 hover:underline md:min-h-0"
+    >
+      {phone}
+    </a>
+  );
+}
+
 /** Frist: überschritten, heute fällig, oder Datum. */
 function DueCell({ r, now }: { r: RequestView; now: number }) {
   if (r.status === "erledigt") return <span className="text-text-muted">—</span>;
@@ -63,13 +84,24 @@ function DueCell({ r, now }: { r: RequestView; now: number }) {
   );
 }
 
-export function RequestsPanel({ open, closed, now }: { open: RequestView[]; closed: RequestView[]; now: string }) {
+export function RequestsPanel({
+  open,
+  closed,
+  now,
+  names,
+}: {
+  open: RequestView[];
+  closed: RequestView[];
+  now: string;
+  /** Wer eine Anfrage bearbeitet (assigneeId → Name) */
+  names: Record<string, string>;
+}) {
   const [current, setCurrent] = useState<RequestView | null>(null);
   const [showClosed, setShowClosed] = useState(false);
   const [pending, start] = useTransition();
   const { toast } = useToast();
   const router = useRouter();
-  const nowMs = new Date(now).getTime();
+  const nowMs = useNow(now);
 
   const setStatus = (id: string, status: RequestStatus) =>
     start(async () => {
@@ -96,9 +128,24 @@ export function RequestsPanel({ open, closed, now }: { open: RequestView[]; clos
       ),
     },
     { key: "name", header: "Name", cell: (r) => name(r) },
-    { key: "telefon", header: "Telefon", cell: (r) => <span className="tnum">{r.pii.phone ?? "—"}</span> },
+    { key: "telefon", header: "Telefon", cell: (r) => <PhoneLink phone={r.pii.phone} /> },
+    { key: "erreichbar", header: "Erreichbar", hideBelow: "md", cell: (r) => <span className="text-text-muted">{TIME_LABEL[r.message?.preferredTime ?? "egal"] ?? "egal"}</span> },
     { key: "frist", header: "Frist", cell: (r) => <DueCell r={r} now={nowMs} /> },
-    { key: "status", header: "Status", cell: (r) => <StatusPill status={r.status} /> },
+    {
+      key: "status",
+      header: "Status",
+      cell: (r) => (
+        <span className="flex items-center gap-2">
+          <StatusPill status={r.status} />
+          {r.status === "in_arbeit" && r.assigneeId && names[r.assigneeId] && (
+            <span title={`In Arbeit bei ${names[r.assigneeId]}`} className="inline-flex size-6 items-center justify-center rounded-full bg-surface-sunken text-[11px] font-semibold text-text">
+              <span aria-hidden="true">{initials(names[r.assigneeId]!)}</span>
+              <span className="sr-only">bei {names[r.assigneeId]}</span>
+            </span>
+          )}
+        </span>
+      ),
+    },
   ];
 
   return (
@@ -148,6 +195,10 @@ export function RequestsPanel({ open, closed, now }: { open: RequestView[]; clos
             <div className="flex flex-wrap justify-end gap-2">
               {current.status !== "erledigt" ? (
                 <>
+                  {/* Rückruf führt oft zu einem Termin: vorausgefüllt, die Anfrage ist damit erledigt */}
+                  <Button variant="secondary" icon="calendar" onClick={() => router.push(`/termine?neu=1&anfrage=${current.id}`)}>
+                    Termin anlegen
+                  </Button>
                   {current.status !== "in_arbeit" && (
                     <Button variant="ghost" onClick={() => setStatus(current.id, "in_arbeit")} loading={pending}>
                       In Arbeit
@@ -179,8 +230,8 @@ export function RequestsPanel({ open, closed, now }: { open: RequestView[]; clos
             </div>
             <div>
               <dt className="text-[11px] font-semibold tracking-[0.08em] text-text-muted uppercase">Telefon</dt>
-              <dd className="mt-0.5 tnum">
-                {current.pii.phone ? <a href={`tel:${current.pii.phone.replace(/\s/g, "")}`} className="text-brand underline-offset-4 hover:underline">{current.pii.phone}</a> : "—"}
+              <dd className="mt-0.5">
+                <PhoneLink phone={current.pii.phone} />
               </dd>
             </div>
             {current.pii.email && (
@@ -213,8 +264,11 @@ export function RequestsPanel({ open, closed, now }: { open: RequestView[]; clos
             </div>
             <div>
               <dt className="text-[11px] font-semibold tracking-[0.08em] text-text-muted uppercase">Stand</dt>
-              <dd className="mt-0.5">
+              <dd className="mt-0.5 flex flex-wrap items-center gap-2">
                 <StatusPill status={current.status} />
+                {current.status === "in_arbeit" && current.assigneeId && names[current.assigneeId] && (
+                  <span className="text-[13px] text-text-muted">bei {names[current.assigneeId]}</span>
+                )}
               </dd>
             </div>
           </dl>

@@ -85,7 +85,8 @@ export async function POST(req: Request) {
     // Erledigte zuerst (älter), dann die offenen – so wie es im Alltag gewachsen wäre
     const done: string[] = [];
     for (let i = 0; i < (body.closed ?? 0); i++) {
-      const r = await createRequest({ kind: "rueckruf", pii: { firstName: "Erledigt", lastName: `Nr. ${i + 1}`, phone: "040 000 0000" } });
+      // Feste Frist: Für erledigte zählt sie nicht, und Hunderte Fristberechnungen bremsten den Test
+      const r = await createRequest({ kind: "rueckruf", pii: { firstName: "Erledigt", lastName: `Nr. ${i + 1}`, phone: "040 000 0000" }, slaHours: 24 });
       done.push(r.id);
     }
     if (done.length) await db.update(requests).set({ status: "erledigt", closedAt: new Date() }).where(inArray(requests.id, done));
