@@ -492,6 +492,9 @@ test("Überschneidung: Das Fenster nennt die nächsten freien Zeiten – Ladefeh
 
   // Pflichtfelder: Der Fehler steht am Feld, der Fokus geht hin
   await page.getByRole("button", { name: "Neuer Termin" }).click();
+  // Erst die erste freie Zeit abwarten – sonst fehlt noch die Uhrzeit, und der Fokus geht zu Recht dorthin
+  await expect(drawer.getByText("Freie Zeiten werden geladen …")).toHaveCount(0);
+  await expect(drawer.getByRole("button", { pressed: true, name: /^\d\d:\d\d$/ })).toHaveCount(1);
   await drawer.getByLabel("Vorname", { exact: true }).press("Enter");
   await expect(drawer.getByText("Vorname fehlt")).toBeVisible();
   await expect(drawer.getByText("Nachname fehlt")).toBeVisible();
