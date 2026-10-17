@@ -56,8 +56,16 @@ let confirmationToken = "";
 let bookedRef = "";
 let bookedDate = "";
 let bookedTime = "";
+/** Bestätigungen (nicht Erinnerungen) an die Website-Buchung */
+const websiteConfirmations = () =>
+  outbox().filter(
+    (m) =>
+      m.to === "lieschen.mueller@example.invalid" &&
+      !/^Erinnerung/.test(m.subject) &&
+      m.attachments?.some((a) => a.filename === "termin.ics"),
+  );
 
-/** Terminkarte der Website in frischem Kontext; `before` darf Routen setzen. */
+/** Startkarte der Website in frischem Kontext; `before` darf Routen setzen. */
 async function openCard(browser: Browser, before?: (page: Page) => Promise<void> | void) {
   const context = await browser.newContext({ reducedMotion: "reduce", viewport: { width: 1280, height: 900 } });
   const page = await context.newPage();
@@ -68,22 +76,36 @@ async function openCard(browser: Browser, before?: (page: Page) => Promise<void>
   return { context, page, card };
 }
 
+/**
+ * Öffnet den Termin-Dialog über die Startkarte. Ob React hydriert ist, zeigt
+ * erst der Klick (vorher springt der Link nur zur Sektion) – im Dev-Server
+ * kann das dauern; deshalb wird geklickt, bis der Dialog steht.
+ */
+async function openDialog(page: Page) {
+  const dialog = page.getByRole("dialog", { name: /Termin (buchen|anfragen)/ });
+  await expect(async () => {
+    await page.locator("#kontakt").getByRole("link", { name: /Online-Termin/ }).click();
+    await expect(dialog).toBeVisible({ timeout: 1_500 });
+  }).toPass({ timeout: 60_000 });
+  return dialog;
+}
+
 /** Wunschtermin-Ansicht: Anfrage-Titel, kein Live-Versprechen, wählbarer Tag mit Wunschzeiten. */
-async function expectRequestFlow(card: Locator) {
+async function expectRequestFlow(page: Page, card: Locator) {
   await expect(card.getByText("Online-Terminanfrage", { exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(card.getByText(/Wunschtermin innerhalb unserer Sprechzeiten/)).toBeVisible();
   await expect(card.getByText("Online-Terminbuchung", { exact: true })).toHaveCount(0);
-  // Die Wunschtermin-Ansicht steht schon im statischen HTML – ob React
-  // hydriert ist, zeigt erst ein Klick, der den Schritt wechselt. Im Dev-
-  // Server kann das dauern; deshalb wird geklickt, bis es greift.
-  await expect(async () => {
-    await card.getByRole("button", { name: /Kontrolltermin/ }).click();
-    await expect(card.getByText(/Schritt 2 von 5/)).toBeVisible({ timeout: 1_500 });
-  }).toPass({ timeout: 60_000 });
-  const cell = card.locator('[role="gridcell"][data-date]:not([aria-disabled="true"])').first();
+  const dialog = await openDialog(page);
+  await expect(dialog).toHaveAccessibleName("Termin anfragen");
+  await dialog.getByRole("button", { name: /Kontrolltermin/ }).click();
+  await dialog.getByRole("button", { name: "Weiter" }).click();
+  await expect(dialog.getByText(/Schritt 2 von 5/).first()).toBeVisible();
+  const cell = dialog.locator('[role="gridcell"][data-date]:not([aria-disabled="true"])').first();
   await expect(cell).toBeVisible({ timeout: 20_000 });
   await cell.click();
-  await expect(card.locator("button[data-slot]").first()).toBeVisible({ timeout: 20_000 });
+  await dialog.getByRole("button", { name: "Weiter" }).click();
+  await expect(dialog.locator("button[data-slot]").first()).toBeVisible({ timeout: 20_000 });
+  return dialog;
 }
 
 test("Website vor dem Live-Schalter: Wunschtermin, keine Live-Zeiten, kein Hinweis", async ({ request, browser }) => {
@@ -101,8 +123,8 @@ test("Website vor dem Live-Schalter: Wunschtermin, keine Live-Zeiten, kein Hinwe
       if (r.url().includes("/api/public/v1/status")) statusHeaders = r.headers();
     });
   });
-  await expectRequestFlow(card);
-  await expect(card.getByRole("note")).toHaveCount(0);
+  const dialog = await expectRequestFlow(page, card);
+  await expect(dialog.getByRole("note")).toHaveCount(0);
   await page.screenshot({ path: "e2e/shots/website-vor-live.png" });
   // Genau ein Aufruf – der Zustand. Keine Verfügbarkeit, kein Buchungsversuch,
   // und auch nicht wiederholt (toEqual statt toContain: eine Regression, die
@@ -116,13 +138,13 @@ test("Website vor dem Live-Schalter: Wunschtermin, keine Live-Zeiten, kein Hinwe
 test("Cockpit nicht erreichbar: Website bleibt still beim Wunschtermin", async ({ browser }) => {
   // Verbindung verweigert
   const refused = await openCard(browser, (p) => p.route("**/api/public/v1/status", (route) => route.abort("connectionrefused")));
-  await expectRequestFlow(refused.card);
+  await expectRequestFlow(refused.page, refused.card);
   await expect(refused.card.getByRole("note")).toHaveCount(0);
   await refused.context.close();
 
   // Keine Antwort – die Frist von vier Sekunden greift im echten Browser
   const hanging = await openCard(browser, (p) => p.route("**/api/public/v1/status", () => undefined));
-  await expectRequestFlow(hanging.card);
+  await expectRequestFlow(hanging.page, hanging.card);
   await expect(hanging.card.getByRole("note")).toHaveCount(0);
   await hanging.context.close();
 });
@@ -303,7 +325,7 @@ test("Online-Buchung pausiert: Hinweistext auf der Website, weiterhin Wunschterm
   expect(resumed).toMatchObject({ bookingLive: true, bookingPaused: false, banner: null });
 });
 
-test("Website: verbindliche Buchung über die Terminkarte", async ({ browser }) => {
+test("Website: verbindliche Buchung im Termin-Dialog", async ({ browser }) => {
   const context = await browser.newContext({ reducedMotion: "reduce", viewport: { width: 1280, height: 900 } });
   const page = await context.newPage();
   await page.goto(`${SITE}/#kontakt`, { waitUntil: "domcontentloaded" });
@@ -312,30 +334,40 @@ test("Website: verbindliche Buchung über die Terminkarte", async ({ browser }) 
   await expect(card.getByText("Online-Terminbuchung", { exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(card.getByText(/verbindlich/i).first()).toBeVisible();
   await expect(card.getByRole("note")).toHaveCount(0);
-  await card.getByRole("button", { name: /Kontrolltermin/ }).click();
+  const dialog = await openDialog(page);
+  await expect(dialog).toHaveAccessibleName("Termin buchen");
+  await dialog.getByRole("button", { name: /Kontrolltermin/ }).click();
+  await dialog.getByRole("button", { name: "Weiter" }).click();
   // Kalender: erster wählbarer Tag
-  const cell = card.locator('[role="gridcell"][data-date]:not([aria-disabled="true"])').first();
+  const cell = dialog.locator('[role="gridcell"][data-date]:not([aria-disabled="true"])').first();
   await expect(cell).toBeVisible({ timeout: 20_000 });
   await cell.click();
-  const slot = card.locator("button[data-slot]").first();
+  await dialog.getByRole("button", { name: "Weiter" }).click();
+  const slot = dialog.locator("button[data-slot]").first();
   await expect(slot).toBeVisible({ timeout: 20_000 });
   await slot.click();
-  await card.getByLabel(/Vorname/).fill("Lieschen");
-  await card.getByLabel(/Nachname/).fill("Müller");
-  await card.getByLabel(/E-Mail/).fill("lieschen.mueller@example.invalid");
-  await card.getByLabel(/Telefon/).fill("040 000 0001");
-  await card.getByRole("checkbox").check();
-  await card.getByRole("button", { name: /Weiter zur Übersicht/ }).click();
-  await card.getByRole("button", { name: /Termin verbindlich buchen/ }).click();
-  await expect(card.getByText(/Termin verbindlich gebucht/)).toBeVisible({ timeout: 30_000 });
-  await expect(card.getByText(/PE-[A-Z0-9]{4}/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Weiter" }).click();
+  await dialog.getByLabel(/Vorname/).fill("Lieschen");
+  await dialog.getByLabel(/Nachname/).fill("Müller");
+  await dialog.getByLabel(/E-Mail/).fill("lieschen.mueller@example.invalid");
+  await dialog.getByLabel(/Telefon/).fill("040 000 0001");
+  await dialog.getByRole("checkbox").check();
+  await dialog.getByRole("button", { name: "Weiter" }).click();
+  await expect(dialog.getByRole("heading", { name: /Ihr Termin im Überblick/ })).toBeVisible();
+  // Doppelklick bucht genau einmal (geprüft an den Bestätigungen im nächsten Test)
+  await dialog.getByRole("button", { name: /Termin verbindlich buchen/ }).dblclick();
+  await expect(dialog.getByText(/Termin verbindlich gebucht/)).toBeVisible({ timeout: 30_000 });
+  await expect(dialog.getByText(/PE-[A-Z0-9]{4}/)).toBeVisible();
   await page.screenshot({ path: "e2e/shots/website-gebucht.png" });
   await context.close();
 });
 
 test("Website-Buchung hat eine Bestätigung mit Kalenderdatei ausgelöst", async ({ request }) => {
   await e2e(request, { action: "tick" });
-  const mail = outbox().filter((m) => m.to === "lieschen.mueller@example.invalid").at(-1);
+  const confirmations = websiteConfirmations();
+  // Der Doppelklick auf „Termin verbindlich buchen“ hat genau eine Buchung ausgelöst
+  expect(confirmations).toHaveLength(1);
+  const mail = confirmations.at(-1);
   expect(mail, "Bestätigung an die Website-Buchung").toBeTruthy();
   expect(mail!.attachments?.some((a) => a.filename === "termin.ics")).toBeTruthy();
   expect(manageToken(mail!)).toBeTruthy();

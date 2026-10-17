@@ -6,6 +6,7 @@ import { Icon } from "@/components/ui/Icon";
 import { LogoLockup } from "@/components/ui/Logo";
 import { MobileMenu } from "@/components/layout/MobileMenu";
 import { ctaHref, ctaLabel, navigation } from "@/content/navigation";
+import { opensBooking } from "@/lib/booking/openers";
 import { site } from "@/content/site";
 import { useActiveSection } from "@/lib/hooks/useActiveSection";
 import { useLenis } from "@/providers/LenisProvider";
@@ -208,6 +209,7 @@ export function Header() {
             <span className="hidden md:block">
               <Button
                 href={ctaHref}
+                {...opensBooking()}
                 withArrow
                 className="!px-5 !py-2.5 !text-[13px]"
               >

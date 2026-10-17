@@ -310,6 +310,15 @@ Symbol nicht sofort verständlich ist.
   Seite `deep/40` abgedunkelt und gesperrt, Tippen daneben schließt. Am Desktop schwebendes
   Fenster ohne Sperre. Der Rahmen steht sofort mit „Einen Moment …“, der Inhalt lädt nach;
   Eingabefelder auf dem Handy 16 px (kein Zoom unter iOS).
+- **Termin-Dialog (Website):** Jeder Termin-Knopf (`data-open-booking`, `lib/booking/openers.ts`)
+  öffnet ihn über der Seite – kein Sprung, keine Adressänderung; ohne JavaScript führen die Links
+  zur Termin-Sektion. Handy (unter `md`): Vollbild, Kopf fest (Kalender-Symbol, „Termin buchen“,
+  „Schritt n von 5“, Fortschrittsbalken, Schließen), nur der Inhalt scrollt, Fuß mit „Zurück“ /
+  „Weiter“ klebt über der Home-Leiste und folgt der Tastatur (`visualViewport`). Ab `md`: zentriert,
+  `max-w-[640px]`, `max-h-[min(90dvh,820px)]`, `rounded-2xl`, Hintergrund `deep/40` +
+  `backdrop-blur-[2px]`, Klick daneben schließt. Hintergrund `inert`, Seite gesperrt (Platz der
+  Scrollleiste bleibt), Fokus auf der Schritt-Überschrift, Esc schließt, Fokus zurück zum Öffner.
+  Eine grüne Aktion im Fuß; fehlt eine Wahl, sagt „Weiter“ was fehlt (`aria-disabled`, nicht gesperrt).
 - Kopf-Knöpfe in Sheets/Dialogen ≥ 44 px.
 
 ### Icons
@@ -328,9 +337,13 @@ Symbol nicht sofort verständlich ist.
   gebucht vs. bestätigt).
 - Zeiten immer in **Europe/Berlin**, Sommer-/Winterzeit über die Zeitzone, nie per Hand
   (Kalenderdateien: `cockpit/lib/ics.ts`).
-- Ablauf in klaren Schritten (Terminart → Datum → Uhrzeit → Angaben → Bestätigung) mit
-  Fortschritt „1 / 5"; Zurück jederzeit ohne Datenverlust – auch per Zurück-Geste des Handys
-  (ein eigener Verlaufseintrag, solange die Buchung unterwegs ist).
+- Ablauf in klaren Schritten (Terminart → Datum → Uhrzeit → Angaben → Bestätigung) im
+  Termin-Dialog mit „Schritt n von 5“; nichts springt von selbst weiter (wählen, dann „Weiter“).
+  Zurück jederzeit ohne Datenverlust – auch per Zurück-Geste des Handys (ein eigener
+  Verlaufseintrag, solange der Dialog offen ist; im ersten Schritt schließt Zurück den Dialog).
+  Schließen verliert nichts: Der Entwurf bleibt bis zum Neuladen, der Dialog öffnet am selben
+  Schritt. Die Übersicht hat „Ändern“ je Zeile. In der Termin-Sektion steht nur die Startkarte
+  (Modus, die fünf Schritte, „Freie Termine ab …“, „Online-Termin buchen“).
 - **Schnell zum Termin (verbindlicher Modus):** „Freie Termine ab …“ unter dem ersten
   Termin-Knopf der Fahrt; der Kalender öffnet im Monat des frühesten freien Tages, darüber
   „Frühester freier Tag: …“ als Abkürzung. Zeiten nach „Vormittag“/„Nachmittag“ gegliedert.
@@ -338,9 +351,8 @@ Symbol nicht sofort verständlich ist.
   neutraler Titel, UID wie die Mail-Einladung – `lib/booking/ics.ts`) und „Anfahrt“.
 - Solange die Website nicht weiß, ob sie bucht oder nur anfragt (Antwort des Cockpits),
   bleiben Kartentitel und Modus-Hinweis unsichtbar – nie kurz das falsche Wort zeigen.
-- **Handy:** Titel und Fortschritt stehen untereinander; der Modus-Hinweis nur im ersten
-  Schritt; bei jedem Schrittwechsel rückt die Karte direkt unter den Header; der Kalender
-  nutzt einen Teil des Kartenrands, damit die Tagesfelder breit genug sind (390 px: 46 px).
+- **Handy:** Der Modus-Hinweis steht nur im ersten Schritt; der Kalender nutzt einen Teil des
+  Rands, damit die Tagesfelder breit genug sind (390 px: 46 px).
 - Freie Zeiten als Liste/Knöpfe (≥ 44 px), belegte nicht anklickbar und nicht nur farblich
   markiert; leere Tage sagen den nächsten freien Tag.
 - **Ladefehler nie als „ausgebucht“ tarnen:** Hinweis, „Erneut versuchen“ und Telefon

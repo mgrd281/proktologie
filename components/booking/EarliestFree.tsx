@@ -8,7 +8,8 @@ import { useEffect, useState } from "react";
 
 /**
  * „Freie Termine ab Mo., 19. Oktober“ unter dem ersten Termin-Knopf der
- * Eröffnung (dunkler Grund). Nur mit echter Verfügbarkeit – im
+ * Eröffnung (dunkler Grund) und neben dem Knopf der Startkarte in der
+ * Termin-Sektion (`tone="light"`). Nur mit echter Verfügbarkeit – im
  * Wunschtermin-Modus gibt es nichts zu versprechen – und erst, wenn die
  * Seite steht: Der Abruf wartet, bis der Browser Luft hat. Die Zeile liegt
  * absolut unter dem Knopf und verschiebt nichts; ohne Antwort bleibt sie
@@ -23,7 +24,7 @@ const dateFormat = new Intl.DateTimeFormat("de-DE", {
   month: "long",
 });
 
-export function EarliestFree({ className }: { className?: string }) {
+export function EarliestFree({ className, tone = "dark" }: { className?: string; tone?: "dark" | "light" }) {
   const [date, setDate] = useState<string | null>(null);
 
   useEffect(() => {
@@ -55,8 +56,14 @@ export function EarliestFree({ className }: { className?: string }) {
   if (!date) return null;
   const [y, m, d] = date.split("-").map(Number);
   return (
-    <p className={cn("animate-step-in flex items-center gap-2.5 text-sm text-cream/85", className)}>
-      <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-accent" />
+    <p
+      className={cn(
+        "animate-step-in flex items-center gap-2.5 text-sm",
+        tone === "dark" ? "text-cream/85" : "text-ink/75",
+        className,
+      )}
+    >
+      <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", tone === "dark" ? "bg-accent" : "bg-primary")} />
       {bookingCopy.freeFrom} {dateFormat.format(new Date(y, m - 1, d))}
     </p>
   );

@@ -8,9 +8,11 @@ import { cn } from "@/lib/cn";
 import { useDarkBehind } from "@/lib/hooks/useDarkBehind";
 import { useLenis } from "@/providers/LenisProvider";
 import { Icon } from "@/components/ui/Icon";
+import { useBookingDialog } from "@/components/booking/BookingDialogProvider";
 import { ChatOffline, ChatTitle, chatCloseClass, chatHeaderClass, chatWindowClass } from "@/components/chat/frame";
 import type { ChatWindowProps } from "@/components/chat/ChatWindow";
 import { ctaHref, mobileBar } from "@/content/navigation";
+import { opensBooking } from "@/lib/booking/openers";
 
 /**
  * Der Einstieg in den Chat: ein runder Knopf unten rechts.
@@ -160,6 +162,15 @@ export function ChatWidget() {
     return () => observer.disconnect();
   }, []);
 
+  // Öffnet sich der Termin-Dialog (etwa über den Termin-Knopf im Header), geht
+  // der Chat zu – es gibt immer nur eine Ebene über der Seite.
+  const { isOpen: bookingOpen } = useBookingDialog();
+  const [bookingWasOpen, setBookingWasOpen] = useState(bookingOpen);
+  if (bookingOpen !== bookingWasOpen) {
+    setBookingWasOpen(bookingOpen);
+    if (bookingOpen) setOpen(false);
+  }
+
   const close = useCallback(() => {
     setOpen(false);
     // Fokus zurück an den Knopf, von dem aus geöffnet wurde
@@ -241,6 +252,7 @@ export function ChatWidget() {
           </a>
           <a
             href={ctaHref}
+            {...opensBooking()}
             className={cn(
               "flex h-12 items-center justify-center gap-2 rounded-full border px-4 text-sm font-semibold transition-[color,background-color,border-color] duration-300",
               bookingInView

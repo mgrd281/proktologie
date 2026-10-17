@@ -1,4 +1,4 @@
-import { BookingCard } from "@/components/booking/BookingCard";
+import { BookingLauncher } from "@/components/booking/BookingLauncher";
 import { CallbackDisclosure } from "@/components/booking/CallbackDisclosure";
 import { EmergencyLine } from "@/components/ui/EmergencyLine";
 import { Icon } from "@/components/ui/Icon";
@@ -11,11 +11,11 @@ import { site } from "@/content/site";
 
 /**
  * Termin-Sektion: links Intro + Kontakt-Alternativen (Telefon, Doctolib,
- * Standort, Akut-Hinweis, Rückruf), rechts die dominierende Booking-Karte
- * mit dem 5-Schritte-Flow. Die Karte existiert genau EINMAL im DOM
- * (keine doppelten IDs/States) – auf Mobilgeräten rückt sie per
- * Grid-Platzierung direkt hinter das Intro, auf Desktop in die rechte
- * Spalte über beide Zeilen.
+ * Standort, Akut-Hinweis, Rückruf), rechts die Startkarte der Online-Buchung.
+ * Die Buchung selbst läuft im Termin-Dialog (components/booking/dialog), den
+ * jeder Termin-Knopf der Website öffnet – die Karte hier ist einer davon.
+ * Auf Mobilgeräten rückt sie per Grid-Platzierung direkt hinter das Intro,
+ * auf Desktop in die rechte Spalte über beide Zeilen.
  */
 export function Kontakt() {
   return (
@@ -36,7 +36,7 @@ export function Kontakt() {
           delay={120}
           className="lg:col-start-2 lg:row-span-2 lg:row-start-1"
         >
-          <BookingCard />
+          <BookingLauncher />
         </Reveal>
 
         <Reveal delay={140} className="lg:col-start-1 lg:row-start-2">

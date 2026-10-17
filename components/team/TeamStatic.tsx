@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/Button";
 import { Reveal } from "@/components/ui/Reveal";
 import { TeamPhoto } from "@/components/ui/TeamPhoto";
 import { cn } from "@/lib/cn";
+import { opensBooking } from "@/lib/booking/openers";
 import {
   TEAM_IMAGE_HEIGHT,
   TEAM_IMAGE_WIDTH,
@@ -83,7 +84,7 @@ export function TeamStatic() {
       <Reveal delay={80}>
         <div className="mt-16 flex flex-col items-start gap-5 border-t border-ink/10 pt-10 sm:flex-row sm:items-center sm:justify-between">
           <p className="font-display text-2xl font-medium text-ink">{teamOutro.line}</p>
-          <Button href={teamOutro.cta.href} variant="outline" withArrow>
+          <Button href={teamOutro.cta.href} {...opensBooking(teamOutro.cta.href)} variant="outline" withArrow>
             {teamOutro.cta.label}
           </Button>
         </div>

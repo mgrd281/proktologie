@@ -19,9 +19,9 @@
 
 ```
 Website (statisch, Vercel)                    Cockpit (Next.js, Vercel fra1)           Neon Postgres
-BookingCard ─ GET status / appointment-types ─▶ /api/public/v1/*  ─ generateSlots ─────▶ appointments
-            ─ GET availability (Monat)       ─▶  (CORS-Liste,        (engine.ts)          opening_hours
-            ─ POST bookings                  ─▶   Formular-Token,  ─ insert ─────────────▶ calendar_exceptions
+Termin-Dialog ─ GET status / appointment-types ─▶ /api/public/v1/*  ─ generateSlots ─────▶ appointments
+              ─ GET availability (Monat)     ─▶  (CORS-Liste,        (engine.ts)          opening_hours
+              ─ POST bookings                ─▶   Formular-Token,  ─ insert ─────────────▶ calendar_exceptions
                                                   Ratenbegrenzung)  ─ Job: Mail + ICS ───▶ jobs → Brevo
 Praxisteam ◀───────── Cockpit-Kalender (Tag/Woche/Agenda), Anfragen, Warteliste ─────────▶ audit_log
 ```

@@ -39,8 +39,9 @@ Neue Werte nur, wenn keiner der vorhandenen passt – dann hier eintragen.
 
 ## Motion (Bibliothek)
 
-- **Wo:** nur Website, derzeit nur `components/booking/StepFrame.tsx` (Schritte der
-  Buchungskarte). Nicht im Cockpit.
+- **Wo:** nur Website: `components/booking/StepFrame.tsx` (Schritte der Buchung) und
+  `components/booking/dialog/AppointmentBookingDialog.tsx` (Termin-Dialog öffnen/schließen).
+  Nicht im Cockpit.
 - **Wie:** Import aus `framer-motion` (nicht aus `motion/react`: dessen Sammel-Import zieht die ganze
   Bibliothek in die Startseite, +45 statt +17 KB gzip); `LazyMotion` (strict) mit `m`-Komponenten,
   Funktionspaket über `lib/motionFeatures.ts` nachgeladen. Keine `motion.*`-Komponenten.
@@ -66,10 +67,11 @@ Bahn, `color`/`text-shadow` der Filmbeschriftung). Kein `filter: blur()` und kei
 | Team-Bühne / Leistungs-Korridor | `TeamStage`, `LeistungenLayer`: Tiefe über `transform` + Schleier | Schleier 0,5–0,6 s | statische Fassung | statische Fassung |
 | „Einführung überspringen“ | `MasterSequence`: Deckkraft folgt dem Frame, 1 → 0 zwischen Frame 30 und 55 (danach `visibility: hidden`) | folgt dem Scrollen | – (ruhige Fassung ohne Fahrt) | sichtbar im Startbild |
 | Einblendung beim Scrollen | `components/ui/Reveal.tsx` (IntersectionObserver, einmalig), `.reveal-init` → `.reveal-in` | 0,7 s `ease-out-soft`, Staffelung über `--reveal-delay` | nie versteckt | sichtbar (Ausblendung erst nach dem Laden) |
-| Buchungsschritte | Motion, `StepFrame`: neuer Schritt von rechts herein, alter nach links hinaus (zurück: umgekehrt); Kartenhöhe gleitet mit | 280 ms herein / 180 ms hinaus, 24 px, `ease-out-soft` | sofortiger Wechsel | erster Schritt sichtbar |
+| Termin-Dialog öffnen/schließen | Motion, `AppointmentBookingDialog`: Handy von unten (24 px) + Deckkraft, Desktop 12 px + Deckkraft; Hintergrund `deep/40` blendet ein; beim Schließen ist der Dialog `inert` | Handy 280 ms, Desktop 240 ms herein / 180 ms hinaus, `ease-out-soft` | sofort | – (Termin-Knöpfe springen zur Sektion) |
+| Buchungsschritte | Motion, `StepFrame`: neuer Schritt von rechts herein, alter nach links hinaus (zurück: umgekehrt); Höhe des Dialogs gleitet mit (Desktop) | 280 ms herein / 180 ms hinaus, 24 px, `ease-out-soft` | sofortiger Wechsel | – |
+| Fortschritt im Dialog, Häkchen beim Abschluss | `scaleX` des Balkens (`transition-transform`); `.booking-success-mark` (Deckkraft, Größe 0,6 → 1) | 300 ms / 320 ms `ease-out-soft` | sofort | – |
 | Kalendermonat, Rückruf | `.animate-step-in` | 0,3 s `ease-out-soft`, 10 px nach oben | aus | – (Buchung braucht JS) |
 | Handy-Menü | `.animate-menu-in` nur unter `prefers-reduced-motion: no-preference` | 320 ms `ease-out-soft` | keine Animation | – |
-| Buchungskarte, Schrittwechsel (nur Handy) | `BookingCard`: Lenis `scrollTo(Karte)` mit Header-Abstand, ein Bild verzögert (Scroll Anchoring) | Lenis 1,2 s | Sprung statt Fahrt | – |
 | Hover/Farbe | `transition-colors`, `duration-200/300` | kurz | aus | – |
 | Chat: „hört zu" / Sprechtaste | `animate-pulse`, `motion-safe:animate-pulse` | Tailwind-Standard | aus | – |
 

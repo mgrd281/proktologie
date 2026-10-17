@@ -17,13 +17,59 @@ export const appointmentTypes: AppointmentType[] = [
   { id: "nachsorge", label: "Nachsorge" },
 ];
 
-export const bookingSteps = [
-  { id: "type", short: "Terminart", title: "Welche Art von Termin benötigen Sie?" },
-  { id: "date", short: "Datum", title: "Wählen Sie Ihren Wunschtag" },
-  { id: "time", short: "Uhrzeit", title: "Wählen Sie Ihre Wunschzeit" },
-  { id: "details", short: "Angaben", title: "Ihre Kontaktdaten" },
+export interface BookingStep {
+  id: string;
+  /** Kurzname – Fortschritt, Vorschau in der Kamerafahrt, Startkarte */
+  short: string;
+  /** Überschrift des Schritts im Dialog */
+  title: string;
+  /** Ein Satz darunter – nur, wo er wirklich hilft */
+  description?: string;
+}
+
+export const bookingSteps: readonly BookingStep[] = [
+  {
+    id: "type",
+    short: "Terminart",
+    title: "Welchen Termin benötigen Sie?",
+    description: "Wählen Sie den passenden Grund für Ihren Besuch.",
+  },
+  { id: "date", short: "Datum", title: "Wann möchten Sie kommen?" },
+  { id: "time", short: "Uhrzeit", title: "Welche Uhrzeit passt Ihnen?" },
+  {
+    id: "details",
+    short: "Angaben",
+    title: "Fast geschafft.",
+    description: "Bitte geben Sie Ihre Kontaktdaten ein.",
+  },
   { id: "confirm", short: "Bestätigung", title: "Ihr Termin im Überblick" },
-] as const;
+];
+
+/** Der Termin-Dialog: Rahmen, Fortschritt und Fußleiste. */
+export const bookingDialog = {
+  /** Name des Dialogs im verbindlichen Modus (Cockpit) */
+  title: "Termin buchen",
+  /** Wunschtermin-Modus: Die Praxis bestätigt erst – also „anfragen“ */
+  titleRequest: "Termin anfragen",
+  stepOf: (step: number, total: number) => `Schritt ${step} von ${total}`,
+  close: "Schließen",
+  back: "Zurück",
+  next: "Weiter",
+  /** Knopf der Startkarte in der Termin-Sektion */
+  launch: "Online-Termin buchen",
+  launchRequest: "Online-Termin anfragen",
+  /** Steht neben „Weiter“, solange im Schritt noch nichts gewählt ist */
+  required: ["Bitte wählen Sie eine Terminart.", "Bitte wählen Sie einen Tag.", "Bitte wählen Sie eine Uhrzeit."],
+  loadingSlots: "Freie Zeiten werden geladen …",
+  loadingCalendar: "Kalender wird geladen …",
+  /** Übersicht: je Zeile zurück zum passenden Schritt */
+  change: "Ändern",
+  appointment: "Termin",
+  yourDetails: "Ihre Angaben",
+  name: "Name",
+  email: "E-Mail",
+  phone: "Telefon",
+} as const;
 
 export const bookingCopy = {
   cardTitle: "Online-Terminanfrage",

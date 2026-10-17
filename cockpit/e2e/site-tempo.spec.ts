@@ -130,7 +130,7 @@ test("Unterseiten scrollen nativ – das gewichtete Scrollen gibt es nur auf der
   await expect(page.locator("html")).not.toHaveClass(/(^|\s)lenis(\s|$)/);
 });
 
-test("Buchungskarte: Lädt der Kalender-Teil nicht, versucht sie es erneut – danach ehrlich mit Telefon", async ({ browser }) => {
+test("Termin-Dialog: Lädt der Kalender-Teil nicht, versucht er es erneut – danach ehrlich mit Telefon", async ({ browser }) => {
   /** Öffnet die Startseite und lässt die ersten `failures` Abrufe des Kalender-Teils scheitern. */
   const open = async (failures: number) => {
     const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
@@ -147,29 +147,35 @@ test("Buchungskarte: Lädt der Kalender-Teil nicht, versucht sie es erneut – d
       return route.fulfill({ response, body });
     });
     await page.goto(`${SITE}/#kontakt`, { waitUntil: "load" });
-    return { context, page, state, card: page.locator("[data-booking-card]") };
+    const dialog = page.getByRole("dialog", { name: /Termin (buchen|anfragen)/ });
+    await expect(async () => {
+      await page.locator("#kontakt").getByRole("link", { name: /Online-Termin/ }).click();
+      await expect(dialog).toBeVisible({ timeout: 1_500 });
+    }).toPass({ timeout: 30_000 });
+    await dialog.getByRole("button", { name: /Kontrolltermin/ }).click();
+    await dialog.getByRole("button", { name: "Weiter" }).click();
+    return { context, page, state, dialog, card: page.locator("[data-booking-card]") };
   };
   const calendar = '[role="gridcell"][data-date]:not([aria-disabled="true"])';
 
-  // Der erste Anlauf scheitert (der Browser versucht es selbst einmal nach) – die Karte holt ihn nach
+  // Der erste Anlauf scheitert (der Browser versucht es selbst einmal nach) – der Dialog holt ihn nach
   const once = await open(2);
-  await once.card.getByRole("button", { name: /Kontrolltermin/ }).click();
-  await expect(once.card.locator(calendar).first()).toBeVisible({ timeout: 20_000 });
-  await expect(once.card.getByRole("alert")).toHaveCount(0);
+  await expect(once.dialog.locator(calendar).first()).toBeVisible({ timeout: 20_000 });
+  await expect(once.dialog.getByRole("alert")).toHaveCount(0);
   expect(once.state.attempts, "ein neuer Anlauf nach dem Fehler").toBeGreaterThanOrEqual(3);
-  await expect(once.card.getByText("Online-Terminbuchung", { exact: true })).toBeVisible();
+  await expect(once.dialog).toHaveAccessibleName("Termin buchen");
   await once.context.close();
 
   // Bleibt das Netz weg: kein endloses „Kalender wird geladen …“, sondern Fehler, neuer Versuch und Telefon
   const down = await open(Number.POSITIVE_INFINITY);
-  await down.card.getByRole("button", { name: /Kontrolltermin/ }).click();
-  const alert = down.card.getByRole("alert");
+  const alert = down.dialog.getByRole("alert");
   await expect(alert).toContainText("Die freien Termine konnten gerade nicht geladen werden.", { timeout: 20_000 });
   await expect(alert.locator('a[href^="tel:"]')).toHaveCount(1);
-  await expect(down.card.getByText("Kalender wird geladen …")).toHaveCount(0);
+  await expect(down.dialog.getByText("Kalender wird geladen …")).toHaveCount(0);
   down.state.failures = 0;
   await alert.getByRole("button", { name: "Erneut versuchen" }).click();
-  await expect(down.card.locator(calendar).first()).toBeVisible({ timeout: 20_000 });
+  await expect(down.dialog.locator(calendar).first()).toBeVisible({ timeout: 20_000 });
+  await down.page.keyboard.press("Escape");
   await expect(down.card.getByText("Online-Terminbuchung", { exact: true })).toBeVisible();
   await down.context.close();
 });

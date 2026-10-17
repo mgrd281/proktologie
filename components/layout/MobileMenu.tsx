@@ -5,6 +5,7 @@ import { Icon } from "@/components/ui/Icon";
 import { LogoLockup } from "@/components/ui/Logo";
 import { OpenStatus } from "@/components/ui/OpenStatus";
 import { ctaHref, ctaLabel, navigation } from "@/content/navigation";
+import { opensBooking } from "@/lib/booking/openers";
 import { site } from "@/content/site";
 import { useEffect, useRef } from "react";
 
@@ -95,7 +96,7 @@ export function MobileMenu({ open, onClose, activeSection = null }: MobileMenuPr
       </div>
 
       <div className="mt-6 grid gap-3">
-        <Button href={ctaHref} onClick={onClose} withArrow className="w-full">
+        <Button href={ctaHref} {...opensBooking()} onClick={onClose} withArrow className="w-full">
           {ctaLabel}
         </Button>
         <Button href={site.phoneHref} variant="outline-dark" className="w-full">

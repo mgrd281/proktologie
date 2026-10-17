@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Fraunces, Inter } from "next/font/google";
+import { BookingDialogProvider } from "@/components/booking/BookingDialogProvider";
 import { ChatWidget } from "@/components/chat/ChatWidget";
 import { Footer } from "@/components/layout/Footer";
 import { Header } from "@/components/layout/Header";
@@ -65,13 +66,16 @@ export default function RootLayout({
     <html lang="de" className={`${fraunces.variable} ${inter.variable}`}>
       <body>
         <LenisProvider>
-          <SkipLink />
-          <Header />
-          <main id="main">{children}</main>
-          <Footer />
-          {/* Schwebt über allem und wird bei offenem Menü inert geschaltet
-              (siehe Header.tsx). Das Fenster selbst lädt erst beim Klick. */}
-          <ChatWidget />
+          {/* Der Termin-Dialog: Jeder Termin-Knopf öffnet ihn über der Seite */}
+          <BookingDialogProvider>
+            <SkipLink />
+            <Header />
+            <main id="main">{children}</main>
+            <Footer />
+            {/* Schwebt über allem und wird bei offenem Menü inert geschaltet
+                (siehe Header.tsx). Das Fenster selbst lädt erst beim Klick. */}
+            <ChatWidget />
+          </BookingDialogProvider>
         </LenisProvider>
       </body>
     </html>

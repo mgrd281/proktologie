@@ -1,6 +1,7 @@
 import { Icon } from "@/components/ui/Icon";
 import { praxisSection } from "@/content/sections";
 import { ctaHref, ctaLabel } from "@/content/navigation";
+import { opensBooking } from "@/lib/booking/openers";
 import { site } from "@/content/site";
 import { forwardRef } from "react";
 
@@ -46,10 +47,11 @@ export const PraxisLayer = forwardRef<HTMLDivElement>(function PraxisLayer(_, re
         </dl>
 
         <div className="mt-6 flex flex-wrap items-center gap-3 [@media(max-height:599px)]:mt-4">
-          {/* Einfache Links: Der Termin-Weg läuft über die Anker-Logik im
-              LenisProvider, die Route öffnet die Karte (wie in der Praxis-Sektion). */}
+          {/* Einfache Links: Der Termin-Knopf öffnet den Termin-Dialog (ohne
+              JavaScript: Sprung zur Sektion), die Route öffnet die Karte. */}
           <a
             href={ctaHref}
+            {...opensBooking()}
             className="inline-flex min-h-11 items-center gap-2 rounded-full bg-accent px-5 text-sm font-semibold text-deep transition-colors duration-300 hover:bg-[#76a81f]"
           >
             {ctaLabel}

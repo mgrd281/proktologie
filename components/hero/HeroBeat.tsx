@@ -1,6 +1,7 @@
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
+import { opensBooking } from "@/lib/booking/openers";
 import type { HeroBeatContent } from "@/content/hero";
 import { BeatVisual } from "@/components/hero/beats";
 
@@ -76,7 +77,7 @@ export function HeroBeat({ beat, index, active, isFirst, isLast }: HeroBeatProps
               )}
             >
               {beat.cta && (
-                <Button href={beat.cta.href} withArrow>
+                <Button href={beat.cta.href} {...opensBooking(beat.cta.href)} withArrow>
                   {beat.cta.label}
                 </Button>
               )}

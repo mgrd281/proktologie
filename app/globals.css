@@ -189,6 +189,21 @@ html.lenis body {
   animation: step-in 0.3s var(--ease-out-soft);
 }
 
+/* Abschluss der Buchung: Das Häkchen tritt ruhig hervor (Deckkraft + Größe bis 1) */
+@keyframes success-mark {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.booking-success-mark {
+  animation: success-mark 0.32s var(--ease-out-soft) 0.08s both;
+}
+
 /*
  * Team-Szene: räumliche Bühne mit sechs Porträt-Ebenen.
  *
@@ -415,6 +430,9 @@ html.lenis body {
   .reveal-init {
     opacity: 1;
     transform: none;
+  }
+  .booking-success-mark {
+    animation: none;
   }
 }
 

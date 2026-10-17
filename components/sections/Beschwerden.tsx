@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/Button";
 import { Reveal } from "@/components/ui/Reveal";
+import { opensBooking } from "@/lib/booking/openers";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import {
   beschwerden,
@@ -60,7 +61,7 @@ export function Beschwerden() {
               <p className="max-w-md text-sm leading-relaxed text-cream/85">
                 {beschwerdenCta.text}
               </p>
-              <Button href={beschwerdenCta.href} variant="outline-dark" withArrow className="shrink-0">
+              <Button href={beschwerdenCta.href} {...opensBooking(beschwerdenCta.href)} variant="outline-dark" withArrow className="shrink-0">
                 {beschwerdenCta.label}
               </Button>
             </div>

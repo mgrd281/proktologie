@@ -9,10 +9,10 @@ interface StepTypesProps {
 }
 
 /**
- * Schritt 1: Terminart – ruhige, klar wählbare Karten.
- * Bewusst schlichte Buttons (aria-pressed) statt radiogroup/radio:
- * die Auswahl springt sofort zum nächsten Schritt, ein Composite-Widget
- * mit Pfeiltasten-Navigation wäre hier ein falsches Versprechen an AT.
+ * Schritt 1: Terminart – ruhige, klar wählbare Karten. Gewählt heißt:
+ * grüner Rand, zarter Grund und ein Häkchen (nicht nur Farbe); weiter geht
+ * es mit „Weiter“ im Fuß des Dialogs. Schlichte Buttons (aria-pressed) –
+ * jede Karte ist ein eigener Tab-Halt, ohne Pfeiltasten-Widget.
  */
 export function StepTypes({ types, selected, onSelect }: StepTypesProps) {
   return (

@@ -52,6 +52,27 @@ async function kontaktState(page: Page) {
   }));
 }
 
+/** Der Termin-Dialog (Name je Modus). */
+const bookingDialog = (page: Page) => page.getByRole("dialog", { name: /Termin (buchen|anfragen)/ });
+
+/** Termin-Dialog über die Startkarte in #kontakt öffnen – mit Wiederholung, bis React hydriert ist. */
+async function openFromCard(page: Page) {
+  const dialog = bookingDialog(page);
+  await expect(page.locator("#kontakt").getByText("Online-Terminbuchung", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(async () => {
+    await page.locator("#kontakt").getByRole("link", { name: /Online-Termin buchen/ }).click();
+    await expect(dialog).toBeVisible({ timeout: 1_500 });
+  }).toPass({ timeout: 30_000 });
+  return dialog;
+}
+
+/** Scrollposition und Fokus – öffnet der Dialog, darf sich die Seite nicht bewegen. */
+const pageState = (page: Page) =>
+  page.evaluate(() => ({
+    y: Math.round(window.scrollY),
+    focusInDialog: Boolean(document.activeElement?.closest('[role="dialog"]')),
+  }));
+
 test.beforeAll(async ({ request }) => {
   await live(request);
 });
@@ -113,13 +134,76 @@ test("Handy: „Einführung überspringen“ klein und ohne Schrift, verdeckt ni
   await context.close();
 });
 
-test("Film-Knöpfe landen wie alle Anker unter dem Header und nehmen den Fokus mit", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+test("Termin-Knöpfe öffnen den Termin-Dialog – die Seite bleibt, wo sie war; Esc gibt den Fokus zurück", async ({ browser }) => {
+  // Handy: Film-Knopf oben, Leiste in der Mitte und ganz unten
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
   await page.goto(`${SITE}/`, { waitUntil: "load" });
+  const dialog = bookingDialog(page);
   const cta = page.locator(".cinema-text").first().getByRole("link").first();
   await expect(cta).toBeVisible({ timeout: 30_000 });
-  await cta.click();
-  await expect.poll(() => kontaktState(page), { timeout: 3_000 }).toEqual({ top: 64, focus: "kontakt" });
+  await expect(cta).toHaveAttribute("aria-haspopup", "dialog");
+  await expect(async () => {
+    await cta.click();
+    await expect(dialog).toBeVisible({ timeout: 1_500 });
+  }).toPass({ timeout: 30_000 });
+  expect(await pageState(page)).toEqual({ y: 0, focusInDialog: true });
+  await expect(dialog.getByRole("heading", { level: 3 })).toBeFocused();
+  // Vollbild am Handy
+  expect(await dialog.boundingBox()).toMatchObject({ x: 0, y: 0, width: 390, height: 844 });
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(cta).toBeFocused();
+  expect(new URL(page.url()).hash, "keine Adressänderung").toBe("");
+
+  const bar = page.getByRole("navigation", { name: "Schnellzugriff" }).getByRole("link", { name: "Termin" });
+  for (const where of ["mitte", "ende"]) {
+    await page.evaluate((w) => {
+      const target = w === "mitte" ? document.getElementById("faq")! : document.getElementById("site-footer")!;
+      target.scrollIntoView({ block: w === "mitte" ? "center" : "end" });
+    }, where);
+    await page.waitForTimeout(1_500);
+    const before = await pageState(page);
+    await bar.click();
+    await expect(dialog).toBeVisible();
+    expect((await pageState(page)).y, `kein Sprung (${where})`).toBe(before.y);
+    // Hinter dem Dialog ist alles stumm, die Leiste eingeschlossen
+    await expect(page.locator("#site-chat")).toHaveJSProperty("inert", true);
+    await dialog.getByRole("button", { name: "Schließen" }).click();
+    await expect(dialog).toBeHidden();
+    expect((await pageState(page)).y, `nach dem Schließen (${where})`).toBe(before.y);
+    await expect(bar).toBeFocused();
+  }
+  await context.close();
+});
+
+test("Desktop: Termin-Knopf im Header öffnet den Dialog zentriert; Klick daneben schließt", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+  const page = await context.newPage();
+  await page.goto(`${SITE}/`, { waitUntil: "load" });
+  await page.evaluate(() => document.getElementById("faq")!.scrollIntoView({ block: "center" }));
+  await page.waitForTimeout(1_500);
+  const before = await pageState(page);
+  const width = await page.evaluate(() => document.documentElement.clientWidth);
+  const cta = page.locator("#site-header").getByRole("link", { name: "Termin vereinbaren" });
+  const dialog = bookingDialog(page);
+  await expect(async () => {
+    await cta.click();
+    await expect(dialog).toBeVisible({ timeout: 1_500 });
+  }).toPass({ timeout: 30_000 });
+  const box = (await dialog.boundingBox())!;
+  expect(box.width).toBe(640);
+  expect(Math.abs(box.x + box.width / 2 - width / 2)).toBeLessThan(2);
+  // Die Seite rückt nicht (Platz der Scrollleiste bleibt)
+  expect(await page.evaluate(() => document.documentElement.clientWidth)).toBe(width);
+  expect((await pageState(page)).y).toBe(before.y);
+  // Tab bleibt im Dialog
+  for (let i = 0; i < 12; i++) await page.keyboard.press("Tab");
+  expect((await pageState(page)).focusInDialog).toBe(true);
+  await page.mouse.click(40, 700);
+  await expect(dialog).toBeHidden();
+  await expect(cta).toBeFocused();
+  await context.close();
 });
 
 test("Tastatur: zweiter Sprunglink führt direkt zur Terminbuchung", async ({ page }) => {
@@ -160,6 +244,14 @@ test("Handy-Menü: Termin und Telefon stehen oben, das Menü scrollt", async ({ 
   await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height * 0.7);
   await page.mouse.wheel(0, 400);
   await expect.poll(() => menu.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  // Termin aus dem Menü: Menü zu, Dialog auf; nach dem Schließen Fokus am Menü-Knopf
+  await cta.click();
+  const dialog = bookingDialog(page);
+  await expect(dialog).toBeVisible();
+  await expect(menu).toBeHidden();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("button", { name: "Menü öffnen" })).toBeFocused();
   await context.close();
 });
 
@@ -188,23 +280,23 @@ test("Kalender: Ladefehler steht als Fehler da – mit „Erneut versuchen“ un
   let fail = false;
   await page.route("**/api/public/v1/availability**", (route) => (fail ? route.abort("failed") : route.continue()));
   await page.goto(`${SITE}/#kontakt`, { waitUntil: "load" });
-  const card = page.locator("#kontakt");
-  await expect(card.getByText("Online-Terminbuchung", { exact: true })).toBeVisible({ timeout: 30_000 });
   fail = true;
-  await card.getByRole("button", { name: /Kontrolltermin/ }).click();
-  const alert = card.getByRole("alert");
+  const dialog = await openFromCard(page);
+  await dialog.getByRole("button", { name: /Kontrolltermin/ }).click();
+  await dialog.getByRole("button", { name: "Weiter" }).click();
+  const alert = dialog.getByRole("alert");
   await expect(alert).toContainText("Die freien Termine konnten gerade nicht geladen werden.");
   await expect(alert.locator('a[href^="tel:"]')).toHaveCount(1);
   fail = false;
   await alert.getByRole("button", { name: "Erneut versuchen" }).click();
-  await expect(card.locator('[role="gridcell"][data-date]:not([aria-disabled="true"])').first()).toBeVisible();
+  await expect(dialog.locator('[role="gridcell"][data-date]:not([aria-disabled="true"])').first()).toBeVisible();
 });
 
 test("Kalender: Blättern nur, wo es etwas zu buchen gibt", async ({ page }) => {
   await page.goto(`${SITE}/#kontakt`, { waitUntil: "load" });
-  const card = page.locator("#kontakt");
-  await expect(card.getByText("Online-Terminbuchung", { exact: true })).toBeVisible({ timeout: 30_000 });
+  const card = await openFromCard(page);
   await card.getByRole("button", { name: /Kontrolltermin/ }).click();
+  await card.getByRole("button", { name: "Weiter" }).click();
   await expect(card.locator('[role="grid"]:not([aria-busy])')).toBeVisible();
   // Der Kalender öffnet im Monat des frühesten freien Tages – zurück bis zum heutigen
   const prev = card.getByRole("button", { name: "Vorheriger Monat" });
@@ -222,7 +314,7 @@ test("Kalender: Blättern nur, wo es etwas zu buchen gibt", async ({ page }) => 
   await expect(next).toHaveAttribute("aria-disabled", "true");
 });
 
-test("Frühester freier Tag: Zeile in der Fahrt, Kalender im richtigen Monat, ein Tipp zu den Zeiten", async ({ page, request }) => {
+test("Frühester freier Tag: Zeile in der Fahrt und an der Startkarte, Kalender im richtigen Monat", async ({ page, request }) => {
   const r = await request.get("/api/public/v1/availability?type=unklar");
   const first = ((await r.json()) as { days: Array<{ date: string; slots: string[] }> }).days.find((d) => d.slots.length > 0);
   expect(first, "ein freier Tag in den nächsten Wochen").toBeTruthy();
@@ -230,40 +322,95 @@ test("Frühester freier Tag: Zeile in der Fahrt, Kalender im richtigen Monat, ei
   await page.goto(`${SITE}/`, { waitUntil: "load" });
   await expect(page.locator(".cinema-text").first().getByText(`Freie Termine ab ${shortDay(first!.date)}`)).toBeVisible({ timeout: 30_000 });
 
-  const card = page.locator("[data-booking-card]");
   await page.getByRole("link", { name: /Einführung überspringen/ }).click();
+  await expect(page.locator("[data-booking-card]").getByText(`Freie Termine ab ${shortDay(first!.date)}`)).toBeVisible();
+  const card = await openFromCard(page);
+  // Kein Schritt springt von selbst: erst wählen, dann „Weiter“
   await card.getByRole("button", { name: /Beschwerden \/ unklar/ }).click();
+  await expect(card.getByRole("heading", { name: /Welchen Termin benötigen Sie/ })).toBeVisible();
+  await card.getByRole("button", { name: "Weiter" }).click();
   const earliest = card.getByRole("button", { name: `Frühester freier Tag: ${shortDay(first!.date)}` });
   await expect(earliest).toBeVisible({ timeout: 20_000 });
   const month = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", month: "long", year: "numeric" }).format(new Date(`${first!.date}T12:00:00Z`));
   await expect(card.locator('p[aria-live="polite"]')).toHaveText(month);
   await earliest.click();
+  await card.getByRole("button", { name: "Weiter" }).click();
   await expect(card.locator("button[data-slot]").first()).toBeVisible({ timeout: 20_000 });
   await expect(card.getByText(/Freie Zeiten am/)).toContainText(String(Number(first!.date.slice(8, 10))));
 });
 
-test("Zurück-Geste: ein Schritt zurück statt weg von der Seite – Eingaben bleiben", async ({ browser }) => {
+test("Zurück-Geste: ein Schritt zurück statt weg von der Seite – Eingaben bleiben, auch nach dem Schließen", async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: "reduce" });
   const page = await context.newPage();
   await page.goto(`${SITE}/#kontakt`, { waitUntil: "load" });
-  const card = page.locator("[data-booking-card]");
-  await expect(card.getByText("Online-Terminbuchung", { exact: true })).toBeVisible({ timeout: 30_000 });
+  const card = await openFromCard(page);
+  const weiter = card.getByRole("button", { name: "Weiter" });
+  // Ohne Wahl erklärt „Weiter“, was fehlt
+  await weiter.click({ force: true });
+  await expect(card.getByRole("status").filter({ hasText: "Bitte wählen Sie eine Terminart." })).toBeVisible();
   await card.getByRole("button", { name: /Kontrolltermin/ }).click();
+  await weiter.click();
   await card.getByRole("button", { name: /Frühester freier Tag/ }).click();
+  await weiter.click();
   await card.locator("button[data-slot]").first().click();
+  await weiter.click();
   await card.getByLabel(/Vorname/).fill("Greta");
   await page.goBack();
-  await expect(card.getByRole("heading", { name: "Wählen Sie Ihre Wunschzeit" })).toBeVisible();
+  await expect(card.getByRole("heading", { name: /Welche Uhrzeit passt Ihnen/ })).toBeVisible();
   await page.goBack();
-  await expect(card.getByRole("heading", { name: "Wählen Sie Ihren Wunschtag" })).toBeVisible();
+  await expect(card.getByRole("heading", { name: /Wann möchten Sie kommen/ })).toBeVisible();
   expect(new URL(page.url()).pathname, "noch auf der Startseite").toBe("/");
-  await card.getByRole("button", { name: /Frühester freier Tag/ }).click();
-  await card.locator("button[data-slot]").first().click();
+  await weiter.click();
+  await weiter.click();
   await expect(card.getByLabel(/Vorname/)).toHaveValue("Greta");
+  // Schließen verliert nichts: Wieder geöffnet steht der Dialog am selben Schritt
+  await card.getByRole("button", { name: "Schließen" }).click();
+  await expect(card).toBeHidden();
+  await page.getByRole("navigation", { name: "Schnellzugriff" }).getByRole("link", { name: "Termin" }).click();
+  await expect(card.getByLabel(/Vorname/)).toHaveValue("Greta");
+  // Zurück bis zum ersten Schritt – dann schließt Zurück den Dialog, die Seite bleibt
+  const y = await page.evaluate(() => Math.round(scrollY));
+  for (const heading of [/Uhrzeit passt/, /Wann möchten/, /Welchen Termin/]) {
+    await page.goBack();
+    await expect(card.getByRole("heading", { name: heading })).toBeVisible();
+  }
+  await page.goBack();
+  await expect(card).toBeHidden();
+  expect(new URL(page.url()).pathname).toBe("/");
+  expect(await page.evaluate(() => Math.round(scrollY))).toBe(y);
   await context.close();
 });
 
-test("Gebucht: Tag, Zeit, Adresse – „In den Kalender“ mit der Kennung der Mail-Einladung", async ({ browser, request }) => {
+test("Handy-Tastatur: Der Fuß mit „Weiter“ bleibt über der Tastatur", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: "reduce" });
+  const page = await context.newPage();
+  // Die Tastatur gibt es im Testbrowser nicht – also den sichtbaren Bereich (visualViewport) stellen
+  await page.addInitScript(() => {
+    const fake = new EventTarget() as EventTarget & { height: number; width: number; offsetTop: number; offsetLeft: number; scale: number; pageTop: number; pageLeft: number };
+    Object.assign(fake, { height: window.innerHeight, width: window.innerWidth, offsetTop: 0, offsetLeft: 0, scale: 1, pageTop: 0, pageLeft: 0 });
+    Object.defineProperty(window, "visualViewport", { value: fake, configurable: true });
+    (window as unknown as { __keyboard: (h: number) => void }).__keyboard = (h: number) => {
+      fake.height = window.innerHeight - h;
+      fake.dispatchEvent(new Event("resize"));
+    };
+  });
+  await page.goto(`${SITE}/#kontakt`, { waitUntil: "load" });
+  const card = await openFromCard(page);
+  await card.getByRole("button", { name: /Kontrolltermin/ }).click();
+  const weiter = card.getByRole("button", { name: "Weiter" });
+  await weiter.click();
+  await card.getByRole("button", { name: /Frühester freier Tag/ }).click();
+  await weiter.click();
+  await card.locator("button[data-slot]").first().click();
+  await weiter.click();
+  await card.getByLabel(/Telefon/).focus();
+  await page.evaluate(() => (window as unknown as { __keyboard: (h: number) => void }).__keyboard(330));
+  await expect.poll(async () => Math.round((await weiter.boundingBox())!.y + (await weiter.boundingBox())!.height)).toBeLessThanOrEqual(844 - 330);
+  await expect(card.getByLabel(/Telefon/)).toBeInViewport();
+  await context.close();
+});
+
+test("Gebucht: Tag, Zeit, Adresse – „In den Kalender“ mit der Kennung der Mail-Einladung, „Anfahrt“ zur Praxis", async ({ browser, request }) => {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: "reduce", acceptDownloads: true });
   const page = await context.newPage();
   // Langsame Antwort: „Wird gebucht …“ steht da, ein zweiter Klick bucht nicht noch einmal
@@ -274,41 +421,90 @@ test("Gebucht: Tag, Zeit, Adresse – „In den Kalender“ mit der Kennung der 
     await route.continue();
   });
   await page.goto(`${SITE}/#kontakt`, { waitUntil: "load" });
-  const card = page.locator("[data-booking-card]");
-  await expect(card.getByText("Online-Terminbuchung", { exact: true })).toBeVisible({ timeout: 30_000 });
+  const card = await openFromCard(page);
+  const weiter = card.getByRole("button", { name: "Weiter" });
   await card.getByRole("button", { name: /Kontrolltermin/ }).click();
+  await weiter.click();
   await card.getByRole("button", { name: /Frühester freier Tag/ }).click();
+  await weiter.click();
   const slot = card.locator("button[data-slot]").last();
   const time = (await slot.getAttribute("data-slot"))!;
   await slot.click();
+  await weiter.click();
   const email = "kalender.test@example.invalid";
   await card.getByLabel(/Vorname/).fill("Karla");
   await card.getByLabel(/Nachname/).fill("Kalender");
   await card.getByLabel(/E-Mail/).fill(email);
   await card.getByLabel(/Telefon/).fill("040 000 0002");
   await card.getByRole("checkbox").check();
-  await card.getByRole("button", { name: /Weiter zur Übersicht/ }).click();
+  await weiter.click();
+  await expect(card.getByText(`${time} Uhr`)).toBeVisible();
+  await expect(card.getByText(email)).toBeVisible();
   await card.getByRole("button", { name: /Termin verbindlich buchen/ }).click();
   const busy = card.getByRole("button", { name: "Wird gebucht …" });
   await expect(busy).toHaveAttribute("aria-disabled", "true");
   await busy.click({ force: true });
   await expect(card.getByText(/Termin verbindlich gebucht/)).toBeVisible({ timeout: 30_000 });
+  await expect(card.getByRole("heading", { name: /Termin verbindlich gebucht/ })).toBeFocused();
   expect(posts, "nur eine Buchung").toBe(1);
   await expect(card.getByText(`${time} Uhr`)).toBeVisible();
   await expect(card.getByText("Schäferkampsallee 56, 20357 Hamburg")).toBeVisible();
-  await expect(card.getByRole("link", { name: "Anfahrt" })).toHaveAttribute("href", "#praxis");
   const [download] = await Promise.all([page.waitForEvent("download"), card.getByRole("button", { name: "In den Kalender" }).click()]);
   const ics = readFileSync((await download.path())!, "utf8");
   expect(ics).toContain("SUMMARY:Termin · Proktologie Eimsbüttel");
   expect(ics).toMatch(new RegExp(`DTSTART;TZID=Europe/Berlin:\\d{8}T${time.replace(":", "")}00`));
   const uid = ics.match(/^UID:(.+)$/m)?.[1]?.trim();
   expect(uid).toBeTruthy();
+  // „Anfahrt“: Dialog zu, die Praxis-Sektion im Bild und im Fokus
+  await card.getByRole("button", { name: "Anfahrt" }).click();
+  await expect(card).toBeHidden();
+  await expect(page.locator("#praxis")).toBeFocused();
+  await expect(page.locator("#praxis")).toBeInViewport();
   await context.close();
 
   await tick(request);
   const invite = outbox().filter((m) => m.to === email).at(-1)?.attachments?.find((a) => a.filename === "termin.ics");
   expect(invite, "Einladung in der Bestätigungs-Mail").toBeTruthy();
   expect(invite!.content).toContain(`UID:${uid}`);
+});
+
+test("Zeit gerade vergeben: zurück zu frischen Zeiten desselben Tages, die Angaben bleiben", async ({ page }) => {
+  await page.route("**/api/public/v1/bookings", (route) =>
+    route.fulfill({
+      status: 409,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "http://localhost:3000" },
+      body: JSON.stringify({ error: { code: "slot_taken", message: "Diese Zeit wurde gerade vergeben. Bitte wählen Sie eine andere." } }),
+    }),
+  );
+  await page.goto(`${SITE}/#kontakt`, { waitUntil: "load" });
+  const card = await openFromCard(page);
+  const weiter = card.getByRole("button", { name: "Weiter" });
+  await card.getByRole("button", { name: /Kontrolltermin/ }).click();
+  await weiter.click();
+  await card.getByRole("button", { name: /Frühester freier Tag/ }).click();
+  await weiter.click();
+  await card.locator("button[data-slot]").first().click();
+  await weiter.click();
+  await card.getByLabel(/Vorname/).fill("Vera");
+  await card.getByLabel(/Nachname/).fill("Vergeben");
+  await card.getByLabel(/E-Mail/).fill("vera@example.invalid");
+  await card.getByLabel(/Telefon/).fill("040 000 0003");
+  await card.getByRole("checkbox").check();
+  await weiter.click();
+  await card.getByRole("button", { name: /Termin verbindlich buchen/ }).click();
+  const alert = card.getByRole("alert");
+  await expect(alert).toContainText("Diese Zeit wurde gerade vergeben");
+  let reloaded = false;
+  page.on("request", (r) => r.url().includes("/api/public/v1/availability") && (reloaded = true));
+  await alert.getByRole("button", { name: "Andere Zeit wählen" }).click();
+  await expect(card.getByRole("heading", { name: /Welche Uhrzeit passt Ihnen/ })).toBeVisible();
+  await expect(card.locator("button[data-slot]").first()).toBeVisible();
+  expect(reloaded, "Zeiten frisch geladen").toBe(true);
+  await expect(card.locator('button[data-slot][aria-pressed="true"]')).toHaveCount(0);
+  await card.locator("button[data-slot]").first().click();
+  await weiter.click();
+  await expect(card.getByLabel(/Vorname/)).toHaveValue("Vera");
 });
 
 test("Rückruf landet im Posteingang des Cockpits – mit Referenz und Hinweis an die Praxis", async ({ page, request }) => {

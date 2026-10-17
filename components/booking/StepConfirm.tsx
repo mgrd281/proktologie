@@ -1,23 +1,23 @@
-import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
-import { appointmentTypes, bookingCopy } from "@/content/booking";
+import { appointmentTypes, bookingCopy, bookingDialog } from "@/content/booking";
 import { site } from "@/content/site";
 import type { BookingDraft, BookingProviderMode } from "@/lib/booking/types";
 
 /**
- * Schritt 5: Übersicht + Abschluss.
- * Im „request"-Modus heißt der Primär-CTA ehrlich „Terminanfrage senden";
- * erst ein Provider mit mode="confirmed" schaltet auf
- * „Termin verbindlich buchen" um. Daneben immer der offizielle
- * Doctolib-Weg für sofort verbindliche Buchungen.
+ * Schritt 5: Übersicht vor dem Abschicken. Jede Angabe lässt sich mit
+ * „Ändern“ im passenden Schritt korrigieren – alles andere bleibt stehen.
+ * Der Absende-Knopf steht im Fuß des Dialogs: im „request“-Modus ehrlich
+ * „Terminanfrage senden“, erst mit mode="confirmed" „Termin verbindlich buchen“.
+ * Daneben (nur im Anfrage-Modus) der offizielle Doctolib-Weg.
  */
 
 interface StepConfirmProps {
   draft: BookingDraft;
   mode: BookingProviderMode;
-  sending: boolean;
-  onSubmit: () => void;
-  onChange: () => void;
+  /** Zum Schritt springen (0 Terminart, 1 Tag, 2 Uhrzeit, 3 Angaben) */
+  onEdit: (step: number) => void;
+  /** Während gebucht wird, ändert niemand etwas */
+  locked: boolean;
 }
 
 const dateFormat = new Intl.DateTimeFormat("de-DE", {
@@ -27,85 +27,88 @@ const dateFormat = new Intl.DateTimeFormat("de-DE", {
   year: "numeric",
 });
 
-export function StepConfirm({
-  draft,
-  mode,
-  sending,
-  onSubmit,
-  onChange,
-}: StepConfirmProps) {
+interface Row {
+  label: string;
+  value: string;
+  /** Schritt für „Ändern“ – fehlt bei festen Angaben (Praxis, Behandler) */
+  step?: number;
+}
+
+function Rows({ rows, onEdit, locked }: { rows: Row[]; onEdit: (step: number) => void; locked: boolean }) {
+  return (
+    <dl className="divide-y divide-ink/8 rounded-xl border border-ink/10 bg-mist/40 px-4 md:px-5">
+      {rows.map((row) => (
+        // dt/dd direkt in der Zeile (gültige Beschreibungsliste); „Ändern“ als zweites dd
+        <div key={row.label} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-2.5">
+          <dt className="col-start-1 text-xs font-medium tracking-wide text-ink/70 uppercase">{row.label}</dt>
+          <dd className="col-start-1 mt-0.5 text-sm font-medium break-words text-ink">{row.value}</dd>
+          {row.step !== undefined && (
+            <dd className="col-start-2 row-span-2 row-start-1">
+              <button
+                type="button"
+                onClick={() => !locked && onEdit(row.step!)}
+                aria-disabled={locked || undefined}
+                // „Uhrzeit ändern“ – der sichtbare Text steckt im Namen (WCAG 2.5.3)
+                aria-label={`${row.label} ${bookingDialog.change.toLowerCase()}`}
+                className="-mr-2 inline-flex min-h-11 items-center rounded-full px-3 text-sm font-medium text-primary-deep underline-offset-4 hover:underline aria-disabled:cursor-progress aria-disabled:opacity-50"
+              >
+                {bookingDialog.change}
+              </button>
+            </dd>
+          )}
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+export function StepConfirm({ draft, mode, onEdit, locked }: StepConfirmProps) {
   const copy = bookingCopy.confirm;
   const type = appointmentTypes.find((t) => t.id === draft.typeId);
   const [y, m, d] = (draft.date ?? "").split("-").map(Number);
   const dateLabel = draft.date ? dateFormat.format(new Date(y, m - 1, d)) : "–";
 
-  const rows: [string, string][] = [
-    ["Terminart", type?.label ?? "–"],
-    ["Datum", dateLabel],
-    ["Uhrzeit", draft.time ? `${draft.time} Uhr` : "–"],
-    [copy.practice, site.name],
-    [copy.doctor, site.doctor],
+  const appointment: Row[] = [
+    { label: "Terminart", value: type?.label ?? "–", step: 0 },
+    { label: "Datum", value: dateLabel, step: 1 },
+    { label: "Uhrzeit", value: draft.time ? `${draft.time} Uhr` : "–", step: 2 },
+  ];
+  const details: Row[] = [
+    { label: bookingDialog.name, value: `${draft.firstName} ${draft.lastName}`.trim() || "–", step: 3 },
+    { label: bookingDialog.email, value: draft.email.trim() || "–", step: 3 },
+    { label: bookingDialog.phone, value: draft.phone.trim() || "–", step: 3 },
   ];
 
   return (
-    <div>
-      <p className="flex items-center gap-2.5 text-sm font-medium text-primary-deep">
-        <Icon name="check" size={16} />
-        {copy.heading}
+    <div className="space-y-5">
+      <section aria-label={bookingDialog.appointment}>
+        <Rows rows={appointment} onEdit={onEdit} locked={locked} />
+      </section>
+
+      <section aria-labelledby="booking-confirm-details">
+        <h4 id="booking-confirm-details" className="mb-2 text-sm font-medium text-ink">
+          {bookingDialog.yourDetails}
+        </h4>
+        <Rows rows={details} onEdit={onEdit} locked={locked} />
+      </section>
+
+      <p className="flex items-start gap-3 text-sm leading-relaxed text-ink/75">
+        <Icon name="pin" size={16} className="mt-0.5 shrink-0 text-primary-deep" />
+        <span>
+          {site.name} · {site.doctor}
+          <br />
+          {site.address.street}, {site.address.zip} {site.address.city}
+        </span>
       </p>
 
-      <dl className="mt-5 divide-y divide-ink/8 rounded-xl border border-ink/10 bg-mist/40 px-5">
-        {rows.map(([label, value]) => (
-          <div key={label} className="flex items-baseline justify-between gap-6 py-3">
-            <dt className="text-xs font-medium tracking-wide text-ink/70 uppercase">
-              {label}
-            </dt>
-            <dd className="text-right text-sm font-medium text-ink">{value}</dd>
-          </div>
-        ))}
-      </dl>
-
-      {mode === "request" && (
-        <p className="mt-4 text-xs leading-relaxed text-ink/70">
-          {copy.requestHint}
-        </p>
-      )}
-      {mode === "confirmed" && (
-        <p className="mt-4 text-xs leading-relaxed text-ink/70">
-          {copy.confirmedHint}
-        </p>
-      )}
-
-      <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-        {/* „Wird gebucht …“: Der Knopf bleibt stehen und gleich breit, der Fokus
-            auch; ein Doppelklick bucht nicht zweimal. */}
-        <Button
-          type="button"
-          withArrow
-          loading={sending}
-          loadingLabel={mode === "confirmed" ? copy.sendingConfirmed : copy.sendingRequest}
-          onClick={onSubmit}
-          className="w-full sm:w-auto"
-        >
-          {mode === "confirmed" ? copy.submitConfirmed : copy.submitRequest}
-        </Button>
-        <button
-          type="button"
-          onClick={() => !sending && onChange()}
-          aria-disabled={sending || undefined}
-          className="min-h-11 text-sm font-medium text-ink/70 underline-offset-4 hover:text-ink hover:underline aria-disabled:cursor-progress aria-disabled:opacity-50 aria-disabled:hover:no-underline"
-        >
-          {copy.change}
-        </button>
-      </div>
-      <p role="status" className="sr-only">
-        {sending ? (mode === "confirmed" ? copy.sendingConfirmed : copy.sendingRequest) : ""}
+      <p className="text-xs leading-relaxed text-ink/70">
+        {mode === "confirmed" ? copy.confirmedHint : copy.requestHint}
       </p>
 
       {/* Doctolib-Alternative nur, wenn die echte Profil-URL konfiguriert ist –
           und nicht im verbindlichen Modus, in dem die Website selbst verbindlich bucht */}
       {mode !== "confirmed" && site.doctolibConfigured && (
-        <div className="mt-6 flex flex-col gap-2 border-t border-ink/8 pt-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 border-t border-ink/8 pt-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-ink/70">{copy.doctolibAlt}</p>
           <a
             href={site.doctolibUrl}

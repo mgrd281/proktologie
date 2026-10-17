@@ -3,6 +3,7 @@ import { EarliestFree } from "@/components/booking/EarliestFree";
 import { HeroMobileMedia } from "@/components/hero/HeroMobileMedia";
 import { Icon } from "@/components/ui/Icon";
 import { heroBeats } from "@/content/hero";
+import { opensBooking } from "@/lib/booking/openers";
 
 /**
  * Statische Hero-Variante: Mobile/Tablet sowie alle Viewports bei
@@ -44,7 +45,7 @@ export function HeroStatic() {
             </p>
             {welcome.cta && (
               <div className="relative mt-8">
-                <Button href={welcome.cta.href} withArrow>
+                <Button href={welcome.cta.href} {...opensBooking(welcome.cta.href)} withArrow>
                   {welcome.cta.label}
                 </Button>
                 {/* Absolut darunter: erscheint sie nach dem Laden, rückt nichts */}
@@ -62,6 +63,7 @@ export function HeroStatic() {
               <li key={teaser.href} className="bg-deep">
                 <a
                   href={teaser.href}
+                  {...opensBooking(teaser.href)}
                   className="group flex h-full flex-col gap-1 p-5 transition-colors hover:bg-white/5"
                 >
                   <span className="flex items-center justify-between text-sm font-medium text-white">

@@ -1,5 +1,6 @@
 import { Icon } from "@/components/ui/Icon";
 import { CINEMA_TERMIN } from "@/content/cinema";
+import { opensBooking } from "@/lib/booking/openers";
 import { forwardRef } from "react";
 
 /**
@@ -7,14 +8,14 @@ import { forwardRef } from "react";
  *
  * Die Fahrt endet nicht abrupt vor der Terminvereinbarung: Während sich
  * die Umgebung in Cream auflöst, steht hier bereits die Vorschau der
- * Buchung – dieselben fünf Schritte, dieselbe Kartensprache wie die echte
- * BookingCard, in die der Auslauf direkt übergibt (die Kontakt-Sektion
- * ist die ERSTE Sektion nach der Fahrt).
+ * Buchung – dieselben fünf Schritte, dieselbe Kartensprache wie die
+ * Startkarte in #kontakt, in die der Auslauf direkt übergibt (die
+ * Kontakt-Sektion ist die ERSTE Sektion nach der Fahrt).
  *
  * Wichtig: Das ist eine VORSCHAU, kein zweites Formular. Keine
  * Formularelemente, keine ids, aria-hidden – die echte, zugängliche
- * BookingCard existiert genau einmal in #kontakt. Nur der CTA-Link ist
- * echt und liegt außerhalb des aria-hidden-Teils.
+ * Buchung ist der Termin-Dialog. Nur der CTA-Link ist echt, liegt
+ * außerhalb des aria-hidden-Teils und öffnet den Dialog.
  *
  * Sichtbarkeit/Bewegung schreibt ausschließlich die MasterSequence. Im
  * DOM liegt die Ebene ÜBER dem Auslauf-Schleier: Sie verblasst nie,
@@ -49,10 +50,10 @@ export const TerminLayer = forwardRef<HTMLDivElement>(function TerminLayer(_, re
           </ol>
         </div>
 
-        {/* Einfacher Link (kein next/link): läuft über die Anker-Logik im
-            LenisProvider – Abstand unter dem Header, Fokus auf der Buchung. */}
+        {/* Öffnet den Termin-Dialog; ohne JavaScript ein einfacher Sprung zur Sektion */}
         <a
           href={CINEMA_TERMIN.cta.href}
+          {...opensBooking(CINEMA_TERMIN.cta.href)}
           className="pointer-events-auto mt-6 inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-full bg-accent px-7 text-sm font-semibold text-deep transition-colors duration-300 hover:bg-[#76a81f]"
         >
           {CINEMA_TERMIN.cta.label}

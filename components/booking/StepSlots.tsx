@@ -13,8 +13,8 @@ interface StepSlotsProps {
 
 /**
  * Schritt 3: Uhrzeit. Gewählter Slot = Klinikgrün mit Deep-Text (7:1).
- * Schlichte Buttons (aria-pressed) statt listbox/option – die Auswahl
- * springt sofort weiter, ein Composite-Widget wäre für AT irreführend.
+ * Schlichte Buttons (aria-pressed) statt listbox/option; weiter geht es mit
+ * „Weiter“ im Fuß des Dialogs.
  * Nicht verfügbare Zeiten sind nicht interaktiv, bleiben aber für
  * Screenreader lesbar („nicht verfügbar").
  *

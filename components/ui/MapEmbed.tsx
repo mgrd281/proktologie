@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/cn";
+import { opensBooking } from "@/lib/booking/openers";
 import { ctaLabel } from "@/content/navigation";
 import { praxisSection } from "@/content/sections";
 import { site } from "@/content/site";
@@ -125,7 +126,7 @@ export function MapEmbed({ className }: { className?: string }) {
             <Icon name="arrow-right" size={16} />
           </a>
         </div>
-        <Button href="/#kontakt" variant="outline-dark" withArrow className="shrink-0">
+        <Button href="/#kontakt" {...opensBooking()} variant="outline-dark" withArrow className="shrink-0">
           {ctaLabel}
         </Button>
       </div>

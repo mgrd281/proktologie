@@ -1,5 +1,6 @@
 import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/cn";
+import { opensBooking } from "@/lib/booking/openers";
 import { forwardRef, type CSSProperties, type ReactNode } from "react";
 
 /**
@@ -128,6 +129,7 @@ export const StateText = forwardRef<HTMLDivElement, StateTextProps>(
               {content.cta && (
                 <a
                   href={content.cta.href}
+                  {...opensBooking(content.cta.href)}
                   className="inline-flex min-h-12 items-center gap-3 rounded-full bg-accent px-7 text-sm font-semibold text-deep transition-colors duration-300 hover:bg-[#76a81f]"
                 >
                   {content.cta.label}

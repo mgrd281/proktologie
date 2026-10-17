@@ -1,7 +1,6 @@
 "use client";
 
 import { cn } from "@/lib/cn";
-import { Button } from "@/components/ui/Button";
 import { bookingCopy } from "@/content/booking";
 import type { BookingDraft } from "@/lib/booking/types";
 import Link from "next/link";
@@ -13,7 +12,11 @@ import { useState, type FormEvent } from "react";
  * Fokus springt aufs erste fehlerhafte Feld, Sammelmeldung in einer
  * role=alert-Region. Ist ein Feld korrigiert, verschwindet seine Meldung
  * sofort – neue Meldungen gibt es erst wieder beim Weiter-Klick. Eingaben
- * bleiben beim Vor/Zurück erhalten (Draft-State liegt in BookingCard).
+ * bleiben beim Vor/Zurück und nach dem Schließen erhalten (der Entwurf liegt
+ * in lib/booking/useBookingFlow.ts).
+ *
+ * „Weiter“ steht im Fuß des Dialogs und schickt dieses Formular ab
+ * (`form`-Attribut) – Enter in einem Feld tut dasselbe.
  */
 
 type FieldKey = "firstName" | "lastName" | "email" | "phone" | "consent";
@@ -31,12 +34,14 @@ function fieldError(key: FieldKey, draft: BookingDraft): string | undefined {
 }
 
 interface StepDetailsProps {
+  /** id des Formulars – der Weiter-Knopf im Dialog-Fuß verweist darauf */
+  formId: string;
   draft: BookingDraft;
   onChange: (patch: Partial<BookingDraft>) => void;
   onContinue: () => void;
 }
 
-export function StepDetails({ draft, onChange, onContinue }: StepDetailsProps) {
+export function StepDetails({ formId, draft, onChange, onContinue }: StepDetailsProps) {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [summary, setSummary] = useState("");
   const copy = bookingCopy.details;
@@ -116,7 +121,7 @@ export function StepDetails({ draft, onChange, onContinue }: StepDetailsProps) {
   );
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="relative space-y-4">
+    <form id={formId} onSubmit={handleSubmit} noValidate className="relative space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
         {field("firstName", copy.firstName, "text", "given-name", "words")}
         {field("lastName", copy.lastName, "text", "family-name", "words")}
@@ -176,12 +181,6 @@ export function StepDetails({ draft, onChange, onContinue }: StepDetailsProps) {
       <p role="alert" className={cn("text-sm font-medium text-red-800", !summary && "sr-only")}>
         {summary}
       </p>
-
-      <div className="pt-1">
-        <Button type="submit" withArrow className="w-full sm:w-auto">
-          {copy.continue}
-        </Button>
-      </div>
     </form>
   );
 }
