@@ -52,6 +52,7 @@ Bahn, `color`/`text-shadow` der Filmbeschriftung). Kein `filter: blur()` und kei
 | Einblendung beim Scrollen | `components/ui/Reveal.tsx` (IntersectionObserver, einmalig), `.reveal-init` → `.reveal-in` | 0,7 s `ease-out-soft`, Staffelung über `--reveal-delay` | nie versteckt | sichtbar (Ausblendung erst nach dem Laden) |
 | Buchungsschritte, Kalender, Rückruf | `.animate-step-in` | 0,3 s `ease-out-soft`, 10 px nach oben | aus | – (Buchung braucht JS) |
 | Handy-Menü | `.animate-menu-in` nur unter `prefers-reduced-motion: no-preference` | 320 ms `ease-out-soft` | keine Animation | – |
+| Buchungskarte, Schrittwechsel (nur Handy) | `BookingCard`: Lenis `scrollTo(Karte)` mit Header-Abstand, ein Bild verzögert (Scroll Anchoring) | Lenis 1,2 s | Sprung statt Fahrt | – |
 | Hover/Farbe | `transition-colors`, `duration-200/300` | kurz | aus | – |
 | Chat: „hört zu" / Sprechtaste | `animate-pulse`, `motion-safe:animate-pulse` | Tailwind-Standard | aus | – |
 

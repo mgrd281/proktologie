@@ -13,6 +13,8 @@ import type { BookingProvider } from "@/lib/booking/provider";
 import { createBookingProvider } from "@/lib/booking/provider";
 import type { BookingDraft, BookingSlot } from "@/lib/booking/types";
 import { site } from "@/content/site";
+import { cn } from "@/lib/cn";
+import { useLenis } from "@/providers/LenisProvider";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
@@ -58,9 +60,11 @@ export function BookingCard() {
   const [draft, setDraft] = useState<BookingDraft>(emptyDraft);
   const [slots, setSlots] = useState<BookingSlot[]>([]);
   const [send, setSend] = useState<SendState>({ kind: "idle" });
+  const cardRef = useRef<HTMLDivElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const successRef = useRef<HTMLParagraphElement>(null);
   const mounted = useRef(false);
+  const { scrollTo } = useLenis();
   // Latest-wins-Token: schützt vor veralteten Slot-Antworten, falls ein
   // Provider asynchron/netzwerkbasiert antwortet (Cockpit).
   const slotsRequest = useRef(0);
@@ -71,14 +75,27 @@ export function BookingCard() {
 
   // Fokus-Management: Schrittwechsel → Schritt-Überschrift; Abschluss →
   // Erfolgs-Überschrift. Während „sending"/„error" wird NICHT umfokussiert.
+  // Handy: Die Karte rückt jedes Mal an den Anfang, direkt unter den Header –
+  // sonst landet der neue Schritt halb verdeckt oder der Knopf unter der
+  // Aktionsleiste. Am Desktop bleibt es beim schlichten Fokus.
   useEffect(() => {
     if (!mounted.current) {
       mounted.current = true;
       return;
     }
-    if (send.kind === "done") successRef.current?.focus();
-    else if (send.kind === "idle") headingRef.current?.focus();
-  }, [step, send.kind]);
+    const target =
+      send.kind === "done" ? successRef.current : send.kind === "idle" ? headingRef.current : null;
+    if (!target) return;
+    const mobile = window.matchMedia("(max-width: 47.99rem)").matches;
+    target.focus({ preventScroll: mobile });
+    const card = cardRef.current;
+    if (!mobile || !card) return;
+    // Ein Bild warten: Wird der neue Schritt kürzer, verschiebt der Browser
+    // die Seite (Scroll Anchoring) – Lenis kennt die neue Position erst nach
+    // dem nächsten scroll-Ereignis und würde sonst zu kurz fahren.
+    const frame = requestAnimationFrame(() => scrollTo(card));
+    return () => cancelAnimationFrame(frame);
+  }, [step, send.kind, scrollTo]);
 
   const patchDraft = useCallback((patch: Partial<BookingDraft>) => {
     setDraft((d) => ({ ...d, ...patch }));
@@ -127,29 +144,54 @@ export function BookingCard() {
       )
     : "";
 
-  // Bis der Provider steht, zeigt die Karte den Wunschtermin – der ehrliche
-  // Default, und auf dem heutigen Weg gibt es so keinen Sprung beim Laden.
+  // Bis der Provider steht, gilt der Wunschtermin – der ehrliche Default.
+  // Ist die Website gegen das Cockpit gebaut, entscheidet erst dessen Antwort
+  // zwischen Anfrage und Buchung: Titel und Hinweis bleiben bis dahin
+  // unsichtbar (Platz reserviert), statt kurz das falsche Wort zu zeigen.
+  // Ohne JavaScript antwortet nie jemand – dort zeigt <noscript> sie wieder.
   const mode = provider?.mode ?? "request";
   const confirmed = mode === "confirmed";
+  const modePending = !provider && site.bookingProvider === "cockpit";
+  // Handy: Der Modus-Hinweis steht nur im ersten Schritt – danach wäre er
+  // bei jedem Schritt drei Zeilen Wiederholung vor dem eigentlichen Inhalt.
+  const noteClass = cn(
+    "mt-2.5 text-xs leading-relaxed text-ink/70",
+    modePending && "invisible",
+    step > 0 && "max-md:hidden",
+  );
 
   return (
-    <div className="rounded-2xl bg-white ring-1 ring-ink/8 shadow-[0_20px_50px_-30px_rgba(23,37,27,0.25)]">
+    <div
+      ref={cardRef}
+      className="rounded-2xl bg-white ring-1 ring-ink/8 shadow-[0_20px_50px_-30px_rgba(23,37,27,0.25)]"
+    >
       <div className="border-b border-ink/8 px-6 py-5 md:px-8">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs font-semibold tracking-[0.18em] text-primary-deep uppercase">
+        {modePending && (
+          <noscript>
+            <style>{"[data-mode-pending]{visibility:visible}"}</style>
+          </noscript>
+        )}
+        {/* Handy: Titel und Fortschritt immer untereinander – sonst wechselt die
+            Kopfzeile je nach Schrittname zwischen ein und zwei Zeilen. */}
+        <div className="flex flex-wrap items-center justify-between gap-3 max-md:flex-col max-md:items-start">
+          <p
+            data-mode-pending={modePending || undefined}
+            className={cn(
+              "text-xs font-semibold tracking-[0.18em] text-primary-deep uppercase",
+              modePending && "invisible",
+            )}
+          >
             {confirmed ? bookingCopy.cardTitleConfirmed : bookingCopy.cardTitle}
           </p>
           <BookingProgress step={step} />
         </div>
         {mode === "request" && send.kind !== "done" && (
-          <p className="mt-2.5 text-xs leading-relaxed text-ink/70">
+          <p data-mode-pending={modePending || undefined} className={noteClass}>
             {bookingCopy.requestModeNote}
           </p>
         )}
         {confirmed && send.kind !== "done" && (
-          <p className="mt-2.5 text-xs leading-relaxed text-ink/70">
-            {bookingCopy.confirmedModeNote}
-          </p>
+          <p className={noteClass}>{bookingCopy.confirmedModeNote}</p>
         )}
         {/* Die Praxis hat die Online-Buchung pausiert: ein ruhiger Satz, kein Alarm */}
         {provider?.notice && send.kind !== "done" && (
@@ -259,7 +301,7 @@ export function BookingCard() {
                     onSelect={selectDate}
                   />
                 ) : (
-                  <p className="text-sm text-ink/60">Kalender wird geladen …</p>
+                  <p className="text-sm text-ink/70">Kalender wird geladen …</p>
                 ))}
 
               {step === 2 && (

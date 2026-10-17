@@ -306,6 +306,11 @@ Symbol nicht sofort verständlich ist.
   (Kalenderdateien: `cockpit/lib/ics.ts`).
 - Ablauf in klaren Schritten (Terminart → Datum → Uhrzeit → Angaben → Bestätigung) mit
   Fortschritt „1 / 5"; Zurück jederzeit ohne Datenverlust.
+- Solange die Website nicht weiß, ob sie bucht oder nur anfragt (Antwort des Cockpits),
+  bleiben Kartentitel und Modus-Hinweis unsichtbar – nie kurz das falsche Wort zeigen.
+- **Handy:** Titel und Fortschritt stehen untereinander; der Modus-Hinweis nur im ersten
+  Schritt; bei jedem Schrittwechsel rückt die Karte direkt unter den Header; der Kalender
+  nutzt einen Teil des Kartenrands, damit die Tagesfelder breit genug sind (390 px: 46 px).
 - Freie Zeiten als Liste/Knöpfe (≥ 44 px), belegte nicht anklickbar und nicht nur farblich
   markiert; leere Tage sagen den nächsten freien Tag.
 - **Keine Gesundheitsangaben** abfragen; Notfall immer auf Telefon verweisen.

@@ -31,7 +31,7 @@ export function StepSlots({ slots, selected, dateLabel, onSelect, mode = "reques
 
   return (
     <div>
-      <p className="text-sm text-ink/60">
+      <p className="text-sm text-ink/70">
         {label} <span className="font-medium text-ink">{dateLabel}</span>
       </p>
       <div

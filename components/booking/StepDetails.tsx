@@ -58,7 +58,9 @@ export function StepDetails({ draft, onChange, onContinue }: StepDetailsProps) {
 
   const inputClasses = (key: FieldKey) =>
     cn(
-      "w-full min-h-11 rounded-xl border bg-white px-4 py-2.5 text-ink transition-colors focus:border-primary",
+      // Der globale Fokusring (app/globals.css, ohne Layer) setzt 2 px Radius
+      // und schlägt damit jede Utility – das Feld würde beim Antippen eckig.
+      "w-full min-h-11 rounded-xl border bg-white px-4 py-2.5 text-ink transition-colors focus:border-primary focus-visible:rounded-xl!",
       errors[key] ? "border-red-700" : "border-ink/12",
     );
 
@@ -101,7 +103,7 @@ export function StepDetails({ draft, onChange, onContinue }: StepDetailsProps) {
       {field("email", copy.email, "email", "email")}
       {field("phone", copy.phone, "tel", "tel")}
 
-      <p className="text-xs leading-relaxed text-ink/60">{copy.privacyNote}</p>
+      <p className="text-xs leading-relaxed text-ink/70">{copy.privacyNote}</p>
 
       <div>
         <label htmlFor="booking-consent" className="flex gap-3 text-sm leading-relaxed">

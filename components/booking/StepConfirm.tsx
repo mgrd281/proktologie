@@ -67,12 +67,12 @@ export function StepConfirm({
       </dl>
 
       {mode === "request" && (
-        <p className="mt-4 text-xs leading-relaxed text-ink/60">
+        <p className="mt-4 text-xs leading-relaxed text-ink/70">
           {copy.requestHint}
         </p>
       )}
       {mode === "confirmed" && (
-        <p className="mt-4 text-xs leading-relaxed text-ink/60">
+        <p className="mt-4 text-xs leading-relaxed text-ink/70">
           {copy.confirmedHint}
         </p>
       )}
@@ -100,7 +100,7 @@ export function StepConfirm({
           und nicht im verbindlichen Modus, in dem die Website selbst verbindlich bucht */}
       {mode !== "confirmed" && site.doctolibConfigured && (
         <div className="mt-6 flex flex-col gap-2 border-t border-ink/8 pt-5 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-ink/65">{copy.doctolibAlt}</p>
+          <p className="text-sm text-ink/70">{copy.doctolibAlt}</p>
           <a
             href={site.doctolibUrl}
             target="_blank"

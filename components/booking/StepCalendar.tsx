@@ -232,8 +232,10 @@ export function StepCalendar({ provider, typeId, selected, onSelect }: StepCalen
       : (days?.find((d) => d.selectable)?.date ?? null);
   const leadingBlanks = (new Date(view.year, view.month, 1).getDay() + 6) % 7;
 
+  // Handy: Der Kalender nutzt einen Teil des Kartenrands mit, damit die
+  // Tagesfelder trotz sieben Spalten breit genug zum Tippen werden.
   return (
-    <div>
+    <div className="max-md:-mx-4">
       <div className="flex items-center justify-between">
         <button
           type="button"
@@ -260,7 +262,7 @@ export function StepCalendar({ provider, typeId, selected, onSelect }: StepCalen
         {bookingCopy.weekdaysShort.map((weekday) => (
           <span
             key={weekday}
-            className="pb-2 text-[11px] font-medium tracking-wide text-ink/45 uppercase"
+            className="pb-2 text-[11px] font-medium tracking-wide text-ink/70 uppercase"
           >
             {weekday}
           </span>
@@ -272,7 +274,7 @@ export function StepCalendar({ provider, typeId, selected, onSelect }: StepCalen
         role="grid"
         aria-label={monthLabel}
         key={monthKey(view.year, view.month)}
-        className="animate-step-in grid grid-cols-7 gap-1"
+        className="animate-step-in grid grid-cols-7 gap-1 max-md:gap-0.5"
       >
         {/* Gültige Grid-Semantik: Zellen in Wochen-Rows (display:contents
             lässt die Zellen weiter am 7-Spalten-Grid teilnehmen). */}
