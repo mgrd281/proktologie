@@ -9,7 +9,7 @@ import { Button, IconButton } from "@/components/ui/Button";
 import { DataTable } from "@/components/ui/DataTable";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
-import { Drawer } from "@/components/ui/Overlay";
+import { Dialog, Drawer } from "@/components/ui/Overlay";
 import { useToast } from "@/components/ui/Toast";
 
 export interface UserRow {
@@ -45,6 +45,8 @@ export function UsersManager({ me, isAdmin, users, invites, openInvite }: { me: 
   const [role, setRole] = useState<Role>("empfang");
   const [link, setLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Folgenreiche Klicks (Rolle, Deaktivieren, Einladung zurückziehen) erst nach Rückfrage */
+  const [confirm, setConfirm] = useState<{ title: string; text: string; label: string; danger?: boolean; run: () => void } | null>(null);
 
   if (!isAdmin) {
     return (
@@ -123,7 +125,15 @@ export function UsersManager({ me, isAdmin, users, invites, openInvite }: { me: 
                 aria-label={`Rolle von ${u.name}`}
                 value={u.role}
                 disabled={u.id === me || pending}
-                onChange={(e) => changeRole(u, e.target.value as Role)}
+                onChange={(e) => {
+                  const next = e.target.value as Role;
+                  setConfirm({
+                    title: `Rolle von ${u.name} ändern?`,
+                    text: `Neue Rolle: ${ROLE_LABEL[next]}.${next === "admin" ? " Administration darf Konten einladen, Rollen ändern und deaktivieren." : ""}`,
+                    label: "Rolle ändern",
+                    run: () => changeRole(u, next),
+                  });
+                }}
                 className="h-8 rounded-lg border border-line bg-surface-raised px-2 text-[13px] text-text disabled:opacity-60"
               >
                 {ROLES.map((r) => (
@@ -149,7 +159,25 @@ export function UsersManager({ me, isAdmin, users, invites, openInvite }: { me: 
             cell: (u) => (
               <span className="flex items-center justify-end gap-2">
                 <span className={`text-[12px] ${u.banned ? "text-danger" : "text-text-muted"}`}>{u.banned ? "deaktiviert" : "aktiv"}</span>
-                {u.id !== me && <IconButton label={u.banned ? "Konto aktivieren" : "Konto deaktivieren"} icon={u.banned ? "refresh" : "lock"} size={30} onClick={() => toggle(u)} disabled={pending} />}
+                {u.id !== me && (
+                  <IconButton
+                    label={u.banned ? "Konto aktivieren" : "Konto deaktivieren"}
+                    icon={u.banned ? "refresh" : "lock"}
+                    size={30}
+                    disabled={pending}
+                    onClick={() =>
+                      u.banned
+                        ? toggle(u)
+                        : setConfirm({
+                            title: `${u.name} deaktivieren?`,
+                            text: "Die Person wird sofort abgemeldet und kann sich nicht mehr anmelden, bis das Konto wieder aktiviert wird.",
+                            label: "Deaktivieren",
+                            danger: true,
+                            run: () => toggle(u),
+                          })
+                    }
+                  />
+                )}
               </span>
             ),
           },
@@ -166,7 +194,25 @@ export function UsersManager({ me, isAdmin, users, invites, openInvite }: { me: 
                 <p className="truncate font-medium text-text">{i.email}</p>
                 <p className="text-[12px] text-text-muted">{ROLE_LABEL[i.role as Role] ?? i.role} · gültig bis {new Date(i.expiresAt).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</p>
               </div>
-              <IconButton label="Einladung zurückziehen" icon="trash" size={32} disabled={pending} onClick={() => start(async () => { await revokeInviteAction(i.id); router.refresh(); })} />
+              <IconButton
+                label="Einladung zurückziehen"
+                icon="trash"
+                size={32}
+                disabled={pending}
+                onClick={() =>
+                  setConfirm({
+                    title: `Einladung an ${i.email} zurückziehen?`,
+                    text: "Der Einladungslink funktioniert danach nicht mehr.",
+                    label: "Zurückziehen",
+                    danger: true,
+                    run: () =>
+                      start(async () => {
+                        await revokeInviteAction(i.id);
+                        router.refresh();
+                      }),
+                  })
+                }
+              />
             </li>
           ))}
         </ul>
@@ -207,6 +253,20 @@ export function UsersManager({ me, isAdmin, users, invites, openInvite }: { me: 
           </div>
         )}
       </Drawer>
+      <Dialog
+        open={Boolean(confirm)}
+        onClose={() => setConfirm(null)}
+        title={confirm?.title ?? ""}
+        confirmLabel={confirm?.label}
+        danger={confirm?.danger}
+        busy={pending}
+        onConfirm={() => {
+          confirm?.run();
+          setConfirm(null);
+        }}
+      >
+        {confirm?.text}
+      </Dialog>
     </div>
   );
 }

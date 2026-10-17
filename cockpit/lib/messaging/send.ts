@@ -1,5 +1,6 @@
 import { audit } from "../audit.ts";
 import { COCKPIT_URL } from "../auth/auth.ts";
+import type { AppointmentView } from "../booking/model.ts";
 import * as repo from "../booking/repo.ts";
 import { buildIcs } from "../ics.ts";
 import { PRAXIS_WISSEN } from "../../content/praxis-wissen.ts";
@@ -28,6 +29,29 @@ export type SendOutcome = { sent: true; kindKey: string } | { sent: false; reaso
 
 export function manageUrlFor(token: string | null): string | null {
   return token ? `${COCKPIT_URL}/t/#${token}` : null;
+}
+
+/**
+ * Kalenderdatei eines Termins. Mail und Patientenseite nutzen dieselbe UID
+ * und Sequenz – Kalender-Apps führen so nur EINEN Eintrag und ziehen ihn bei
+ * Verschiebung oder Absage nach.
+ */
+export function appointmentIcs(a: AppointmentView, method: "REQUEST" | "CANCEL" | "PUBLISH", manageUrl: string | null): string {
+  return buildIcs({
+    uid: `${a.id}@proktologie-eimsbuettel.de`,
+    sequence: a.sequence,
+    method,
+    start: new Date(a.startsAt),
+    end: new Date(a.endsAt),
+    summary: `${a.typeLabel} · ${PRACTICE.name}`,
+    description: `Referenz ${a.ref}${manageUrl ? `\nTermin verwalten: ${manageUrl}` : ""}`,
+    location: PRACTICE.address,
+    organizerName: PRACTICE.name,
+    organizerEmail: process.env.EMAIL_FROM ?? PRACTICE.email,
+    // Eine Einladung richtet sich an die Person; die Datei zum Selbst-Eintragen nicht
+    attendeeEmail: method === "PUBLISH" ? undefined : a.pii.email,
+    url: manageUrl ?? undefined,
+  });
 }
 
 export async function sendAppointmentMail(kind: AppointmentMailKind, appointmentId: string, opts: SendOptions = {}): Promise<SendOutcome> {
@@ -72,22 +96,7 @@ export async function sendAppointmentMail(kind: AppointmentMailKind, appointment
 
   // Kalenderdatei: Einladung bei Bestätigung/Verschiebung/Erinnerung, Absage bei Storno; kein ICS beim bloßen Angebot
   const withIcs = kind !== "waitlist_offer";
-  const ics = withIcs
-    ? buildIcs({
-        uid: `${a.id}@proktologie-eimsbuettel.de`,
-        sequence: a.sequence,
-        method: kind === "cancellation" ? "CANCEL" : "REQUEST",
-        start: ctx.startsAt,
-        end: ctx.endsAt,
-        summary: `${a.typeLabel} · ${PRACTICE.name}`,
-        description: `Referenz ${a.ref}${ctx.manageUrl ? `\nTermin verwalten: ${ctx.manageUrl}` : ""}`,
-        location: PRACTICE.address,
-        organizerName: PRACTICE.name,
-        organizerEmail: process.env.EMAIL_FROM ?? PRACTICE.email,
-        attendeeEmail: a.pii.email,
-        url: ctx.manageUrl ?? undefined,
-      })
-    : null;
+  const ics = withIcs ? appointmentIcs(a, kind === "cancellation" ? "CANCEL" : "REQUEST", ctx.manageUrl) : null;
 
   const channel = emailChannel();
   try {

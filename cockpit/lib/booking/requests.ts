@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { asc, desc, eq, inArray } from "drizzle-orm";
+import { asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { audit } from "../audit.ts";
 import { currentKeyVersion, decryptJson, encryptJson } from "../crypto/aead.ts";
@@ -142,9 +142,24 @@ export async function listRequests(opts: { open?: boolean; limit?: number } = {}
     .select()
     .from(t.requests)
     .where(opts.open ? inArray(t.requests.status, OPEN_REQUEST_STATUSES) : undefined)
-    // Offene zuerst nach Frist, damit das Team sieht, was drängt
-    .orderBy(asc(t.requests.closedAt), asc(t.requests.slaDueAt), desc(t.requests.createdAt))
+    // Offene zuerst nach Frist, damit das Team sieht, was drängt. „nulls
+    // first“ ausdrücklich: Postgres sortiert leere Werte aufsteigend ans
+    // Ende – die offenen Anfragen (closedAt leer) fielen sonst hinter alle
+    // erledigten und ab einigen Hundert aus der Liste.
+    .orderBy(sql`${t.requests.closedAt} asc nulls first`, asc(t.requests.slaDueAt), desc(t.requests.createdAt))
     .limit(opts.limit ?? 200);
+  return rows.map(toView);
+}
+
+/** Die zuletzt erledigten Anfragen, neueste zuerst – getrennt von den offenen geladen. */
+export async function listClosedRequests(limit = 30): Promise<RequestView[]> {
+  const db = await getDb();
+  const rows = await db
+    .select()
+    .from(t.requests)
+    .where(notInArray(t.requests.status, OPEN_REQUEST_STATUSES))
+    .orderBy(sql`${t.requests.closedAt} desc nulls last`, desc(t.requests.updatedAt))
+    .limit(limit);
   return rows.map(toView);
 }
 

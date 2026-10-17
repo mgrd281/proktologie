@@ -81,7 +81,7 @@ interface Requirement {
 /** Für Server Actions: wirft ActorError. */
 export async function requireActor(req: Requirement = {}): Promise<Actor> {
   const actor = await getActor();
-  if (!actor) throw new ActorError("unauthenticated", "Bitte anmelden.");
+  if (!actor) throw new ActorError("unauthenticated", "Sie wurden abgemeldet – bitte neu anmelden.");
   if (!req.allowIncompleteSetup && !(await securityComplete(actor))) {
     throw new ActorError("setup", "Bitte zuerst die Sicherheits-Einrichtung abschließen.");
   }

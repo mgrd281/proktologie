@@ -109,6 +109,8 @@ export async function updateAppointmentAction(input: z.input<typeof updateSchema
 const statusSchema = z.object({
   id: z.string().min(1),
   status: z.enum(["booked", "confirmed", "reminded", "completed", "no_show", "cancelled"]),
+  /** Bei Absagen: Wer sagt ab? Bestimmt den ersten Satz der Absage-Mail. */
+  by: z.enum(["patient", "praxis"]).optional(),
 });
 
 export async function setStatusAction(input: z.input<typeof statusSchema>): Promise<ActionResult<AppointmentView>> {
@@ -116,9 +118,10 @@ export async function setStatusAction(input: z.input<typeof statusSchema>): Prom
     const actor = await requireActor();
     const v = statusSchema.parse(input);
     const before = await repo.getAppointment(v.id);
-    const view = await repo.setStatus(v.id, v.status, actor.id, "praxis");
+    const by = v.by ?? "praxis";
+    const view = await repo.setStatus(v.id, v.status, actor.id, by);
     if (v.status === "cancelled" && before && before.status !== "cancelled") {
-      await afterCancelled({ ...view, holdUntil: before.holdUntil }, "praxis");
+      await afterCancelled({ ...view, holdUntil: before.holdUntil }, by);
       void maybeTick();
     }
     revalidatePath("/");
@@ -151,14 +154,38 @@ const exceptionSchema = z.object({
   label: z.string().trim().max(120).optional(),
 });
 
+/** Zeitraum einer Ausnahme aus den Formularangaben (ganztägig: bis Mitternacht des letzten Tages). */
+function exceptionWindow(v: z.output<typeof exceptionSchema>) {
+  const startsAt = zonedToUtc(v.fromDate, v.allDay ? "00:00" : (v.fromTime ?? "00:00"));
+  const endsAt = v.allDay ? zonedToUtc(addDay(v.toDate), "00:00") : zonedToUtc(v.toDate, v.toTime ?? "23:59");
+  return { startsAt, endsAt };
+}
+
+/**
+ * Welche gebuchten Termine liegen im geplanten Urlaub oder Blocker? Die
+ * Ausnahme sperrt nur neue Buchungen – wer schon gebucht hat, muss vom Team
+ * informiert werden. Das Cockpit zeigt die Liste vor dem Eintragen.
+ */
+export async function exceptionConflictsAction(
+  input: z.input<typeof exceptionSchema>,
+): Promise<ActionResult<Array<{ id: string; startsAt: string; name: string }>>> {
+  return guard(async () => {
+    await requireActor();
+    const { startsAt, endsAt } = exceptionWindow(exceptionSchema.parse(input));
+    // Auch Termine, die kurz vor dem Zeitraum beginnen und hineinragen
+    const list = await repo.listAppointments(new Date(startsAt.getTime() - 4 * 3600_000), endsAt);
+    return list
+      .filter((a) => a.status === "booked" || a.status === "confirmed" || a.status === "reminded")
+      .filter((a) => new Date(a.endsAt) > startsAt && new Date(a.startsAt) < endsAt)
+      .map((a) => ({ id: a.id, startsAt: a.startsAt, name: `${a.pii.lastName}, ${a.pii.firstName}` }));
+  });
+}
+
 export async function createExceptionAction(input: z.input<typeof exceptionSchema>): Promise<ActionResult<ExceptionView>> {
   return guard(async () => {
     const actor = await requireActor();
     const v = exceptionSchema.parse(input);
-    const startsAt = zonedToUtc(v.fromDate, v.allDay ? "00:00" : (v.fromTime ?? "00:00"));
-    const endsAt = v.allDay
-      ? zonedToUtc(addDay(v.toDate), "00:00")
-      : zonedToUtc(v.toDate, v.toTime ?? "23:59");
+    const { startsAt, endsAt } = exceptionWindow(v);
     const view = await repo.createException({ kind: v.kind, startsAt, endsAt, allDay: v.allDay, label: v.label }, actor.id);
     revalidatePath("/termine");
     revalidatePath("/einstellungen/sprechzeiten");

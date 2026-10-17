@@ -1,11 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { availabilityAction, createAppointmentAction, resendConfirmationAction, setStatusAction, updateAppointmentAction } from "@/app/actions/appointments";
 import { cn } from "@/lib/cn";
 import { SOURCE_LABEL, STATUS_LABEL, type AppointmentStatus, type AppointmentView, type TypeView } from "@/lib/booking/model";
-import { dateKey, fmtLongDate, timeKey } from "@/lib/time";
+import { cancellationLead } from "@/lib/messaging/templates";
+import { dateKey, fmtLongDate, fmtShortDate, timeKey } from "@/lib/time";
 import { DemoBadge, Notice, StatusPill } from "@/components/ui/Bits";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
@@ -13,15 +14,56 @@ import { Icon } from "@/components/ui/Icon";
 import { Dialog, Drawer } from "@/components/ui/Overlay";
 import { useToast } from "@/components/ui/Toast";
 
-export type DrawerState = { mode: "new"; date: string; time?: string } | { mode: "edit"; appointment: AppointmentView } | null;
+/** Vorbelegung eines neuen Termins – etwa ein Folgetermin aus einem erledigten Besuch. */
+export interface NewPrefill {
+  typeId: string;
+  pii: { firstName: string; lastName: string; email: string | null; phone: string | null };
+}
 
-export function AppointmentDrawer({ state, types, onClose }: { state: DrawerState; types: TypeView[]; onClose: () => void }) {
+export type DrawerState =
+  | { mode: "new"; date: string; time?: string; prefill?: NewPrefill }
+  | { mode: "edit"; appointment: AppointmentView }
+  | null;
+
+/** Diese Termine liegen hinter uns oder sind abgesagt – Zeit und Art bleiben, wie sie waren. */
+const FINISHED: AppointmentStatus[] = ["completed", "no_show", "cancelled"];
+
+interface FormSnapshot {
+  typeId: string;
+  date: string;
+  time: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  note: string;
+}
+
+/** „Mo, 19.10. 09:00“ – kurz genug für die Zeile „alt → neu“. */
+const when = (date: string, time: string) => (date ? `${fmtShortDate(new Date(`${date}T12:00:00Z`))} ${time}`.trim() : time);
+
+export function AppointmentDrawer({
+  state,
+  types,
+  onClose,
+  onFollowUp,
+}: {
+  state: DrawerState;
+  types: TypeView[];
+  onClose: () => void;
+  /** Aus einem erledigten oder abgesagten Termin einen neuen, vorausgefüllten anlegen. */
+  onFollowUp?: (prefill: NewPrefill) => void;
+}) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [outsideHours, setOutsideHours] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  /** Wer sagt ab? Meist ruft die Person selbst an – das ist die Vorauswahl. */
+  const [cancelBy, setCancelBy] = useState<"patient" | "praxis">("patient");
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [initial, setInitial] = useState<FormSnapshot | null>(null);
 
   const editing = state?.mode === "edit" ? state.appointment : null;
   const [typeId, setTypeId] = useState("");
@@ -35,33 +77,53 @@ export function AppointmentDrawer({ state, types, onClose }: { state: DrawerStat
   const [source, setSource] = useState<"cockpit" | "telefon">("telefon");
   const [free, setFree] = useState<string[] | null>(null);
 
+  // Die Typliste kommt bei jeder Aktualisierung der Seite neu – zurückgesetzt
+  // wird das Formular trotzdem nur, wenn ein neues Fenster aufgeht. Vorher
+  // löschte z. B. „Bestätigung erneut senden“ alle ungespeicherten Eingaben.
+  const typesRef = useRef(types);
+  useEffect(() => {
+    typesRef.current = types;
+  });
   useEffect(() => {
     if (!state) return;
     setError(null);
     setOutsideHours(false);
     setConfirmCancel(false);
-    if (state.mode === "new") {
-      setTypeId(types[0]?.id ?? "");
-      setDate(state.date);
-      setTime(state.time ?? "");
-      setFirstName("");
-      setLastName("");
-      setEmail("");
-      setPhone("");
-      setNote("");
-      setSource("telefon");
-    } else {
-      const a = state.appointment;
-      setTypeId(a.typeId);
-      setDate(dateKey(new Date(a.startsAt)));
-      setTime(timeKey(new Date(a.startsAt)));
-      setFirstName(a.pii.firstName);
-      setLastName(a.pii.lastName);
-      setEmail(a.pii.email ?? "");
-      setPhone(a.pii.phone ?? "");
-      setNote(a.note ?? "");
-    }
-  }, [state, types]);
+    setConfirmDiscard(false);
+    setCancelBy("patient");
+    const snap: FormSnapshot =
+      state.mode === "new"
+        ? {
+            typeId: state.prefill?.typeId ?? typesRef.current[0]?.id ?? "",
+            date: state.date,
+            time: state.time ?? "",
+            firstName: state.prefill?.pii.firstName ?? "",
+            lastName: state.prefill?.pii.lastName ?? "",
+            email: state.prefill?.pii.email ?? "",
+            phone: state.prefill?.pii.phone ?? "",
+            note: "",
+          }
+        : {
+            typeId: state.appointment.typeId,
+            date: dateKey(new Date(state.appointment.startsAt)),
+            time: timeKey(new Date(state.appointment.startsAt)),
+            firstName: state.appointment.pii.firstName,
+            lastName: state.appointment.pii.lastName,
+            email: state.appointment.pii.email ?? "",
+            phone: state.appointment.pii.phone ?? "",
+            note: state.appointment.note ?? "",
+          };
+    setInitial(snap);
+    setTypeId(snap.typeId);
+    setDate(snap.date);
+    setTime(snap.time);
+    setFirstName(snap.firstName);
+    setLastName(snap.lastName);
+    setEmail(snap.email);
+    setPhone(snap.phone);
+    setNote(snap.note);
+    if (state.mode === "new") setSource("telefon");
+  }, [state]);
 
   // Freie Zeiten für die gewählte Terminart am Tag – als Vorschlagschips
   useEffect(() => {
@@ -76,6 +138,26 @@ export function AppointmentDrawer({ state, types, onClose }: { state: DrawerStat
 
   if (!state) return null;
   const type = types.find((t) => t.id === typeId);
+  const finished = editing ? FINISHED.includes(editing.status) : false;
+  const dirty = Boolean(
+    initial &&
+      (typeId !== initial.typeId ||
+        date !== initial.date ||
+        time !== initial.time ||
+        firstName !== initial.firstName ||
+        lastName !== initial.lastName ||
+        email !== initial.email ||
+        phone !== initial.phone ||
+        note !== initial.note),
+  );
+  // Verschieben ist folgenreich (E-Mail, Kalenderdatei, Warteliste) – es soll nie nebenbei passieren
+  const moving = Boolean(editing && !finished && initial && (date !== initial.date || time !== initial.time));
+  /**
+   * Esc, Klick daneben, „Schließen“: mit ungespeicherten Eingaben erst
+   * nachfragen – auch während nebenher etwas läuft (z. B. „Bestätigung erneut
+   * senden“). Nach dem Speichern schließt save() selbst, ohne diesen Weg.
+   */
+  const requestClose = () => (dirty ? setConfirmDiscard(true) : onClose());
 
   const save = () => {
     setError(null);
@@ -134,7 +216,7 @@ export function AppointmentDrawer({ state, types, onClose }: { state: DrawerStat
   const cancelNow = () => {
     if (!editing) return;
     start(async () => {
-      const r = await setStatusAction({ id: editing.id, status: "cancelled" });
+      const r = await setStatusAction({ id: editing.id, status: "cancelled", by: cancelBy });
       setConfirmCancel(false);
       if (!r.ok) {
         setError(r.error);
@@ -165,7 +247,7 @@ export function AppointmentDrawer({ state, types, onClose }: { state: DrawerStat
   return (
     <Drawer
       open
-      onClose={onClose}
+      onClose={requestClose}
       eyebrow={editing ? `${editing.ref} · ${SOURCE_LABEL[editing.source]} · angelegt ${new Date(editing.createdAt).toLocaleDateString("de-DE")}` : "Neuer Termin"}
       title={
         editing ? (
@@ -185,11 +267,12 @@ export function AppointmentDrawer({ state, types, onClose }: { state: DrawerStat
             </Button>
           )}
           <span className="flex-1" />
-          <Button variant="ghost" onClick={onClose}>
-            Abbrechen
+          {/* „Schließen“ statt „Abbrechen“: Neben „Absagen“ klang das wie eine Absage */}
+          <Button variant="ghost" onClick={requestClose}>
+            Schließen
           </Button>
-          <Button variant="primary" onClick={save} loading={pending} icon={editing ? "check" : "plus"}>
-            {editing ? "Speichern" : "Anlegen"}
+          <Button variant="primary" onClick={save} loading={pending} icon={editing ? (moving ? "calendar" : "check") : "plus"}>
+            {!editing ? (outsideHours ? "Trotzdem anlegen" : "Anlegen") : moving ? (email ? "Verschieben und benachrichtigen" : "Verschieben") : "Speichern"}
           </Button>
         </>
       }
@@ -216,6 +299,22 @@ export function AppointmentDrawer({ state, types, onClose }: { state: DrawerStat
             {!isOpen && editing.status !== "cancelled" && (
               <Button size="sm" variant="ghost" onClick={() => setStatus("confirmed")} disabled={pending}>
                 Wieder öffnen
+              </Button>
+            )}
+            {finished && onFollowUp && (
+              <Button
+                size="sm"
+                variant="secondary"
+                icon="plus"
+                disabled={pending}
+                onClick={() =>
+                  onFollowUp({
+                    typeId: editing.typeId,
+                    pii: { firstName: editing.pii.firstName, lastName: editing.pii.lastName, email: editing.pii.email ?? null, phone: editing.pii.phone ?? null },
+                  })
+                }
+              >
+                Folgetermin anlegen
               </Button>
             )}
           </div>
@@ -249,7 +348,7 @@ export function AppointmentDrawer({ state, types, onClose }: { state: DrawerStat
 
         <Field label="Terminart">
           {(id) => (
-            <Select id={id} value={typeId} onChange={(e) => setTypeId(e.target.value)}>
+            <Select id={id} value={typeId} onChange={(e) => setTypeId(e.target.value)} disabled={finished}>
               {types.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.label} · {t.durationMin} min{t.bufferMin ? ` + ${t.bufferMin} Puffer` : ""}
@@ -260,10 +359,47 @@ export function AppointmentDrawer({ state, types, onClose }: { state: DrawerStat
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Datum">{(id) => <Input id={id} type="date" value={date} onChange={(e) => setDate(e.target.value)} className="tnum" />}</Field>
-          <Field label="Uhrzeit">{(id) => <Input id={id} type="time" step={300} value={time} onChange={(e) => setTime(e.target.value)} className="tnum" />}</Field>
+          <Field label="Datum" hint={finished ? "Nicht änderbar – bitte Folgetermin anlegen" : undefined}>
+            {(id) => (
+              <Input
+                id={id}
+                type="date"
+                value={date}
+                onChange={(e) => {
+                  setDate(e.target.value);
+                  setOutsideHours(false);
+                }}
+                className="tnum"
+                disabled={finished}
+              />
+            )}
+          </Field>
+          <Field label="Uhrzeit">
+            {(id) => (
+              <Input
+                id={id}
+                type="time"
+                step={300}
+                value={time}
+                onChange={(e) => {
+                  setTime(e.target.value);
+                  setOutsideHours(false);
+                }}
+                className="tnum"
+                disabled={finished}
+              />
+            )}
+          </Field>
         </div>
 
+        {moving && initial && (
+          <Notice tone="info">
+            Verschiebung: {when(initial.date, initial.time)} → {when(date, time)}
+            {email ? " · Patient:in bekommt eine E-Mail" : ""}
+          </Notice>
+        )}
+
+        {!finished && (
         <div>
           <p className="mb-1.5 text-[12px] text-text-muted">
             {free === null ? "Freie Zeiten werden geladen …" : free.length ? `Frei am ${fmtLongDate(new Date(`${date}T12:00:00Z`))} für ${type?.label ?? "diese Terminart"}:` : "An diesem Tag ist für diese Terminart nichts frei – Sprechzeit, Blocker oder Vorlauf."}
@@ -274,7 +410,10 @@ export function AppointmentDrawer({ state, types, onClose }: { state: DrawerStat
                 <button
                   key={t}
                   type="button"
-                  onClick={() => setTime(t)}
+                  onClick={() => {
+                    setTime(t);
+                    setOutsideHours(false);
+                  }}
                   className={cn(
                     "tnum h-8 rounded-lg border px-2.5 text-[12px] font-medium transition-colors",
                     time === t ? "border-brand-fill bg-brand-fill text-deep" : "border-line text-text-muted hover:border-line-strong hover:text-text",
@@ -287,6 +426,7 @@ export function AppointmentDrawer({ state, types, onClose }: { state: DrawerStat
             </div>
           )}
         </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Vorname">{(id) => <Input id={id} autoComplete="off" value={firstName} onChange={(e) => setFirstName(e.target.value)} data-autofocus={!editing} />}</Field>
@@ -324,11 +464,45 @@ export function AppointmentDrawer({ state, types, onClose }: { state: DrawerStat
 
       {editing && (
         <Dialog open={confirmCancel} onClose={() => setConfirmCancel(false)} title="Termin absagen?" confirmLabel="Absagen" danger busy={pending} onConfirm={cancelNow}>
-          {editing.pii.lastName}, {editing.pii.firstName} · {fmtLongDate(new Date(editing.startsAt))}, {timeKey(new Date(editing.startsAt))} Uhr.{" "}
-          {editing.pii.email ? "Die Person erhält eine Absage per E-Mail; " : "Es ist keine E-Mail-Adresse hinterlegt – bitte telefonisch informieren; "}
-          der Platz wird der Warteliste angeboten.
+          <p>
+            {editing.pii.lastName}, {editing.pii.firstName} · {fmtLongDate(new Date(editing.startsAt))}, {timeKey(new Date(editing.startsAt))} Uhr.
+          </p>
+          {/* Die Mail sagt, wer abgesagt hat – früher hieß es immer „Die Praxis musste …“ */}
+          <fieldset className="mt-4">
+            <legend className="text-[13px] font-medium text-text">Wer sagt ab?</legend>
+            <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
+              {(
+                [
+                  ["patient", "Patient:in (telefonisch)"],
+                  ["praxis", "Praxis"],
+                ] as const
+              ).map(([value, label]) => (
+                <label key={value} className="flex min-h-9 cursor-pointer items-center gap-2 text-[14px] text-text">
+                  <input type="radio" name="cancel-by" value={value} checked={cancelBy === value} onChange={() => setCancelBy(value)} className="size-4 accent-[var(--brand-fill)]" />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <p className="mt-3">
+            {editing.pii.email
+              ? `Die Person erhält eine Absage per E-Mail: „${cancellationLead(cancelBy, editing.locale)}“ `
+              : "Es ist keine E-Mail-Adresse hinterlegt – bitte telefonisch informieren; "}
+            {editing.pii.email ? "Der Platz wird der Warteliste angeboten." : "der Platz wird der Warteliste angeboten."}
+          </p>
         </Dialog>
       )}
+      <Dialog
+        open={confirmDiscard}
+        onClose={() => setConfirmDiscard(false)}
+        title="Eingaben verwerfen?"
+        confirmLabel="Verwerfen"
+        danger
+        onConfirm={() => {
+          setConfirmDiscard(false);
+          onClose();
+        }}
+      />
     </Drawer>
   );
 }

@@ -332,6 +332,7 @@ function toView(
     remindedAt: a.remindedAt?.toISOString() ?? null,
     confirmedByPatientAt: a.confirmedByPatientAt?.toISOString() ?? null,
     holdUntil: a.holdUntil?.toISOString() ?? null,
+    cancelledBy: a.status === "cancelled" ? (a.cancelledBy ?? null) : null,
     sequence: a.sequence,
     hasManageLink: Boolean(a.manageTokenHash),
     createdAt: a.createdAt.toISOString(),
@@ -466,6 +467,15 @@ export async function updateAppointment(
   const db = await getDb();
   const current = await getAppointment(id);
   if (!current) throw new Error("Termin nicht gefunden");
+  // Wahrgenommen, nicht erschienen, abgesagt: Zeit und Art stehen fest. Ein
+  // Verschieben schickte sonst eine „verschoben“-Mail zu einem Besuch, der
+  // längst stattgefunden hat – dafür gibt es den Folgetermin.
+  const closed = current.status === "completed" || current.status === "no_show" || current.status === "cancelled";
+  const newStart = patch.startsAt && patch.startsAt.getTime() !== new Date(current.startsAt).getTime();
+  const newType = patch.typeId && patch.typeId !== current.typeId;
+  if (closed && (newStart || newType)) {
+    throw new Error("Erledigte oder abgesagte Termine lassen sich nicht verschieben – bitte einen Folgetermin anlegen.");
+  }
   const typeId = patch.typeId ?? current.typeId;
   const type = await getType(typeId);
   if (!type) throw new Error("Unbekannte Terminart");

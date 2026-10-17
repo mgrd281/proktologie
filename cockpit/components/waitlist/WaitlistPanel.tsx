@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { DataTable } from "@/components/ui/DataTable";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
-import { Drawer } from "@/components/ui/Overlay";
+import { Dialog, Drawer } from "@/components/ui/Overlay";
 import { useToast } from "@/components/ui/Toast";
 
 /**
@@ -185,9 +185,11 @@ function EntryDrawer({ entry, today, onClose }: { entry: WaitlistView | null; to
   const [time, setTime] = useState("");
   const [free, setFree] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmWithdraw, setConfirmWithdraw] = useState(false);
 
   useEffect(() => {
     setOffering(false);
+    setConfirmWithdraw(false);
     setError(null);
     setTime("");
     setDate(addDays(today, 1));
@@ -242,7 +244,7 @@ function EntryDrawer({ entry, today, onClose }: { entry: WaitlistView | null; to
       footer={
         <>
           {e.status === "open" && (
-            <Button variant="danger" size="sm" onClick={() => setStatus("withdrawn")} disabled={pending}>
+            <Button variant="danger" size="sm" onClick={() => setConfirmWithdraw(true)} disabled={pending}>
               Zurückziehen
             </Button>
           )}
@@ -336,6 +338,20 @@ function EntryDrawer({ entry, today, onClose }: { entry: WaitlistView | null; to
 
         {error && <Notice tone="danger">{error}</Notice>}
       </div>
+      <Dialog
+        open={confirmWithdraw}
+        onClose={() => setConfirmWithdraw(false)}
+        title="Wartelisten-Eintrag zurückziehen?"
+        confirmLabel="Zurückziehen"
+        danger
+        busy={pending}
+        onConfirm={() => {
+          setConfirmWithdraw(false);
+          setStatus("withdrawn");
+        }}
+      >
+        {e.pii.lastName}, {e.pii.firstName} bekommt danach keine Angebote mehr für frei werdende Termine.
+      </Dialog>
     </Drawer>
   );
 }

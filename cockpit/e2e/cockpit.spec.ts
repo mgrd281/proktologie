@@ -1,5 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { MAIL_OUTBOX_DIR } from "../playwright.config";
 import { totp } from "./totp";
 
 /**
@@ -226,4 +229,262 @@ test("Rückruf aus dem Chat erscheint im Posteingang und lässt sich abschließe
   await expect(page.getByText("nachmittags")).toBeVisible();
   await page.getByRole("button", { name: "Erledigt", exact: true }).click();
   await expect(page.getByRole("row").filter({ hasText: "Paula Posteingang" })).toHaveCount(0);
+});
+
+// ---------- Praxisalltag: Fehler, die Patient:innen oder Daten treffen ----------
+// Eine Anmeldung für alle folgenden Prüfungen (der zweite Faktor gilt je Zeitfenster nur einmal).
+
+let teamState: Awaited<ReturnType<BrowserContext["storageState"]>> | undefined;
+const TEAM = { email: "empfang@example.invalid", password: "Sehr-sicheres-Passwort-1" };
+
+async function e2e(request: APIRequestContext, body: Record<string, unknown>) {
+  const r = await request.post("/api/internal/e2e", { data: { secret: process.env.E2E_SECRET, ...body } });
+  expect(r.ok(), await r.text()).toBeTruthy();
+  return r.json();
+}
+
+function outbox(): Array<{ to: string; subject: string; text: string }> {
+  if (!existsSync(MAIL_OUTBOX_DIR)) return [];
+  return readdirSync(MAIL_OUTBOX_DIR)
+    .filter((f) => f.endsWith(".json"))
+    .sort()
+    .map((f) => JSON.parse(readFileSync(join(MAIL_OUTBOX_DIR, f), "utf8")));
+}
+
+/** Übernächster Werktag – weit genug weg vom Termin der ersten Prüfung. */
+function workday(): string {
+  const d = new Date();
+  let n = 0;
+  while (n < 2) {
+    d.setDate(d.getDate() + 1);
+    if (d.getDay() !== 0 && d.getDay() !== 6) n++;
+  }
+  return d.toISOString().slice(0, 10);
+}
+const DAY = workday();
+
+/** Passwort + Code aus der App; wartet aufs nächste Zeitfenster, weil jeder Code nur einmal gilt. */
+async function signIn(page: Page) {
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Mit Passwort anmelden" }).click();
+  await page.getByLabel("E-Mail-Adresse").fill(TEAM.email);
+  await page.getByLabel("Passwort").fill(TEAM.password);
+  await page.getByRole("button", { name: "Anmelden" }).click();
+  await page.waitForTimeout(31_000 - (Date.now() % 30_000));
+  await page.getByLabel("6-stelliger Code").fill(totp(totpSecret));
+  await page.getByRole("button", { name: "Bestätigen" }).click();
+}
+
+async function teamPage(browser: Browser) {
+  const context = await browser.newContext({ storageState: teamState, viewport: { width: 1366, height: 900 } });
+  return { context, page: await context.newPage() };
+}
+
+/** Termin von Hand anlegen (wie am Telefon), zur ersten freien Zeit, die das Fenster anbietet. */
+async function createByHand(page: Page, v: { first: string; last: string; email?: string }) {
+  await page.goto(`/termine?d=${DAY}`);
+  await page.getByRole("button", { name: "Neuer Termin" }).click();
+  const drawer = page.getByRole("dialog", { name: "Termin anlegen" });
+  await expect(drawer.getByLabel("Vorname", { exact: true })).toBeFocused();
+  await drawer.getByLabel("Datum", { exact: true }).fill(DAY);
+  await expect(drawer.getByText(/^Frei am /)).toBeVisible();
+  await drawer.getByRole("button", { name: /^\d\d:\d\d$/ }).first().click();
+  await drawer.getByLabel("Vorname", { exact: true }).fill(v.first);
+  await drawer.getByLabel("Nachname", { exact: true }).fill(v.last);
+  await drawer.getByLabel("Telefon", { exact: true }).fill("040 000 0000");
+  if (v.email) await drawer.getByLabel("E-Mail", { exact: true }).fill(v.email);
+  await drawer.getByRole("button", { name: /^(Trotzdem anlegen|Anlegen)$/ }).click();
+  const retry = drawer.getByRole("button", { name: "Trotzdem anlegen" });
+  if (await retry.isVisible().catch(() => false)) await retry.click();
+  await expect(page.getByText(/Termin angelegt · PE-/)).toBeVisible();
+}
+
+async function openAppointment(page: Page, name: string) {
+  await page.goto(`/termine?d=${DAY}`);
+  await page.locator("[data-appt]").filter({ hasText: name }).click();
+  const drawer = page.getByRole("dialog", { name: new RegExp(name) });
+  await expect(drawer).toBeVisible();
+  return drawer;
+}
+
+test("Team meldet sich für die Alltagsprüfungen an", async ({ browser }) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await signIn(page);
+  await expect(page.getByText(/Termine heute/)).toBeVisible({ timeout: 20_000 });
+  teamState = await context.storageState();
+  await context.close();
+});
+
+test("Posteingang: offene Anfragen bleiben sichtbar – auch nach 320 erledigten", async ({ browser, request }) => {
+  const seeded = await e2e(request, { action: "requests", closed: 320, open: ["Olga", "Oskar"] });
+  expect(seeded.closed).toBe(320);
+  const { context, page } = await teamPage(browser);
+  await page.goto("/anfragen");
+  await expect(page.getByRole("row").filter({ hasText: "Olga Offen" })).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: "Oskar Offen" })).toBeVisible();
+  await expect(page.getByText("Keine offenen Anfragen")).toHaveCount(0);
+  await context.close();
+});
+
+test("Absage fragt, wer absagt – und die Mail sagt es richtig", async ({ browser, request }) => {
+  const { context, page } = await teamPage(browser);
+  await createByHand(page, { first: "Anna", last: "Absage", email: "anna.absage@example.invalid" });
+  const drawer = await openAppointment(page, "Absage, Anna");
+  await drawer.getByRole("button", { name: "Absagen" }).click();
+  const dialog = page.getByRole("alertdialog", { name: "Termin absagen?" });
+  await expect(dialog.getByRole("radio", { name: "Patient:in (telefonisch)" })).toBeChecked();
+  await expect(dialog).toContainText("Sie haben Ihren Termin abgesagt");
+  await dialog.getByRole("radio", { name: "Praxis" }).check();
+  await expect(dialog).toContainText("Die Praxis musste Ihren Termin leider absagen");
+  await dialog.getByRole("radio", { name: "Patient:in (telefonisch)" }).check();
+  const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+  expect(axe.violations, JSON.stringify(axe.violations.map((v) => `${v.id}: ${v.nodes.length}`))).toEqual([]);
+  await dialog.getByRole("button", { name: "Absagen" }).click();
+  await expect(dialog).toBeHidden();
+  await context.close();
+
+  await e2e(request, { action: "tick" });
+  const mail = outbox().filter((m) => m.to === "anna.absage@example.invalid").find((m) => m.subject.startsWith("Termin abgesagt"));
+  expect(mail, "Absage-Mail").toBeTruthy();
+  expect(mail!.text).toContain("Sie haben Ihren Termin abgesagt");
+  expect(mail!.text).not.toContain("Die Praxis musste");
+});
+
+test("Termin-Fenster: Eingaben bleiben beim erneuten Senden, Verwerfen nur nach Rückfrage", async ({ browser }) => {
+  const { context, page } = await teamPage(browser);
+  await createByHand(page, { first: "Berta", last: "Bleibt", email: "berta.bleibt@example.invalid" });
+  const drawer = await openAppointment(page, "Bleibt, Berta");
+  const note = drawer.getByLabel("Interne Notiz");
+  await note.fill("Rückruf vor dem Termin");
+  await drawer.getByRole("button", { name: /Bestätigung (erneut )?senden/ }).click();
+  await expect(page.getByText("Bestätigung verschickt")).toBeVisible();
+  // Früher setzte die Neuberechnung nach dem Senden das Formular zurück
+  await page.waitForLoadState("networkidle");
+  await expect(note, "die Notiz überlebt das erneute Senden").toHaveValue("Rückruf vor dem Termin");
+
+  await page.keyboard.press("Escape");
+  const discard = page.getByRole("alertdialog", { name: "Eingaben verwerfen?" });
+  await expect(discard).toBeVisible();
+  await discard.getByRole("button", { name: "Abbrechen" }).click();
+  await expect(note).toHaveValue("Rückruf vor dem Termin");
+  // Der Knopf unten (oben im Kopf gibt es dasselbe als ×)
+  await drawer.getByRole("button", { name: "Schließen" }).last().click();
+  await discard.getByRole("button", { name: "Verwerfen" }).click();
+  await expect(drawer).toBeHidden();
+  await context.close();
+});
+
+test("Erledigter Termin ist nur lesbar – weiter geht es mit „Folgetermin anlegen“", async ({ browser }) => {
+  const { context, page } = await teamPage(browser);
+  await createByHand(page, { first: "Carla", last: "Fertig" });
+  await (await openAppointment(page, "Fertig, Carla")).getByRole("button", { name: "Wahrgenommen" }).click();
+  await expect(page.getByText("Carla Fertig: Wahrgenommen")).toBeVisible();
+  const drawer = await openAppointment(page, "Fertig, Carla");
+  await expect(drawer.getByLabel("Datum", { exact: true })).toBeDisabled();
+  await expect(drawer.getByLabel("Uhrzeit", { exact: true })).toBeDisabled();
+  await expect(drawer.getByText("Nicht änderbar – bitte Folgetermin anlegen")).toBeVisible();
+  await drawer.getByRole("button", { name: "Folgetermin anlegen" }).click();
+  const follow = page.getByRole("dialog", { name: "Termin anlegen" });
+  await expect(follow.getByLabel("Vorname", { exact: true })).toHaveValue("Carla");
+  await expect(follow.getByLabel("Nachname", { exact: true })).toHaveValue("Fertig");
+  await context.close();
+});
+
+test("Urlaub über gebuchte Termine: erst die Liste, dann „Trotzdem eintragen“ – Entfernen nur mit Rückfrage", async ({ browser }) => {
+  const { context, page } = await teamPage(browser);
+  await page.goto(`/termine?d=${DAY}`);
+  await page.getByRole("button", { name: "Blocker / Urlaub" }).click();
+  const drawer = page.getByRole("dialog", { name: "Blocker oder Urlaub eintragen" });
+  await drawer.getByLabel("Art").selectOption("urlaub");
+  await drawer.getByLabel("Von").fill(DAY);
+  await drawer.getByLabel("Bis", { exact: true }).first().fill(DAY);
+  await drawer.getByLabel("Bezeichnung (optional)").fill("Probeurlaub");
+  await drawer.getByRole("button", { name: "Eintragen" }).click();
+  await expect(drawer.getByText(/gebuchter? Termine? (liegt|liegen) in diesem Zeitraum/)).toBeVisible();
+  await expect(drawer.getByText(/Bleibt, Berta|Berta Bleibt/)).toBeVisible();
+  await drawer.getByRole("button", { name: "Trotzdem eintragen" }).click();
+  await expect(drawer).toBeHidden();
+
+  await page.getByRole("button", { name: /Urlaub · Probeurlaub/ }).first().click();
+  const confirm = page.getByRole("alertdialog", { name: "Urlaub · Probeurlaub entfernen?" });
+  await expect(confirm).toContainText("Die Tage werden wieder online buchbar.");
+  await confirm.getByRole("button", { name: "Entfernen" }).click();
+  await expect(page.getByText("Urlaub entfernt")).toBeVisible();
+  await context.close();
+});
+
+test("Erinnerungen: Tippfehler werden am Feld gemeldet, statt still alle abzuschalten", async ({ browser }) => {
+  const { context, page } = await teamPage(browser);
+  await page.goto("/einstellungen/demo");
+  const field = page.getByLabel("Erinnerungen (Stunden vorher)");
+  await field.fill("zwei Tage");
+  await field.blur();
+  await expect(page.getByText("Bitte Stunden als Zahlen angeben, z. B. 48, 24")).toBeVisible();
+  await page.getByRole("button", { name: "Speichern" }).click();
+  await expect(field).toBeFocused();
+  await expect(page.getByText("Einstellungen gespeichert")).toHaveCount(0);
+
+  await field.fill("48h, 24 Std.");
+  await expect(page.getByText("Bitte Stunden als Zahlen angeben, z. B. 48, 24")).toHaveCount(0);
+  await page.getByRole("button", { name: "Speichern" }).click();
+  await expect(page.getByText("Einstellungen gespeichert")).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Erinnerungen (Stunden vorher)")).toHaveValue("48, 24");
+  await context.close();
+});
+
+test("Abmeldung mit Ausweg: Hinweis vorher, danach „Neu anmelden“ im neuen Tab – die Eingaben bleiben", async ({ browser, request }) => {
+  test.setTimeout(180_000);
+  const { context, page } = await teamPage(browser);
+  await page.goto(`/termine?d=${DAY}`);
+  await page.getByRole("button", { name: "Neuer Termin" }).click();
+  const drawer = page.getByRole("dialog", { name: "Termin anlegen" });
+  await drawer.getByLabel("Vorname", { exact: true }).fill("Dora");
+  const check = () => page.evaluate(() => window.dispatchEvent(new Event("cockpit:session-check")));
+
+  // Noch vier Minuten: Hinweis mit „Angemeldet bleiben“ – bedienbar, obwohl der Drawer offen ist
+  await e2e(request, { action: "session-expires", email: TEAM.email, minutes: 4 });
+  await check();
+  await expect(page.getByText("Gleich werden Sie abgemeldet")).toBeVisible();
+  await page.getByRole("button", { name: "Angemeldet bleiben" }).click();
+  await expect(page.getByText("Gleich werden Sie abgemeldet")).toBeHidden();
+
+  // Abgelaufen: „Neu anmelden“ öffnet einen neuen Tab mit Rücksprung, hier bleibt alles stehen
+  await e2e(request, { action: "session-expires", email: TEAM.email, minutes: -1 });
+  await check();
+  await expect(page.getByText("Sie wurden abgemeldet")).toBeVisible();
+  const relogin = page.getByRole("link", { name: /Neu anmelden/ });
+  await expect(relogin).toHaveAttribute("target", "_blank");
+  await expect(relogin).toHaveAttribute("href", `/login?weiter=${encodeURIComponent(`/termine?d=${DAY}`)}`);
+  await expect(drawer.getByLabel("Vorname", { exact: true })).toHaveValue("Dora");
+  const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+  expect(axe.violations, JSON.stringify(axe.violations.map((v) => `${v.id}: ${v.nodes.length}`))).toEqual([]);
+
+  const [tab] = await Promise.all([context.waitForEvent("page"), relogin.click()]);
+  await tab.waitForLoadState();
+  await expect(tab.getByRole("button", { name: "Mit Passwort anmelden" })).toBeVisible();
+  await tab.getByRole("button", { name: "Mit Passwort anmelden" }).click();
+  await tab.getByLabel("E-Mail-Adresse").fill(TEAM.email);
+  await tab.getByLabel("Passwort").fill(TEAM.password);
+  await tab.getByRole("button", { name: "Anmelden" }).click();
+  await tab.waitForTimeout(31_000 - (Date.now() % 30_000));
+  await tab.getByLabel("6-stelliger Code").fill(totp(totpSecret));
+  await tab.getByRole("button", { name: "Bestätigen" }).click();
+  await expect(tab).toHaveURL(new RegExp(`/termine\\?d=${DAY}`), { timeout: 20_000 });
+
+  // Zurück im ersten Tab: Der Hinweis verschwindet, die Eingabe ist noch da und lässt sich speichern
+  await page.bringToFront();
+  await check();
+  await expect(page.getByText("Sie wurden abgemeldet")).toBeHidden();
+  await expect(page.getByText("Wieder angemeldet")).toBeVisible();
+  await drawer.getByLabel("Datum", { exact: true }).fill(DAY);
+  await drawer.getByRole("button", { name: /^\d\d:\d\d$/ }).first().click();
+  await drawer.getByLabel("Nachname", { exact: true }).fill("Dranbleiben");
+  await drawer.getByLabel("Telefon", { exact: true }).fill("040 000 0000");
+  await drawer.getByRole("button", { name: /^(Trotzdem anlegen|Anlegen)$/ }).click();
+  const retry = drawer.getByRole("button", { name: "Trotzdem anlegen" });
+  if (await retry.isVisible().catch(() => false)) await retry.click();
+  await expect(page.getByText(/Termin angelegt · PE-/)).toBeVisible();
+  await context.close();
 });

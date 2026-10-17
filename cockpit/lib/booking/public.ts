@@ -4,6 +4,8 @@ import { audit } from "../audit.ts";
 import { enqueue } from "../jobs/queue.ts";
 import { hit } from "../ratelimit.ts";
 import { addDays, dateKey, startOfDay, zonedToUtc } from "../time.ts";
+import { appointmentIcs, manageUrlFor } from "../messaging/send.ts";
+import { PRACTICE } from "../practice.ts";
 import { acceptOffer, afterBooked, afterCancelled, afterRescheduled } from "./lifecycle.ts";
 import type { AppointmentView, Locale, WaitlistView } from "./model.ts";
 import * as repo from "./repo.ts";
@@ -230,23 +232,43 @@ export interface ManageView {
   firstName: string;
   /** Angebot aus der Warteliste: bis wann reserviert */
   holdUntil: string | null;
+  /** Bei Absage: durch wen ("system" = Reservierung abgelaufen) */
+  cancelledBy: AppointmentView["cancelledBy"];
   confirmedByPatient: boolean;
   canConfirm: boolean;
   canCancel: boolean;
+  /** Online verschieben: nur bei laufender Online-Buchung und öffentlicher Terminart */
   canReschedule: boolean;
+  /** Verschieben ginge, aber nicht online – die Seite nennt das Telefon */
+  rescheduleByPhone: boolean;
+  /** Kalenderdatei abrufbar (verbindlicher, kommender Termin) */
+  canAddToCalendar: boolean;
   address: string;
+}
+
+export interface ManageIcs {
+  kind: "ics";
+  filename: string;
+  ics: string;
 }
 
 const manageSchema = z.object({
   token: z.string().min(20).max(200),
-  action: z.enum(["view", "confirm", "cancel", "reschedule"]),
+  action: z.enum(["view", "confirm", "cancel", "reschedule", "ics"]),
   date: z.string().regex(dateRe).optional(),
   time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
 });
 
-function toManageView(a: AppointmentView, now: Date): ManageView {
+/** Kann die Patientin den Termin selbst online verschieben? Gleiche Regeln wie die Website-Buchung. */
+async function rescheduleOnline(typeId: string): Promise<boolean> {
+  const [s, type] = await Promise.all([repo.getSettings(), repo.getType(typeId)]);
+  return s.bookingLive && !s.bookingPaused && Boolean(type?.active) && type?.visibility === "public";
+}
+
+function toManageView(a: AppointmentView, now: Date, online: boolean): ManageView {
   const upcoming = new Date(a.startsAt).getTime() > now.getTime();
   const open = a.status === "booked" || a.status === "confirmed" || a.status === "reminded";
+  const movable = open && upcoming && !a.holdUntil;
   return {
     kind: "appointment",
     ref: a.ref,
@@ -257,15 +279,18 @@ function toManageView(a: AppointmentView, now: Date): ManageView {
     status: a.status,
     firstName: a.pii.firstName,
     holdUntil: a.holdUntil,
+    cancelledBy: a.cancelledBy,
     confirmedByPatient: Boolean(a.confirmedByPatientAt),
     canConfirm: open && upcoming && a.status !== "confirmed",
     canCancel: open && upcoming,
-    canReschedule: open && upcoming && !a.holdUntil,
-    address: "Schäferkampsallee 56, 20357 Hamburg",
+    canReschedule: movable && online,
+    rescheduleByPhone: movable && !online,
+    canAddToCalendar: movable,
+    address: PRACTICE.address,
   };
 }
 
-export async function manageAppointment(raw: unknown, ip: string, now = new Date()): Promise<ManageView> {
+export async function manageAppointment(raw: unknown, ip: string, now = new Date()): Promise<ManageView | ManageIcs> {
   const rl = await hit("manage", ip, { limit: 60, windowSec: 3600 }, now);
   if (!rl.ok) throw new PublicError(429, "rate_limited", "Zu viele Anfragen. Bitte später erneut versuchen.");
   const parsed = manageSchema.safeParse(raw);
@@ -273,25 +298,32 @@ export async function manageAppointment(raw: unknown, ip: string, now = new Date
   const v = parsed.data;
   const a = await repo.findAppointmentByManageToken(v.token);
   if (!a) throw new PublicError(404, "not_found", "Dieser Link ist ungültig oder abgelaufen.");
-  const view = toManageView(a, now);
+  const online = await rescheduleOnline(a.typeId);
+  const view = toManageView(a, now, online);
 
   if (v.action === "view") return view;
+
+  if (v.action === "ics") {
+    if (!view.canAddToCalendar) throw new PublicError(409, "conflict", "Für diesen Termin gibt es keinen Kalendereintrag mehr.");
+    return { kind: "ics", filename: "termin.ics", ics: appointmentIcs(a, "PUBLISH", manageUrlFor(v.token)) };
+  }
 
   if (v.action === "confirm") {
     if (!view.canConfirm && a.status !== "confirmed") throw new PublicError(409, "conflict", "Dieser Termin kann nicht mehr bestätigt werden.");
     if (a.status === "confirmed") return view;
     const updated = a.holdUntil ? await acceptOffer(a) : await repo.setStatus(a.id, "confirmed", null, "patient");
-    return toManageView(updated, now);
+    return toManageView(updated, now, online);
   }
 
   if (v.action === "cancel") {
     if (!view.canCancel) throw new PublicError(409, "conflict", "Dieser Termin kann nicht mehr abgesagt werden.");
     const updated = await repo.setStatus(a.id, "cancelled", null, "patient");
     await afterCancelled(updated.holdUntil ? updated : { ...updated, holdUntil: a.holdUntil }, "patient", { notify: !a.holdUntil });
-    return toManageView(updated, now);
+    return toManageView(updated, now, online);
   }
 
   // reschedule
+  if (view.rescheduleByPhone) throw new PublicError(409, "conflict", `Online lässt sich dieser Termin gerade nicht verschieben – bitte rufen Sie uns an: ${PRACTICE.phone}.`);
   if (!view.canReschedule) throw new PublicError(409, "conflict", "Dieser Termin kann nicht verschoben werden.");
   if (!v.date || !v.time) throw new PublicError(422, "validation", "Bitte Datum und Uhrzeit wählen.");
   const slots = await repo.availability(a.typeId, v.date, now);
@@ -309,7 +341,7 @@ export async function manageAppointment(raw: unknown, ip: string, now = new Date
   await enqueue({ kind: "waitlist.offer_next", payload: { typeId: a.typeId, startsAt: a.startsAt, freedFrom: a.id }, dedupeKey: `waitlist.offer:${a.id}:move:${updated.sequence}` });
   await afterRescheduled(updated);
   await audit({ action: "appointment.reschedule.patient", entity: "appointment", entityId: a.id, meta: { sequence: updated.sequence } });
-  return toManageView(updated, now);
+  return toManageView(updated, now, online);
 }
 
 // ---------- Warteliste (öffentlich) ----------

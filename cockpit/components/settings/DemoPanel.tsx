@@ -29,6 +29,28 @@ const KIND_LABEL: Record<string, string> = {
 };
 const kindLabel = (k: string) => KIND_LABEL[k] ?? (k.startsWith("reminder:") ? `Erinnerung ${k.slice(9)}` : k.startsWith("rescheduled") ? "Verschiebung" : k);
 
+/**
+ * „48, 24“ → [48, 24]. Erlaubt auch „48h, 24 Std.“; alles andere ist ein
+ * Fehler am Feld – früher wurde daraus still eine leere Liste (= gar keine
+ * Erinnerungen) und trotzdem „gespeichert“ gemeldet.
+ */
+function parseOffsets(text: string): { ok: true; hours: number[] } | { ok: false; error: string } {
+  const parts = text
+    .split(/[,;]+|\s+(?=\d)/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const hours: number[] = [];
+  for (const p of parts) {
+    const m = /^(\d+)\s*(h|std\.?|stunden)?$/i.exec(p);
+    if (!m) return { ok: false, error: "Bitte Stunden als Zahlen angeben, z. B. 48, 24" };
+    const n = Number(m[1]);
+    if (n < 1 || n > 24 * 14) return { ok: false, error: "Bitte zwischen 1 und 336 Stunden angeben (höchstens 14 Tage vorher)" };
+    if (!hours.includes(n)) hours.push(n);
+  }
+  if (hours.length > 4) return { ok: false, error: "Höchstens vier Erinnerungen, z. B. 48, 24" };
+  return { ok: true, hours: hours.sort((a, b) => b - a) };
+}
+
 export function DemoPanel({
   canEdit,
   demoCount,
@@ -57,6 +79,9 @@ export function DemoPanel({
   const [confirmPurge, setConfirmPurge] = useState(false);
   const [s, setS] = useState(settings);
   const [offsets, setOffsets] = useState(settings.reminderOffsetsH.join(", "));
+  const [offsetsTouched, setOffsetsTouched] = useState(false);
+  const offsetsParsed = parseOffsets(offsets);
+  const offsetsError = offsetsTouched && !offsetsParsed.ok ? offsetsParsed.error : undefined;
   const dirty = JSON.stringify(s) !== JSON.stringify(settings) || offsets !== settings.reminderOffsetsH.join(", ");
 
   const seed = () =>
@@ -79,12 +104,14 @@ export function DemoPanel({
       router.refresh();
     });
 
-  const save = () =>
+  const save = () => {
+    if (!offsetsParsed.ok) {
+      setOffsetsTouched(true);
+      document.querySelector<HTMLInputElement>('[data-field="reminder-offsets"]')?.focus();
+      return;
+    }
+    const parsedOffsets = offsetsParsed.hours;
     start(async () => {
-      const parsedOffsets = offsets
-        .split(/[,\s]+/)
-        .map((x) => Number(x))
-        .filter((n) => Number.isInteger(n) && n > 0 && n <= 24 * 14);
       const r = await updateSettingsAction({
         slotStepMin: s.slotStepMin as 5 | 10 | 15 | 20 | 30,
         bookingPaused: s.bookingPaused,
@@ -103,6 +130,7 @@ export function DemoPanel({
       toast({ title: "Einstellungen gespeichert", tone: "ok" });
       router.refresh();
     });
+  };
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
@@ -151,8 +179,21 @@ export function DemoPanel({
             )}
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Erinnerungen (Stunden vorher)" hint="z. B. 48, 24">
-              {(id) => <Input id={id} value={offsets} disabled={!canEdit} onChange={(e) => setOffsets(e.target.value)} className="tnum" />}
+            <Field label="Erinnerungen (Stunden vorher)" hint={offsetsParsed.ok && offsetsParsed.hours.length === 0 ? "Leer = keine Erinnerungen" : "z. B. 48, 24"} error={offsetsError}>
+              {(id, describedBy) => (
+                <Input
+                  id={id}
+                  data-field="reminder-offsets"
+                  value={offsets}
+                  disabled={!canEdit}
+                  inputMode="numeric"
+                  invalid={Boolean(offsetsError)}
+                  aria-describedby={describedBy}
+                  onChange={(e) => setOffsets(e.target.value)}
+                  onBlur={() => setOffsetsTouched(true)}
+                  className="tnum"
+                />
+              )}
             </Field>
             <Field label="Wartelisten-Reservierung" hint="Stunden bis das Angebot verfällt">
               {(id) => <Input id={id} type="number" min={1} max={72} value={s.waitlistHoldHours} disabled={!canEdit} onChange={(e) => setS({ ...s, waitlistHoldHours: Number(e.target.value) })} className="tnum" />}
@@ -203,7 +244,7 @@ export function DemoPanel({
           )}
           {canEdit && (
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => { setS(settings); setOffsets(settings.reminderOffsetsH.join(", ")); }} disabled={!dirty}>Zurücksetzen</Button>
+              <Button variant="ghost" onClick={() => { setS(settings); setOffsets(settings.reminderOffsetsH.join(", ")); setOffsetsTouched(false); }} disabled={!dirty}>Zurücksetzen</Button>
               <Button variant="primary" onClick={save} loading={pending} disabled={!dirty} icon="check">Speichern</Button>
             </div>
           )}

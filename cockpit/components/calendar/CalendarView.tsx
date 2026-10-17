@@ -10,8 +10,9 @@ import { DemoBadge, EmptyState, PageTitle, Segmented, StatusPill, TypeDot } from
 import { Button, IconButton } from "@/components/ui/Button";
 import { DataTable } from "@/components/ui/DataTable";
 import { Icon } from "@/components/ui/Icon";
-import { AppointmentDrawer } from "./AppointmentDrawer";
+import { AppointmentDrawer, type DrawerState } from "./AppointmentDrawer";
 import { ExceptionDrawer } from "./ExceptionDrawer";
+import { RemoveExceptionDialog } from "./RemoveExceptionDialog";
 
 export type CalendarViewMode = "tag" | "woche" | "agenda";
 
@@ -33,13 +34,14 @@ interface Props {
 
 export function CalendarView(p: Props) {
   const router = useRouter();
-  const [drawer, setDrawer] = useState<{ mode: "new"; date: string; time?: string } | { mode: "edit"; appointment: AppointmentView } | null>(
+  const [drawer, setDrawer] = useState<DrawerState>(
     p.openNew ? { mode: "new", date: p.date } : p.openId ? (() => {
       const a = p.appointments.find((x) => x.id === p.openId);
       return a ? { mode: "edit" as const, appointment: a } : null;
     })() : null,
   );
   const [exceptionOpen, setExceptionOpen] = useState(p.openException);
+  const [removing, setRemoving] = useState<ExceptionView | null>(null);
 
   const go = useCallback(
     (view: CalendarViewMode, date: string) => router.push(`/termine?v=${view}&d=${date}`),
@@ -70,10 +72,17 @@ export function CalendarView(p: Props) {
       ? fmtLongDate(new Date(`${p.date}T12:00:00Z`))
       : `${WEEKDAYS_SHORT_DE[0]} ${fmtDM(week)} – ${WEEKDAYS_SHORT_DE[weekDays.length - 1]} ${fmtDM(weekDays.at(-1)!)} · ${MONTHS_DE[parseDateKey(week).m - 1]} ${parseDateKey(week).y}`;
 
-  const closeDrawer = () => {
+  // Stabil über Neuberechnungen hinweg: Das Termin-Fenster setzt sich nur bei
+  // einem neuen Öffnen zurück, nicht, weil die Seite sich aktualisiert hat.
+  const { openNew, openId, view, date } = p;
+  const closeDrawer = useCallback(() => {
     setDrawer(null);
-    if (p.openNew || p.openId) router.replace(`/termine?v=${p.view}&d=${p.date}`);
-  };
+    if (openNew || openId) router.replace(`/termine?v=${view}&d=${date}`);
+  }, [openNew, openId, view, date, router]);
+  const drawerTypes = useMemo(
+    () => p.types.filter((t) => t.active || (drawer?.mode === "edit" && drawer.appointment.typeId === t.id)),
+    [p.types, drawer],
+  );
 
   return (
     <>
@@ -133,15 +142,18 @@ export function CalendarView(p: Props) {
           exceptions={p.exceptions}
           onOpen={(a) => setDrawer({ mode: "edit", appointment: a })}
           onSlot={(date, time) => setDrawer({ mode: "new", date, time })}
+          onException={setRemoving}
         />
       )}
 
       <AppointmentDrawer
         state={drawer}
-        types={p.types.filter((t) => t.active || (drawer?.mode === "edit" && drawer.appointment.typeId === t.id))}
+        types={drawerTypes}
         onClose={closeDrawer}
+        onFollowUp={(prefill) => setDrawer({ mode: "new", date: p.today, prefill })}
       />
       <ExceptionDrawer open={exceptionOpen} date={p.date} onClose={() => setExceptionOpen(false)} />
+      <RemoveExceptionDialog exception={removing} onClose={() => setRemoving(null)} />
     </>
   );
 }
@@ -170,6 +182,7 @@ function TimeGrid({
   exceptions,
   onOpen,
   onSlot,
+  onException,
 }: {
   days: string[];
   grid: { start: number; end: number };
@@ -179,6 +192,8 @@ function TimeGrid({
   exceptions: ExceptionView[];
   onOpen: (a: AppointmentView) => void;
   onSlot: (date: string, time: string) => void;
+  /** Blocker/Urlaub angeklickt – anzeigen und auf Wunsch entfernen */
+  onException: (e: ExceptionView) => void;
 }) {
   const hoursList = useMemo(() => {
     const out: number[] = [];
@@ -206,7 +221,7 @@ function TimeGrid({
   };
 
   const onGridClick = (e: React.MouseEvent<HTMLDivElement>, date: string) => {
-    if ((e.target as HTMLElement).closest("[data-appt]")) return;
+    if ((e.target as HTMLElement).closest("[data-appt], [data-exception]")) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const minutes = Math.floor((e.clientY - rect.top) / PX_PER_MIN / 15) * 15 + grid.start;
     onSlot(date, `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`);
@@ -259,16 +274,21 @@ function TimeGrid({
                 ))}
                 {(allDay.length > 0 || holiday) && (
                   <div className="absolute inset-0 z-[1] bg-[repeating-linear-gradient(135deg,transparent_0_10px,var(--line)_10px_11px)]">
-                    <p className="sticky top-1 mx-2 mt-2 inline-block rounded-md bg-surface-raised px-2 py-1 text-[11px] font-medium text-text-muted ring-1 ring-line">
-                      {holiday ? (
-                        `Feiertag · ${holiday}`
-                      ) : (
-                        <>
-                          {KIND_LABEL[allDay[0]!.kind]}
-                          {allDay[0]!.label ? ` · ${allDay[0]!.label}` : ""}
-                        </>
-                      )}
-                    </p>
+                    {holiday ? (
+                      <p className="sticky top-1 mx-2 mt-2 inline-block rounded-md bg-surface-raised px-2 py-1 text-[11px] font-medium text-text-muted ring-1 ring-line">
+                        Feiertag · {holiday}
+                      </p>
+                    ) : (
+                      <button
+                        type="button"
+                        data-exception
+                        onClick={() => onException(allDay[0]!)}
+                        className="sticky top-1 mx-2 mt-2 inline-block rounded-md bg-surface-raised px-2 py-1 text-left text-[11px] font-medium text-text-muted ring-1 ring-line hover:text-text hover:ring-line-strong"
+                      >
+                        {KIND_LABEL[allDay[0]!.kind]}
+                        {allDay[0]!.label ? ` · ${allDay[0]!.label}` : ""}
+                      </button>
+                    )}
                   </div>
                 )}
                 {dayExceptions
@@ -277,16 +297,19 @@ function TimeGrid({
                     const s = minutesOfDay(timeKey(new Date(e.startsAt)));
                     const en = minutesOfDay(timeKey(new Date(e.endsAt)));
                     return (
-                      <div
+                      <button
+                        type="button"
                         key={e.id}
-                        className="absolute inset-x-1 z-[1] rounded-lg bg-[repeating-linear-gradient(135deg,transparent_0_8px,var(--line)_8px_9px)] ring-1 ring-line-strong"
+                        data-exception
+                        onClick={() => onException(e)}
+                        className="absolute inset-x-1 z-[1] block rounded-lg bg-[repeating-linear-gradient(135deg,transparent_0_8px,var(--line)_8px_9px)] text-left ring-1 ring-line-strong hover:ring-text-muted"
                         style={{ top: (s - grid.start) * PX_PER_MIN, height: Math.max(20, (en - s) * PX_PER_MIN) }}
                       >
-                        <p className="truncate px-2 py-1 text-[11px] font-medium text-text-muted">
+                        <span className="block truncate px-2 py-1 text-[11px] font-medium text-text-muted">
                           {KIND_LABEL[e.kind]}
                           {e.label ? ` · ${e.label}` : ""}
-                        </p>
-                      </div>
+                        </span>
+                      </button>
                     );
                   })}
                 {byDay(date).map((a) => {

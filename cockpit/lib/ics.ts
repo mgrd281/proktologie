@@ -3,14 +3,16 @@
  * Zeitzone Europe/Berlin mit eingebetteter VTIMEZONE-Definition, damit
  * Kalender-Apps die Wandzeit korrekt anzeigen – auch über die
  * Sommerzeit-Umstellung hinweg. METHOD:REQUEST für Einladungen,
- * METHOD:CANCEL für Absagen; SEQUENCE steigt bei jeder Änderung.
+ * METHOD:CANCEL für Absagen, METHOD:PUBLISH für die Datei „In den
+ * Kalender“ der Patientenseite; SEQUENCE steigt bei jeder Änderung.
  */
 import { wall } from "./time.ts";
 
 export interface IcsEvent {
   uid: string;
   sequence: number;
-  method: "REQUEST" | "CANCEL";
+  /** REQUEST/CANCEL für Mail-Einladungen, PUBLISH für „In den Kalender“ ohne Teilnehmer */
+  method: "REQUEST" | "CANCEL" | "PUBLISH";
   start: Date;
   end: Date;
   summary: string;

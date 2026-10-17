@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { deleteExceptionAction } from "@/app/actions/appointments";
 import { replaceHoursAction } from "@/app/actions/settings";
 import { KIND_LABEL, type ExceptionView, type HoursRow } from "@/lib/booking/model";
 import { fmtShortDate, timeKey, WEEKDAYS_DE } from "@/lib/time";
@@ -11,6 +10,7 @@ import { Button, IconButton } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
 import { useToast } from "@/components/ui/Toast";
 import { ExceptionDrawer } from "@/components/calendar/ExceptionDrawer";
+import { RemoveExceptionDialog } from "@/components/calendar/RemoveExceptionDialog";
 
 export function HoursEditor({ hours, exceptions, canEdit, today }: { hours: HoursRow[]; exceptions: ExceptionView[]; canEdit: boolean; today: string }) {
   const router = useRouter();
@@ -19,6 +19,7 @@ export function HoursEditor({ hours, exceptions, canEdit, today }: { hours: Hour
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [drawer, setDrawer] = useState(false);
+  const [removing, setRemoving] = useState<ExceptionView | null>(null);
   const dirty = JSON.stringify(rows) !== JSON.stringify(hours);
 
   const save = () =>
@@ -30,17 +31,6 @@ export function HoursEditor({ hours, exceptions, canEdit, today }: { hours: Hour
         return;
       }
       toast({ title: "Sprechzeiten gespeichert", tone: "ok" });
-      router.refresh();
-    });
-
-  const remove = (e: ExceptionView) =>
-    start(async () => {
-      const r = await deleteExceptionAction(e.id);
-      if (!r.ok) {
-        toast({ title: "Nicht gelöscht", description: r.error, tone: "danger" });
-        return;
-      }
-      toast({ title: `${KIND_LABEL[e.kind]} entfernt`, tone: "ok" });
       router.refresh();
     });
 
@@ -113,12 +103,13 @@ export function HoursEditor({ hours, exceptions, canEdit, today }: { hours: Hour
                     : `${fmtShortDate(new Date(e.startsAt))} ${timeKey(new Date(e.startsAt))} – ${timeKey(new Date(e.endsAt))}`}
                 </p>
               </div>
-              <IconButton label="Ausnahme löschen" icon="trash" size={32} onClick={() => remove(e)} disabled={pending} />
+              <IconButton label="Ausnahme löschen" icon="trash" size={32} onClick={() => setRemoving(e)} disabled={pending} />
             </li>
           ))}
         </ul>
       </Card>
       <ExceptionDrawer open={drawer} date={today} onClose={() => setDrawer(false)} />
+      <RemoveExceptionDialog exception={removing} onClose={() => setRemoving(null)} />
     </div>
   );
 }

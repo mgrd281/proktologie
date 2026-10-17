@@ -160,9 +160,15 @@ export function rescheduled(c: TemplateContext) {
   };
 }
 
+/** Erster Satz der Absage-Mail – auch für die Vorschau im Absage-Dialog des Cockpits. */
+export function cancellationLead(by: "patient" | "praxis" | "system", locale: Locale = "de"): string {
+  const t = T[locale];
+  return by === "patient" ? t.cancelByPatient : by === "system" ? t.cancelBySystem : t.cancelByPraxis;
+}
+
 export function cancellation(c: TemplateContext, by: "patient" | "praxis" | "system") {
   const t = T[loc(c)];
-  const line = by === "patient" ? t.cancelByPatient : by === "system" ? t.cancelBySystem : t.cancelByPraxis;
+  const line = cancellationLead(by, loc(c));
   return {
     subject: t.cancelSubject(date(c), c.practiceName),
     text: [greet(c), "", line, "", `${c.typeLabel}`, `${when(c)}`, t.ref(c.ref), "", t.cancelIcs, "", t.cancelEnd, "", footer(c)].join("\n"),

@@ -54,6 +54,8 @@ export interface AppointmentView {
   confirmedByPatientAt: string | null;
   /** Wartelisten-Angebot: reserviert bis (ISO), sonst null */
   holdUntil: string | null;
+  /** Wer abgesagt hat (nur bei status "cancelled"); "system" = Reservierung abgelaufen */
+  cancelledBy: "patient" | "praxis" | "system" | null;
   /** iCalendar-Sequenz – zählt Verschiebungen */
   sequence: number;
   /** Patient:in besitzt einen Verwaltungslink (Bestätigen/Absagen/Verschieben) */

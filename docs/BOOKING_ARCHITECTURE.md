@@ -75,6 +75,23 @@ freier Text ohne Prüfregel; keine Übergangsregeln.
 4. Erfolg erst nach Serverantwort: „Termin verbindlich gebucht", Referenz „PE-…".
 5. Bestätigungs-Mail mit Kalenderdatei über die Warteschlange (Brevo); Link zum Verwalten
    (`/t/#<token>`, Token nur im Fragment) für Bestätigen, Verschieben, Absagen.
+   Die Verwaltungsseite (`cockpit/app/(public)/t/ManageClient.tsx`):
+   - Status in Patientenworten („Gebucht", „Bestätigt", „Reserviert bis … – bitte annehmen",
+     „Abgesagt (durch Sie)" / „(durch die Praxis)", „Reservierung abgelaufen", „Stattgefunden",
+     „Nicht wahrgenommen"); `cancelled_by` kommt dafür mit in die Antwort.
+   - Verschieben online nur, wenn die Buchung live, nicht pausiert und die Terminart öffentlich
+     ist (`canReschedule`); sonst „Zum Verschieben bitte anrufen" (`rescheduleByPhone`), auch
+     der Server lehnt dann ab. Freie Tage der nächsten vier Wochen auf einen Blick, „Spätere
+     Tage" bis `lastDate`; der Knopf nennt Tag und Uhrzeit.
+   - „In den Kalender": Aktion `ics` liefert die Datei mit **derselben UID und Sequenz** wie die
+     Mail-Einladung (`appointmentIcs` in `lib/messaging/send.ts`, `METHOD:PUBLISH`, ohne
+     Teilnehmer) – Kalender-Apps führen einen Eintrag, keinen zweiten. „Anfahrt" verlinkt die
+     Website (`/#kontakt`), keine Karte eines Dritten.
+   - Wartelisten-Angebot: „Angebot ablehnen" statt „Absagen"; Austragen aus der Warteliste
+     fragt einmal nach. Fehler rot und angesagt; ein ungültiger Link ist von einer gestörten
+     Verbindung getrennt („Erneut versuchen").
+   - Sagt das Team im Cockpit ab, fragt es „Wer sagt ab?" (Patient:in telefonisch / Praxis) –
+     davon hängt der erste Satz der Absage-Mail ab.
 6. Erinnerungen 48 h und 24 h vorher (Takt alle 15 min per GitHub Actions + täglich per Vercel).
 
 ## 5. Praxisseite
@@ -110,7 +127,7 @@ freier Text ohne Prüfregel; keine Übergangsregeln.
 | 10 | Audit-Kette liest den Vorgänger ohne Sperre | Kette kann bei Gleichzeitigkeit „gebrochen" melden | `audit.ts:39-41` |
 | 11 | Erinnerungen stoppen ganz, wenn „Buchung live" aus ist – auch für Telefon-Termine | keine Erinnerungen | `tick.ts:25` |
 | 12 | Verwaltungs-Links laufen nie ab; keine Absagefrist | Link bleibt dauerhaft gültig | `repo.ts:522-526`, `public.ts:243-262` |
-| 13 | Nach Absage eines Warteliste-Angebots verspricht die Seite eine Mail, die nicht kommt | falsche Erwartung | `ManageClient.tsx:180`, `public.ts:286` |
+| 13 | ~~Nach Absage eines Warteliste-Angebots verspricht die Seite eine Mail, die nicht kommt~~ – behoben: „Sie haben das Angebot abgelehnt." | – | `ManageClient.tsx` |
 | 14 | Kein Online-Termin am selben Tag; keine Alternativvorschläge bei „Zeit vergeben" | Umweg über Telefon | `engine.ts:105`, `BookingCard.tsx:295-299` |
 
 ## 8. Anbieter-Vergleich (Bewertung, keine Empfehlung zum Wechsel)

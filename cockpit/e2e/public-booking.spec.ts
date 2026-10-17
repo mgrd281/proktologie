@@ -258,7 +258,7 @@ test("Warteliste: Eintrag, automatisches Angebot nach Absage, Annahme, Ablauf", 
   // Annahme über die Patientenseite
   await page.goto(`/t/#${offerToken}`);
   await expect(page.getByRole("heading", { name: "Ihr Terminangebot" })).toBeVisible();
-  await expect(page.getByText(/Reserviert bis/)).toBeVisible();
+  await expect(page.getByText(/^Reserviert bis .+ – bitte annehmen$/)).toBeVisible();
   await page.screenshot({ path: "e2e/shots/patient-angebot.png" });
   await page.getByRole("button", { name: "Termin annehmen" }).click();
   await expect(page.getByRole("status")).toContainText("verbindlich");

@@ -3,12 +3,13 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { authClient } from "@/lib/auth/client";
+import { safeNext } from "@/lib/auth/next";
 import { AuthCard, darkInput, darkLabel, darkPrimary } from "../../AuthCard";
 
 function TwoFactorForm() {
   const router = useRouter();
   const sp = useSearchParams();
-  const next = sp.get("weiter")?.startsWith("/") ? sp.get("weiter")! : "/";
+  const next = safeNext(sp.get("weiter"));
   const [code, setCode] = useState("");
   const [backup, setBackup] = useState(false);
   const [busy, setBusy] = useState(false);

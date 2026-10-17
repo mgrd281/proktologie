@@ -3,17 +3,21 @@
 import { useState, type ReactNode } from "react";
 import { ToastProvider } from "@/components/ui/Toast";
 import { CommandPalette } from "./CommandPalette";
+import { SessionGuard } from "./SessionGuard";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 
 export function AppShell({
   user,
   demoCount,
+  absoluteSeconds,
   title,
   children,
 }: {
   user: { name: string; email: string; role: string };
   demoCount: number;
+  /** Absolute Sitzungsdauer (lib/auth/auth.ts) – für den Sitzungswächter */
+  absoluteSeconds: number;
   title?: string;
   children: ReactNode;
 }) {
@@ -22,7 +26,8 @@ export function AppShell({
 
   return (
     <ToastProvider>
-      <div className="flex min-h-dvh">
+      {/* #cockpit-shell: wird inert, solange ein Drawer oder Dialog offen ist (Overlay.tsx) */}
+      <div id="cockpit-shell" className="flex min-h-dvh">
         <Sidebar demoCount={demoCount} mobileOpen={mobileNav} onMobileClose={() => setMobileNav(false)} />
         <div className="flex min-w-0 flex-1 flex-col">
           <Topbar user={user} onMenu={() => setMobileNav(true)} onSearch={() => setPalette(true)} title={title} />
@@ -32,6 +37,8 @@ export function AppShell({
         </div>
       </div>
       <CommandPalette open={palette} onOpenChange={setPalette} />
+      {/* Außerhalb von #cockpit-shell: bleibt bedienbar, auch wenn ein Drawer offen ist */}
+      <SessionGuard absoluteSeconds={absoluteSeconds} />
     </ToastProvider>
   );
 }

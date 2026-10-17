@@ -2,8 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { createExceptionAction } from "@/app/actions/appointments";
+import { createExceptionAction, exceptionConflictsAction } from "@/app/actions/appointments";
 import { KIND_LABEL, type ExceptionKind } from "@/lib/booking/model";
+import { fmtShortDate, timeKey } from "@/lib/time";
 import { Notice } from "@/components/ui/Bits";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Switch } from "@/components/ui/Field";
@@ -29,21 +30,47 @@ export function ExceptionDrawer({ open, date, onClose }: { open: boolean; date: 
   const [allDay, setAllDay] = useState(false);
   const [label, setLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
+  /** Gebuchte Termine im Zeitraum – gilt nur für genau die Angaben, für die geprüft wurde. */
+  const [checked, setChecked] = useState<{ key: string; list: Array<{ id: string; startsAt: string; name: string }> } | null>(null);
 
+  // Jedes Öffnen beginnt leer – früher standen Art, Zeiten und Bezeichnung
+  // vom letzten Eintrag noch da.
   useEffect(() => {
     if (open) {
+      setKind("blocker");
       setFromDate(date);
       setToDate(date);
+      setFromTime("12:00");
+      setToTime("14:00");
+      setAllDay(false);
+      setLabel("");
       setError(null);
+      setChecked(null);
     }
   }, [open, date]);
+  // Ändern sich Art oder Zeitraum, gilt die alte Prüfung nicht mehr
+  const checkKey = [kind, fromDate, toDate, allDay ? "" : fromTime, allDay ? "" : toTime, allDay].join("|");
+  const conflicts = checked?.key === checkKey ? checked.list : null;
   useEffect(() => {
     if (kind === "urlaub" || kind === "closed") setAllDay(true);
   }, [kind]);
 
   const save = () =>
     start(async () => {
-      const r = await createExceptionAction({ kind, fromDate, toDate, fromTime, toTime, allDay, label });
+      const input = { kind, fromDate, toDate, fromTime, toTime, allDay, label };
+      // Erst nachsehen, wer schon gebucht hat – eingetragen wird erst mit „Trotzdem eintragen“
+      if (conflicts === null) {
+        const c = await exceptionConflictsAction(input);
+        if (!c.ok) {
+          setError(c.error);
+          return;
+        }
+        if (c.data.length > 0) {
+          setChecked({ key: checkKey, list: c.data });
+          return;
+        }
+      }
+      const r = await createExceptionAction(input);
       if (!r.ok) {
         setError(r.error);
         return;
@@ -57,7 +84,9 @@ export function ExceptionDrawer({ open, date, onClose }: { open: boolean; date: 
     <Drawer open={open} onClose={onClose} eyebrow="Kalender" title="Blocker oder Urlaub eintragen" footer={
       <>
         <Button variant="ghost" onClick={onClose}>Abbrechen</Button>
-        <Button variant="primary" onClick={save} loading={pending} icon="check">Eintragen</Button>
+        <Button variant="primary" onClick={save} loading={pending} icon="check">
+          {conflicts && conflicts.length > 0 ? "Trotzdem eintragen" : "Eintragen"}
+        </Button>
       </>
     }>
       <div className="space-y-5">
@@ -82,6 +111,24 @@ export function ExceptionDrawer({ open, date, onClose }: { open: boolean; date: 
           </div>
         )}
         <Field label="Bezeichnung (optional)">{(id) => <Input id={id} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="z. B. Fortbildung" />}</Field>
+        {conflicts && conflicts.length > 0 && (
+          <Notice tone="warn">
+            <p className="font-medium">
+              {conflicts.length === 1 ? "1 gebuchter Termin liegt" : `${conflicts.length} gebuchte Termine liegen`} in diesem Zeitraum
+            </p>
+            <ul className="mt-2 space-y-0.5">
+              {conflicts.slice(0, 6).map((c) => (
+                <li key={c.id} className="tnum">
+                  {fmtShortDate(new Date(c.startsAt))} {timeKey(new Date(c.startsAt))} · {c.name}
+                </li>
+              ))}
+              {conflicts.length > 6 && <li>+ {conflicts.length - 6}</li>}
+            </ul>
+            <a href={`/termine?v=agenda&d=${fromDate}`} className="mt-2 inline-block font-medium underline underline-offset-2">
+              Zur Agenda
+            </a>
+          </Notice>
+        )}
         {error && <Notice tone="danger">{error}</Notice>}
       </div>
     </Drawer>

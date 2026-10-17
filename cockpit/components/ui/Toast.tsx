@@ -42,6 +42,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const toast = useCallback(
     (input: ToastInput) => {
+      // Abgemeldet? Der Sitzungswächter (SessionGuard) sieht sofort nach, statt erst in einer Minute
+      if (/anmelden|abgemeldet/i.test(`${input.title} ${input.description ?? ""}`)) window.dispatchEvent(new Event("cockpit:session-check"));
       const id = ++counter.current;
       setItems((list) => [...list.slice(-3), { ...input, id }]);
       timers.current.set(id, setTimeout(() => dismiss(id), input.durationMs ?? (input.action ? 6000 : 4000)));

@@ -1,11 +1,12 @@
-import { and, count, eq, isNotNull, sql } from "drizzle-orm";
+import { and, count, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { createInvite } from "@/lib/auth/invites";
 import { publicStatus } from "@/lib/booking/public";
 import * as repo from "@/lib/booking/repo";
+import { createRequest } from "@/lib/booking/requests";
 import { getDb } from "@/lib/db/client";
-import { appointments, user as userTable } from "@/lib/db/schema";
+import { appointments, requests, session as sessionTable, user as userTable } from "@/lib/db/schema";
 import { runTick } from "@/lib/jobs/tick";
 
 /**
@@ -20,13 +21,20 @@ import { runTick } from "@/lib/jobs/tick";
  * - "expire-holds": alle laufenden Wartelisten-Reservierungen sofort ablaufen lassen
  * - "settings":     Zustand der Online-Buchung setzen, wie die Praxis es täte
  *                   (live / pausiert / Hinweistext) – Antwort ist, was die Website sieht
+ * - "requests":     viele erledigte Anfragen plus offene anlegen (Posteingang unter Last)
+ * - "session-expires": Sitzungen einer Person in `minutes` Minuten ablaufen lassen
+ *                   (negativ = schon abgelaufen) – für den Sitzungswächter
  */
 type Body = {
   secret?: string;
-  action?: "bootstrap" | "seed-demo" | "golive" | "tick" | "state" | "expire-holds" | "settings";
+  action?: "bootstrap" | "seed-demo" | "golive" | "tick" | "state" | "expire-holds" | "settings" | "requests" | "session-expires";
   inviteEmail?: string;
   role?: "arzt" | "empfang" | "admin";
   settings?: { bookingLive?: boolean; bookingPaused?: boolean; bannerText?: string | null; chatEnabled?: boolean };
+  closed?: number;
+  open?: string[];
+  email?: string;
+  minutes?: number;
 };
 
 export async function POST(req: Request) {
@@ -72,6 +80,31 @@ export async function POST(req: Request) {
   if (body.action === "settings") {
     await repo.updateSettings(body.settings ?? {}, "e2e");
     return NextResponse.json(await publicStatus());
+  }
+  if (body.action === "requests") {
+    // Erledigte zuerst (älter), dann die offenen – so wie es im Alltag gewachsen wäre
+    const done: string[] = [];
+    for (let i = 0; i < (body.closed ?? 0); i++) {
+      const r = await createRequest({ kind: "rueckruf", pii: { firstName: "Erledigt", lastName: `Nr. ${i + 1}`, phone: "040 000 0000" } });
+      done.push(r.id);
+    }
+    if (done.length) await db.update(requests).set({ status: "erledigt", closedAt: new Date() }).where(inArray(requests.id, done));
+    const opened = [];
+    for (const name of body.open ?? []) {
+      const r = await createRequest({ kind: "rueckruf", pii: { firstName: name, lastName: "Offen", phone: "040 000 0001" } });
+      opened.push(r.ref);
+    }
+    return NextResponse.json({ closed: done.length, open: opened });
+  }
+  if (body.action === "session-expires") {
+    const [u] = await db.select({ id: userTable.id }).from(userTable).where(eq(userTable.email, body.email ?? ""));
+    if (!u) return NextResponse.json({ updated: 0 });
+    const rows = await db
+      .update(sessionTable)
+      .set({ expiresAt: new Date(Date.now() + (body.minutes ?? 0) * 60_000) })
+      .where(eq(sessionTable.userId, u.id))
+      .returning({ id: sessionTable.id });
+    return NextResponse.json({ updated: rows.length });
   }
   if (body.action === "expire-holds") {
     const rows = await db

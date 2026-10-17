@@ -22,7 +22,9 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
       <main className="relative flex flex-1 items-start justify-center px-4 pb-16 pt-4 md:items-center md:pt-0">{children}</main>
       <footer className="relative flex flex-wrap gap-x-6 gap-y-1 px-6 pb-6 text-[11px] tracking-wide text-cream/65 md:px-10">
         <span>{PRACTICE.address}</span>
-        <span>Telefon {PRACTICE.phone}</span>
+        <a href={`tel:${PRACTICE.phone.replace(/\s/g, "")}`} className="underline-offset-2 hover:underline">
+          Telefon {PRACTICE.phone}
+        </a>
         <a href={PRACTICE.siteUrl} className="underline-offset-2 hover:underline">
           Website der Praxis
         </a>
