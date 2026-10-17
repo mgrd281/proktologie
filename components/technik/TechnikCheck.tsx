@@ -1,5 +1,6 @@
 "use client";
 
+import { filmFrameUrl } from "@/lib/cinema/sources";
 import { useEffect, useState } from "react";
 
 interface Row {
@@ -59,7 +60,7 @@ export function TechnikCheck() {
       yes(!!document.createElement("canvas").getContext("2d"), "Der Browser kann die Kamerafahrt zeichnen.", "Der Browser kann nicht zeichnen – die Startseite zeigt dann ein Standbild."),
     ];
     setRows([...base, { ok: null, text: "Das erste Filmbild wird geprüft …" }]);
-    void probeFrame(mobile ? "/sequence/mobile/frame_0001.webp" : "/sequence/desktop/frame_0001.webp").then((r) =>
+    void probeFrame(filmFrameUrl(mobile ? "mobile" : "desktop", 1)).then((r) =>
       setRows([...base, r]),
     );
   }, []);

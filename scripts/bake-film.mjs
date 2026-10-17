@@ -17,6 +17,10 @@
  *   public/sequence/desktop/frame_0001.webp … frame_0500.webp  (1600×900)
  *   public/sequence/mobile/frame_0001.webp  … frame_0250.webp  (960×540)
  *
+ * WICHTIG nach neuem Backen: FILM_VERSION in lib/cinema/sources.ts erhöhen.
+ * Die Filmbilder liegen mit `immutable` ein Jahr im Browser-Speicher
+ * (vercel.json) – erst die neue Version im Abrufpfad holt sie neu.
+ *
  * ── Montage ─────────────────────────────────────────────────────────────
  *   E  EMPFANG         Master 001–130   Szenen 01+02 als EINE Fahrt
  *                      (echtes Praxisfoto + Engine-Kamera). Bewusst

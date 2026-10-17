@@ -2,6 +2,7 @@
 
 import { camAt, sourceRectFor, STILL_DPR_CAP, type Cam } from "@/lib/cinema/camera";
 import { STILL_QUERY } from "@/lib/cinema/frames";
+import { filmLoadPolicy, readLoadPolicyInput } from "@/lib/cinema/loadPolicy";
 import { SOURCES, type FramesSource, type StillSource } from "@/lib/cinema/sources";
 import {
   DEFAULT_STORE_CONFIG,
@@ -29,6 +30,11 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
  *   die ruhige Fassung tragen Poster + DOM-Umgebungen.
  * – Ferne Sequenz-Quellen pausieren (Fenster leeren, Leiter behalten);
  *   `setActive(false)` stoppt alles, wenn die Fahrt außer Sicht ist.
+ * – Beim Laden der Seite kommt nur die Leiter (Handy ≈ 0,4 MB); der volle
+ *   Vorrat folgt nach der ersten Bewegung (Scrollen, Wischen, Taste) oder
+ *   spätestens, wenn der Browser nach dem Laden Luft hat – damit Text,
+ *   Arzt-Porträt und Buchung zuerst da sind. Bei Datensparmodus, langsamem
+ *   Netz oder wenig Speicher bleibt es bei der Leiter (lib/cinema/loadPolicy.ts).
  */
 
 export interface SceneCanvasHandle {
@@ -139,6 +145,9 @@ export const SceneCanvas = forwardRef<
       stillsRef.current.forEach((s) => void loadStill(s));
 
       // ---- Film-Sequenz nach Geräteklasse; reduzierte Bewegung: keine ----
+      // Voller Vorrat erst nach der ersten Bewegung oder im Leerlauf
+      let unlocked = false;
+      let fullAllowed = false;
       const teardownFrames = () => {
         framesRef.current.forEach((f) => f.store.destroy());
         framesRef.current = [];
@@ -154,6 +163,8 @@ export const SceneCanvas = forwardRef<
         if (wanted === current) return;
         teardownFrames();
         if (wanted === null) return;
+        const policy = filmLoadPolicy(readLoadPolicyInput(wanted === "mobile"));
+        fullAllowed = policy.full;
         framesRef.current = SOURCES.filter(
           (s): s is FramesSource => s.mode === "frames" && s.media === wanted,
         ).map((source) => {
@@ -161,6 +172,7 @@ export const SceneCanvas = forwardRef<
             ...DEFAULT_STORE_CONFIG,
             ...source.store,
             windowCapacity: source.store.windowRadius * 2 + 16,
+            fetchConcurrency: policy.fetchConcurrency,
             count: source.count,
             path: source.path,
           });
@@ -168,11 +180,41 @@ export const SceneCanvas = forwardRef<
             dirtyRef.current = true;
             readyRef.current?.();
           };
+          // Wechsel der Fassung, während die Fahrt außer Sicht ist: erst beim Zurückkehren laden
+          if (!activeRef.current) store.pause();
           store.start();
           store.setPlayhead(localFrame(source, lastFrameRef.current), 1);
+          if (unlocked && fullAllowed) store.unlockFull();
           return { source, store };
         });
       };
+      const TRIGGERS = ["wheel", "touchstart", "keydown", "scroll"] as const;
+      let idleTimer = 0;
+      let idleHandle = 0;
+      let unlockFrame = 0;
+      const unlock = () => {
+        if (unlocked) return;
+        unlocked = true;
+        for (const t of TRIGGERS) window.removeEventListener(t, unlock);
+        // Zwei Bilder später: Bis dahin hat der Loop die neue Scrollposition
+        // gemessen und die Abspielposition nachgezogen (Sprung, wieder-
+        // hergestellte Position) – der Vorrat beginnt dort, nicht am Anfang.
+        unlockFrame = requestAnimationFrame(() => {
+          unlockFrame = requestAnimationFrame(() => {
+            if (fullAllowed) framesRef.current.forEach((f) => f.store.unlockFull());
+          });
+        });
+      };
+      for (const t of TRIGGERS) window.addEventListener(t, unlock, { passive: true });
+      // Leerlauf: vier Sekunden nach dem Laden, sobald der Browser Luft hat
+      const scheduleIdle = () => {
+        idleTimer = window.setTimeout(() => {
+          if (typeof window.requestIdleCallback === "function") idleHandle = window.requestIdleCallback(unlock, { timeout: 3000 });
+          else unlock();
+        }, 4000);
+      };
+      if (document.readyState === "complete") scheduleIdle();
+      else window.addEventListener("load", scheduleIdle, { once: true });
       setupFrames();
       mobileAssets.addEventListener("change", setupFrames);
       reduced.addEventListener("change", setupFrames);
@@ -180,6 +222,11 @@ export const SceneCanvas = forwardRef<
       return () => {
         disposed = true;
         observer.disconnect();
+        for (const t of TRIGGERS) window.removeEventListener(t, unlock);
+        window.removeEventListener("load", scheduleIdle);
+        window.clearTimeout(idleTimer);
+        if (idleHandle) window.cancelIdleCallback(idleHandle);
+        cancelAnimationFrame(unlockFrame);
         mobileAssets.removeEventListener("change", setupFrames);
         reduced.removeEventListener("change", setupFrames);
         teardownFrames();

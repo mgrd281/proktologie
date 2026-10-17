@@ -175,8 +175,16 @@ ein ≥ 2880-px-Re-Export des Raumfotos hebt den Deckel). Keine 500
 Geräteklasse: < 768 px lädt die 250er-Mobilfassung (Fenster ±12),
 alle anderen die 500er-Desktopfassung (Fenster ±24, Bitmaps ≈ 5.8 MB
 → ~320 MB Peak, TPL-Klasse); reduzierte Bewegung lädt KEINE Sequenz.
-Blobs komplett (Leiter-Frames zuerst), dekodiert als dauerhafte
-Grob-Leiter (jeder 8.) plus Voll-Fenster um den Playhead (LRU). Ferne
+Beim Laden kommt nur die Leiter (jeder 8. Frame, Handy ≈ 0,4 MB,
+Desktop ≈ 1,6 MB); den übrigen Vorrat gibt erst die erste Bewegung
+(Scrollen, Wischen, Taste) oder der Leerlauf nach dem Laden frei – dann
+immer der fehlende Frame, der dem Playhead am nächsten liegt, voraus
+bevorzugt. Bei Datensparmodus, 2G/3G oder ≤ 2 GB Gerätespeicher bleibt es
+bei der Leiter (`lib/cinema/loadPolicy.ts`); Handys holen höchstens vier
+Bilder zugleich. Die Filmbilder liegen mit Version im Pfad (`?v=`,
+`FILM_VERSION` in `lib/cinema/sources.ts`) ein Jahr im Browser-Speicher
+(`vercel.json`) – nach neuem Backen die Version erhöhen. Dekodiert wird
+als dauerhafte Grob-Leiter plus Voll-Fenster um den Playhead (LRU). Ferne
 Quellen pausieren; IntersectionObserver + visibilitychange stoppen
 Loop und Preload, wenn die Fahrt außer Sicht ist. Typografie, Team-
 Karten, Korridor-Tafeln, Bahn und Chrome bleiben DOM (Hybrid – alle vom
@@ -191,6 +199,8 @@ node --experimental-strip-types --test lib/cinema/camera.test.mjs
 node --experimental-strip-types --test lib/cinema/leistungen.test.mjs
 node --experimental-strip-types --test lib/team/scene.test.mjs
 node --experimental-strip-types --test lib/booking/status.test.mjs
+node --experimental-strip-types --test lib/cinema/loadPolicy.test.mjs
+node --experimental-strip-types --test lib/cinema/frameStore.test.mjs
 ```
 
 Dazu die Browser-Suite (Chromium): Zähler monoton in BEIDE Richtungen,

@@ -23,6 +23,7 @@ import { Icon } from "@/components/ui/Icon";
 import { arzt } from "@/content/arzt";
 import { CINEMA_TEXTS, cinemaSkip } from "@/content/cinema";
 import { ctaHref } from "@/content/navigation";
+import { filmFrameUrl } from "@/lib/cinema/sources";
 import {
   ANCHOR_FRAMES,
   FRAME_LAYERS,
@@ -573,10 +574,12 @@ export function MasterSequence() {
               media="(prefers-reduced-motion: reduce), (max-height: 449px)"
               srcSet="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
             />
-            <source media="(max-width: 767px)" srcSet="/sequence/mobile/frame_0001.webp" />
+            {/* Dieselbe Adresse wie im FrameStore (mit Filmversion) – so holt
+                der Store das erste Bild aus dem Browser-Speicher statt erneut */}
+            <source media="(max-width: 767px)" srcSet={filmFrameUrl("mobile", 1)} />
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/sequence/desktop/frame_0001.webp"
+              src={filmFrameUrl("desktop", 1)}
               alt=""
               aria-hidden="true"
               fetchPriority="high"

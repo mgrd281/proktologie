@@ -78,6 +78,19 @@ export interface StillSource {
 export type SceneSource = FramesSource | StillSource;
 
 /**
+ * Version des gebackenen Films im Abrufpfad (`?v=`): Die Filmbilder liegen
+ * mit `immutable` ein Jahr im Browser-Speicher (vercel.json). Nach neuem
+ * Backen (scripts/bake-film.mjs) hier erhöhen – sonst sähen Wiederkehrende
+ * weiter die alten Bilder.
+ */
+export const FILM_VERSION = 1;
+
+/** Abrufpfad eines Filmbilds (1-basiert), mit Version. */
+export function filmFrameUrl(media: "desktop" | "mobile", index: number): string {
+  return `/sequence/${media}/frame_${String(index).padStart(4, "0")}.webp?v=${FILM_VERSION}`;
+}
+
+/**
  * Der gebackene Film – trägt die GESAMTE Fahrt (alpha konstant 1; die
  * Kreuzblenden liegen IM Material, der DOM-Release vollendet das Ende).
  * windowRadius 8: 1600×900-Bitmaps ≈ 5.8 MB → Fenster (2·8+16 = 32) ≈ 185 MB
@@ -87,7 +100,7 @@ export type SceneSource = FramesSource | StillSource;
 export const FILM_DESKTOP: FramesSource = {
   mode: "frames",
   id: "film",
-  path: (i) => `/sequence/desktop/frame_${String(i).padStart(4, "0")}.webp`,
+  path: (i) => filmFrameUrl("desktop", i),
   count: 500,
   span: [1, TOTAL_FRAMES],
   alpha: () => 1,
@@ -99,7 +112,7 @@ export const FILM_DESKTOP: FramesSource = {
 export const FILM_MOBILE: FramesSource = {
   mode: "frames",
   id: "film-mobile",
-  path: (i) => `/sequence/mobile/frame_${String(i).padStart(4, "0")}.webp`,
+  path: (i) => filmFrameUrl("mobile", i),
   count: 250,
   span: [1, TOTAL_FRAMES],
   alpha: () => 1,

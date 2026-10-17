@@ -216,7 +216,6 @@ export const TeamStage = forwardRef<TeamStageHandle, TeamStageProps>(
                 }}
                 member={member}
                 index={index}
-                eager={index === 0}
               />
             ))}
           </ul>

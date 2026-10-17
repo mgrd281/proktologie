@@ -1,8 +1,12 @@
 /**
  * Lädt und verwaltet die Frames EINER Bildsequenz-Quelle.
  *
- * – Alle Frames werden als komprimierte Blobs vorgeladen
- *   (fetch, begrenzte Parallelität; ~20–40 KB pro WebP).
+ * – Zuerst lädt die Leiter (jedes n-te Bild) – mit ihr läuft die Fahrt
+ *   schon, nur gröber. Den übrigen Vorrat gibt erst `unlockFull()` frei
+ *   (erste Bewegung oder Leerlauf, nie im Datensparmodus – siehe
+ *   lib/cinema/loadPolicy.ts); dann kommt immer das fehlende Bild als
+ *   Nächstes, das der Abspielposition am nächsten liegt, in Laufrichtung
+ *   bevorzugt (fetch, begrenzte Parallelität; ~10–40 KB pro WebP).
  * – Dekodiert wird über createImageBitmap in zwei Stufen:
  *   Grob-Leiter (dauerhaft, halbe Auflösung) + Voll-Auflösungs-Fenster
  *   um den Playhead (LRU).
@@ -53,7 +57,10 @@ export class FrameStore {
   private aborter = new AbortController();
   private destroyed = false;
   private paused = false;
-  private fetchQueue: number[] = [];
+  /** Leiter in Reihenfolge; der Rest wird nach Nähe zur Abspielposition gezogen. */
+  private ladderQueue: number[] = [];
+  private restQueue: number[] = [];
+  private fullUnlocked = false;
   private fetchWorkers = 0;
   private playhead = 1;
   private direction: 1 | -1 = 1;
@@ -69,22 +76,54 @@ export class FrameStore {
     this.cfg = config;
   }
 
-  /** Startet das Vorladen; Leiter-Frames zuerst, dann der Rest. */
+  /** Startet das Vorladen der Leiter; den Rest gibt unlockFull() frei. */
   start(): void {
-    const ladderFirst: number[] = [];
-    const rest: number[] = [];
+    this.ladderQueue = [];
+    this.restQueue = [];
     for (let i = 1; i <= this.cfg.count; i++) {
-      (this.isLadderIndex(i) ? ladderFirst : rest).push(i);
+      (this.isLadderIndex(i) ? this.ladderQueue : this.restQueue).push(i);
     }
-    this.fetchQueue = [...ladderFirst, ...rest];
     this.spawnFetchWorkers();
   }
 
+  /** Den vollen Vorrat freigeben (idempotent). */
+  unlockFull(): void {
+    if (this.fullUnlocked) return;
+    this.fullUnlocked = true;
+    this.spawnFetchWorkers();
+  }
+
+  private pending(): number {
+    return this.ladderQueue.length + (this.fullUnlocked ? this.restQueue.length : 0);
+  }
+
+  /**
+   * Nächster Abruf: erst die Leiter, dann das fehlende Bild am nächsten zur
+   * Abspielposition – voraus (in Laufrichtung) etwas bevorzugt.
+   */
+  private takeNext(): number | undefined {
+    if (this.ladderQueue.length > 0) return this.ladderQueue.shift();
+    if (!this.fullUnlocked || this.restQueue.length === 0) return undefined;
+    let best = 0;
+    let bestScore = Infinity;
+    for (let k = 0; k < this.restQueue.length; k++) {
+      const offset = (this.restQueue[k] - this.playhead) * this.direction;
+      const score = offset >= 0 ? offset : -offset * 1.5;
+      if (score < bestScore) {
+        bestScore = score;
+        best = k;
+      }
+    }
+    return this.restQueue.splice(best, 1)[0];
+  }
+
   private spawnFetchWorkers(): void {
-    while (
-      this.fetchWorkers < this.cfg.fetchConcurrency &&
-      this.fetchQueue.length > 0
-    ) {
+    // Pausiert (Fahrt außer Sicht) startet niemand – ein Worker kehrte dann
+    // sofort zurück, und eine Schleife bis „genug Worker“ liefe endlos.
+    // Deshalb auch nur abgezählt starten, nie „bis es reicht“.
+    if (this.paused || this.destroyed) return;
+    const wanted = Math.min(this.cfg.fetchConcurrency - this.fetchWorkers, this.pending());
+    for (let k = 0; k < wanted; k++) {
       this.fetchWorkers++;
       void this.fetchWorker();
     }
@@ -96,8 +135,8 @@ export class FrameStore {
 
   private async fetchWorker(): Promise<void> {
     try {
-      while (this.fetchQueue.length > 0 && !this.destroyed && !this.paused) {
-        const i = this.fetchQueue.shift();
+      while (!this.destroyed && !this.paused) {
+        const i = this.takeNext();
         if (i === undefined) return;
         try {
           const res = await fetch(this.cfg.path(i), {
@@ -114,7 +153,9 @@ export class FrameStore {
           if (this.isLadderIndex(i)) {
             void this.decodeLadder(i, blob);
           } else if (Math.abs(i - this.playhead) <= this.cfg.windowRadius) {
+            // Gleich dekodieren: Ruht die Fahrt, käme sonst kein Anstoß
             this.requestFull(i);
+            if (!this.paused) this.pumpDecodes();
           }
         } catch {
           if (!this.aborter.signal.aborted) this.failures++;
@@ -270,6 +311,7 @@ export class FrameStore {
     this.window.clear();
     this.blobs.clear();
     this.decodeQueue.length = 0;
-    this.fetchQueue.length = 0;
+    this.ladderQueue.length = 0;
+    this.restQueue.length = 0;
   }
 }

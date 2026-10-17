@@ -1,6 +1,7 @@
 "use client";
 
 import Lenis from "lenis";
+import { usePathname } from "next/navigation";
 import {
   createContext,
   useContext,
@@ -34,8 +35,12 @@ export function useLenis(): LenisContextValue {
 
 export default function LenisProvider({ children }: { children: ReactNode }) {
   const lenisRef = useRef<Lenis | null>(null);
+  // Das gewichtete Scrollen gehört zur Kamerafahrt: nur auf der Startseite.
+  // Impressum, Datenschutz & Co. scrollen nativ (scrollTo fällt darauf zurück).
+  const home = usePathname() === "/";
 
   useEffect(() => {
+    if (!home) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
 
     const create = () => {
@@ -70,7 +75,7 @@ export default function LenisProvider({ children }: { children: ReactNode }) {
       reduced.removeEventListener("change", onChange);
       destroy();
     };
-  }, []);
+  }, [home]);
 
   const value = useRef<LenisContextValue>({
     getLenis: () => lenisRef.current,

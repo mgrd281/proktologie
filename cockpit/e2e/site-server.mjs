@@ -7,6 +7,7 @@
  * Aufruf (aus dem Repository-Wurzelverzeichnis, nach `next build`):
  *   node cockpit/e2e/site-server.mjs          # PORT, Standard 3000
  */
+import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
@@ -14,6 +15,17 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(fileURLToPath(new URL("../../out/", import.meta.url)));
 const port = Number(process.env.PORT ?? 3000);
+
+// Wie der Host (Vercel): die Cache-Header aus vercel.json – Filmbilder ein
+// Jahr im Browser-Speicher, Fotos einen Tag. Alles andere „no-store“, damit
+// jeder Test frisch lädt. Quellmuster nur in der Form „/pfad/(.*)“.
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const hostHeaders = JSON.parse(readFileSync(resolve(root, "../vercel.json"), "utf8")).headers.map((rule) => ({
+  pattern: new RegExp(`^${rule.source.split("(.*)").map(escapeRe).join(".*")}$`),
+  headers: Object.fromEntries(rule.headers.map((h) => [h.key.toLowerCase(), h.value])),
+}));
+const headersFor = (pathname) =>
+  Object.assign({ "cache-control": "no-store" }, ...hostHeaders.filter((r) => r.pattern.test(pathname)).map((r) => r.headers));
 
 const types = {
   ".html": "text/html; charset=utf-8",
@@ -59,7 +71,7 @@ createServer(async (req, res) => {
     const file = await resolveFile(url.pathname);
     if (!file) throw new Error("outside root");
     const body = await readFile(file);
-    res.writeHead(200, { "content-type": types[extname(file)] ?? "application/octet-stream", "cache-control": "no-store" });
+    res.writeHead(200, { "content-type": types[extname(file)] ?? "application/octet-stream", ...headersFor(url.pathname) });
     res.end(body);
   } catch {
     // Wie der Host (Vercel): Unbekannte Adressen bekommen die 404-Seite der Website

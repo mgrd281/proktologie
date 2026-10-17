@@ -21,13 +21,11 @@ import { forwardRef } from "react";
 interface TeamCardProps {
   member: TeamMember;
   index: number;
-  /** Erste Ebene lädt sofort – sie steht schon im Intro im Bild. */
-  eager?: boolean;
   className?: string;
 }
 
 export const TeamCard = forwardRef<HTMLLIElement, TeamCardProps>(
-  function TeamCard({ member, index, eager = false, className }, ref) {
+  function TeamCard({ member, index, className }, ref) {
     const number = String(index + 1).padStart(2, "0");
 
     return (
@@ -48,8 +46,10 @@ export const TeamCard = forwardRef<HTMLLIElement, TeamCardProps>(
             alt={member.alt}
             width={TEAM_IMAGE_WIDTH}
             height={TEAM_IMAGE_HEIGHT}
-            loading={eager ? "eager" : "lazy"}
-            fetchPriority={eager ? "high" : "auto"}
+            // Leise laden: Die Bühne erscheint erst im Team-Kapitel der Fahrt –
+            // vorher sollen Text, Arzt-Porträt und Buchung das Netz haben
+            loading="lazy"
+            fetchPriority="low"
             decoding="async"
             draggable={false}
             className="block aspect-[4/5] w-full object-cover object-top"

@@ -140,9 +140,32 @@ export function BookingCard() {
   // Provider asynchron/netzwerkbasiert antwortet (Cockpit).
   const slotsRequest = useRef(0);
 
+  // Lädt der Code des Providers nicht (Netzstörung), zweimal neu versuchen –
+  // danach sagt die Karte es, mit „Erneut versuchen“ und Telefon, statt für
+  // immer „Kalender wird geladen …“ zu zeigen.
+  const [providerFailed, setProviderFailed] = useState(false);
+  const [providerAttempt, setProviderAttempt] = useState(0);
   useEffect(() => {
-    void sharedBookingProvider().then(setProvider);
-  }, []);
+    let alive = true;
+    let timer = 0;
+    const load = (tries: number) => {
+      sharedBookingProvider().then(
+        (loaded) => {
+          if (alive) setProvider(loaded);
+        },
+        () => {
+          if (!alive) return;
+          if (tries < 2) timer = window.setTimeout(() => load(tries + 1), 1500 * (tries + 1));
+          else setProviderFailed(true);
+        },
+      );
+    };
+    load(0);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [providerAttempt]);
 
   // Fokus-Management: Schrittwechsel → Schritt-Überschrift; Abschluss →
   // Erfolgs-Überschrift. Während „sending"/„error" wird NICHT umfokussiert.
@@ -279,7 +302,7 @@ export function BookingCard() {
   // Ohne JavaScript antwortet nie jemand – dort zeigt <noscript> sie wieder.
   const mode = provider?.mode ?? "request";
   const confirmed = mode === "confirmed";
-  const modePending = !provider && site.bookingProvider === "cockpit";
+  const modePending = !provider && !providerFailed && site.bookingProvider === "cockpit";
   // Handy: Der Modus-Hinweis steht nur im ersten Schritt – danach wäre er
   // bei jedem Schritt drei Zeilen Wiederholung vor dem eigentlichen Inhalt.
   const noteClass = cn(
@@ -495,7 +518,16 @@ export function BookingCard() {
                     )}
                   </>
                 ) : (
-                  <p className="text-sm text-ink/70">Kalender wird geladen …</p>
+                  providerFailed ? (
+                    <LoadError
+                      onRetry={() => {
+                        setProviderFailed(false);
+                        setProviderAttempt((a) => a + 1);
+                      }}
+                    />
+                  ) : (
+                    <p className="text-sm text-ink/70">Kalender wird geladen …</p>
+                  )
                 ))}
 
               {step === 2 && (
