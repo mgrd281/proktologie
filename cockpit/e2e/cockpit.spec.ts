@@ -107,11 +107,11 @@ test("Einladung annehmen, Passkey und TOTP einrichten", async ({ page }) => {
   await expect(page.getByRole("switch", { name: /Website-Buchung live/ })).toBeDisabled();
 
   // Der Sprachkanal sagt hier, ob er eingerichtet ist – im Testlauf ist kein
-  // OPENAI_API_KEY gesetzt, also muss genau der Zustand stehen, in dem der
-  // Betreiber steckte: aus, mit dem konkreten nächsten Schritt daneben.
+  // OPENAI_API_KEY gesetzt. Die Ärztin sieht den Zustand ohne Technik; den
+  // konkreten nächsten Schritt sieht die Administration (letzte Prüfungen).
   await expect(page.getByText("Sprechen statt tippen: nicht eingerichtet")).toBeVisible();
-  await expect(page.getByText(/OPENAI_API_KEY/)).toBeVisible();
-  await expect(page.getByText(/neu deployen/)).toBeVisible();
+  await expect(page.getByText(/das übernimmt die Administration/)).toBeVisible();
+  await expect(page.getByText(/OPENAI_API_KEY/)).toHaveCount(0);
 
   // Screenshots hell + dunkel, Desktop + Mobil
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -715,6 +715,12 @@ test("Administration: „Sicherheit zurücksetzen“ nur mit frischer Anmeldung 
   const context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
   const page = await context.newPage();
   await newAccount(page, request, LEITUNG, "admin");
+
+  // Die Administration sieht beim Sprachkanal den konkreten nächsten Schritt
+  await page.goto("/einstellungen/demo");
+  await expect(page.getByText("Sprechen statt tippen: nicht eingerichtet")).toBeVisible();
+  await expect(page.getByText(/OPENAI_API_KEY/)).toBeVisible();
+  await expect(page.getByText(/neu deployen/)).toBeVisible();
 
   // Anmeldung älter als 10 Minuten: erst fragen, dann zurück an dieselbe Stelle
   await e2e(request, { action: "session-age", email: LEITUNG.email, minutes: 11 });
