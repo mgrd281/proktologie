@@ -35,12 +35,16 @@ Produktfakten: `PRODUCT.md`. Gestaltung: `DESIGN.md`. Herkunft der Design-Skills
      Formulare, Navigation, Tabellen, Diagramme.
      **Nicht verwenden:** `--persist` (legt eine konkurrierende Designdatei an) und Paletten-,
      Schrift- oder Stilvorschläge als Ersatz für die Marke – nur als Vergleich.
-3. **Keine Neugestaltung ohne Auftrag.** Verfeinern heißt: Marke, Inhalte, Texte und Verhalten
+3. **Keine neuen UI-, Icon-, Animations- oder Kalender-Bibliotheken** (shadcn, daisyUI, Floating UI,
+   FullCalendar, lucide-react …) und **keine externen Buchungsdienste** (Cal.com u. a.) ohne
+   Zustimmung – Bewertung siehe `.claude/skills/VENDOR.md`. Neue Icons als Lucide-Pfaddaten in
+   die eigene `Icon.tsx`.
+4. **Keine Neugestaltung ohne Auftrag.** Verfeinern heißt: Marke, Inhalte, Texte und Verhalten
    bleiben. Inhalte/Texte nur nach Rückfrage ändern.
-4. **Mobil arbeiten ohne Desktop zu verändern:** Handy-Änderungen über Basis- bzw.
+5. **Mobil arbeiten ohne Desktop zu verändern:** Handy-Änderungen über Basis- bzw.
    `max-md:`-Klassen, bestehende `md:`/`lg:`-Klassen unangetastet lassen; Desktop (1366×768) und
    Tablet (768×1024) vorher/nachher per Screenshot pixelweise vergleichen.
-5. **Prüfen vor dem Abschluss:** Handy 390×844 und 360×780 (kein waagrechtes Scrollen, Tippziele
+6. **Prüfen vor dem Abschluss:** Handy 390×844 und 360×780 (kein waagrechtes Scrollen, Tippziele
    ≥ 44 px), axe-Scan ohne Befund, `prefers-reduced-motion` und ohne JavaScript ansehen,
    `npm run lint`, `npx tsc --noEmit`, `npm test`, Build, Playwright im Cockpit
    (`CHROME_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome npx playwright test`,

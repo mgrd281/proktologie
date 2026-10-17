@@ -218,11 +218,38 @@ diese Tokens**, nie über Rohwerte. Dunkelmodus über `data-theme="dark"` oder
 ## Components
 
 ### Buttons
-- Website `components/ui/Button.tsx`: `primary` (accent-Fläche, deep-Text, halbfett), `outline`,
-  `outline-dark` (auf deep), `ghost`. **Mindesthöhe 44 px**, `px-7`, 14 px, optionaler Pfeil.
-- Cockpit `cockpit/components/ui/Button.tsx`: `primary`, `secondary` (Standard), `ghost`,
-  `danger`; Größen `sm` (36 px, nur in dichten Tabellenzeilen am Desktop) und `md` (44 px).
-- Pro Ansicht ein primary. Keine überbreiten Buttons außer in Formularen/Bottom-Sheets auf dem Handy.
+Bestand: Website `components/ui/Button.tsx` (`primary`, `outline`, `outline-dark`, `ghost`),
+Cockpit `cockpit/components/ui/Button.tsx` (`primary`, `secondary` = Standard, `ghost`, `danger`;
+Größen `sm` 36 px nur in dichten Desktop-Tabellenzeilen, `md` 44 px).
+
+| Eigenschaft | Regel |
+|---|---|
+| Höhe | 44 px (`min-h-11`), Ausnahme `sm` 36 px nur am Desktop in Tabellen |
+| Form | `rounded-full`; Innenabstand Website `px-7`, Cockpit `px-6` (`sm`: `px-4`) |
+| Schrift | Inter 14 px (`sm` 13 px), `font-medium`; primary `font-semibold` |
+| Icon im Button | 16 px (Website-Pfeil 18 px), Abstand `gap-2` (Cockpit) / `gap-3` (Website); Pfeil rechts rückt beim Hover 2–4 px nach rechts |
+| Hover | nur Farbwechsel, 200 ms (Cockpit) / 300 ms (Website); primary `#76a81f` |
+| Gedrückt | `active:` eine Stufe dunkler als Hover, keine Skalierung über 0,98 |
+| Fokus | globaler Ring 2 px, Abstand 3 px: primary auf hell, accent auf dunkel – nie entfernen |
+| Deaktiviert | `opacity-50`, `cursor-not-allowed`, kein Hover; Grund steht daneben, wenn nicht offensichtlich |
+| Lädt | Icon wird zum drehenden `refresh`, Button bleibt gleich breit, `disabled` während der Anfrage |
+
+Varianten und wofür:
+1. **Primary** – genau eine Haupthandlung je Ansicht (accent-Fläche, deep-Text).
+2. **Secondary / Outline** – Nebenhandlung; Rahmen `line-strong` bzw. `ink/25`.
+3. **Ghost** – leise Handlungen in Listen, Kopfzeilen, Werkzeugleisten.
+4. **Danger** – nur für Löschen/Absagen, immer mit Bestätigungsdialog.
+5. **Icon-only** – nur mit `aria-label` und, wo nicht eindeutig, Tooltip; Tippfläche ≥ 44 px
+   (Ausnahme: Desktop-Tabellen 36 px).
+6. **Segmented Control** (noch nicht gebaut) – für 2–4 gleichrangige Ansichten (z. B. Tag/Woche);
+   `role="radiogroup"`, gewählte Fläche `surface-raised`, Rest `surface-sunken`.
+7. **Split Button** (noch nicht gebaut) – nur wenn eine Hauptaktion Varianten hat; Menüteil eigener
+   Knopf mit `aria-haspopup`.
+8. **Schwebender Knopf (FAB)** – nur die bestehende Handy-Aktionsleiste und der Desktop-Chat-Knopf;
+   keine weiteren schwebenden Elemente.
+
+Verboten: Leuchten/Glow, Verläufe auf Buttons, federnde Übertreibungen, Buttons ohne Text, deren
+Symbol nicht sofort verständlich ist.
 
 ### Cards / Containers
 - Karte = `rounded-2xl bg-white p-7 ring-1 ring-ink/5` (mobil `p-6`). **Keine Karte in einer
@@ -247,6 +274,32 @@ diese Tokens**, nie über Rohwerte. Dunkelmodus über `data-theme="dark"` oder
   `max-w-md`), Hintergrund `deep/30–40` + `backdrop-blur-[2px]`, Fokusfalle, Esc schließt.
 - Website-Chat: auf dem Handy Bottom-Sheet (`max-h-[85dvh]`), am Desktop schwebendes Fenster.
 - Kopf-Knöpfe in Sheets/Dialogen ≥ 44 px.
+
+### Icons
+- **Ein Set pro App:** `components/ui/Icon.tsx` (Website) und `cockpit/components/ui/Icon.tsx`.
+  24er-Raster, Linien 1,6, runde Enden, `currentColor`, `aria-hidden` – die Bedeutung trägt der
+  Text oder das `aria-label` des Knopfes.
+- **Neue Icons** als Pfaddaten aus **Lucide** (ISC-Lizenz) übernehmen und an Strichstärke 1,6
+  anpassen – kein `lucide-react`, keine zweite Icon-Familie (Phosphor u. a.), keine Emoji.
+- Größen: 16 px in Buttons/Tabellen, 20 px in Navigation und Aktionsleiste, 22–24 px in Karten.
+- Ein Icon pro Bedeutung, projektweit gleich (Telefon = `phone`, Termin = `calendar`, Zeit = `clock`).
+
+### Termin-UX (Website-Buchung und Cockpit)
+- **Die Datenbank ist die Wahrheit:** Doppelbuchungen verhindert die EXCLUDE-Regel in
+  `cockpit/drizzle/0001_constraints_and_seed.sql`, nicht das Frontend. Die Oberfläche zeigt
+  Erfolg **erst nach der Antwort des Servers** und benennt den echten Status (Anfrage vs.
+  gebucht vs. bestätigt).
+- Zeiten immer in **Europe/Berlin**, Sommer-/Winterzeit über die Zeitzone, nie per Hand
+  (Kalenderdateien: `cockpit/lib/ics.ts`).
+- Ablauf in klaren Schritten (Terminart → Datum → Uhrzeit → Angaben → Bestätigung) mit
+  Fortschritt „1 / 5"; Zurück jederzeit ohne Datenverlust.
+- Freie Zeiten als Liste/Knöpfe (≥ 44 px), belegte nicht anklickbar und nicht nur farblich
+  markiert; leere Tage sagen den nächsten freien Tag.
+- **Keine Gesundheitsangaben** abfragen; Notfall immer auf Telefon verweisen.
+- Absagen/Verschieben: Bestätigungsdialog, verständlicher Ausgang, Kalenderdatei aktualisiert.
+- Doctolib ist ein separater Weg und wird nie als synchronisiert dargestellt.
+- Externe Buchungs-/Kalenderdienste (Cal.com, FullCalendar-Premium u. a.) nur nach Zustimmung
+  und DSGVO-/AVV-Prüfung.
 
 ## Do's and Don'ts
 

@@ -52,3 +52,20 @@ Benötigt `python3` (in der Cloud-Umgebung vorhanden).
 Kein `npx`-Installer. Repository klonen, die oben genannten Pfade erneut kopieren, bei
 ui-ux-pro-max die eine Pfadersetzung wiederholen, Commit und Datum hier eintragen, dann die
 Prüfschritte aus `/CLAUDE.md` („Design-Skills prüfen") ausführen.
+
+## Geprüft, aber bewusst nicht installiert (17.10.2026)
+
+Auftrag „Premium UI Components, Iconography & Appointment Systems“. Auf Wunsch des Betreibers
+nur für dieses Praxis-Projekt bewertet; die Snapfly-Teile gehören in ein anderes Repository.
+
+| Werkzeug | Ergebnis | Grund |
+|---|---|---|
+| shadcn/ui-Skill (`shadcn-ui/ui/skills/shadcn`, MIT, Commit d2fba50) | nicht installiert | `SKILL.md` führt beim Laden automatisch `npx shadcn@latest info --json` aus (unversioniertes Programm aus npm) und greift laut Beschreibung auch bei „DESIGN.md anwenden“. Setzt `components.json` und shadcn-Komponenten voraus, die es hier nicht gibt; ihre Regeln widersprechen dem bestehenden Code. Brauchbare Grundsätze stehen als eigene Regeln in `/DESIGN.md` (Buttons, Icons). |
+| Lucide (ISC) | als Quelle, nicht als Paket | Neue Icons als Pfaddaten in die eigenen `Icon.tsx` übernehmen, Strich 1,6; kein `lucide-react`. |
+| Phosphor Icons | übersprungen | Eine Icon-Familie pro Produkt. |
+| Floating UI | übersprungen | Kein konkreter Bedarf; eigene, barrierefreie Dialoge/Menüs; native `popover`/`dialog` zuerst. |
+| daisyUI | übersprungen | Würde das bestehende Designsystem doppeln. |
+| FullCalendar | bewertet, nicht installiert | Cockpit hat einen eigenen Kalender. Möglich später für Woche/Monat mit Drag-&-Drop (Kern MIT; Ressourcen-Ansichten kostenpflichtig) – nur mit Zustimmung. |
+| Cal.com | übersprungen | Eigene Buchung vorhanden; externer Dienst hieße Patientendaten an Dritte → erst AVV/DSGVO-Prüfung. |
+| Medplum | übersprungen | Kein FHIR-/Klinikdaten-Bedarf. |
+| Anthropic Frontend Design | nicht vorhanden, nichts entfernt | Impeccable baut darauf auf und deckt sie ab. |
