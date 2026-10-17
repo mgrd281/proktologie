@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/cn";
@@ -29,6 +30,8 @@ const MAP_EMBED_SRC = `https://www.google.com/maps?q=${mapQuery}&hl=de&z=16&outp
 
 export function MapEmbed({ className }: { className?: string }) {
   const [loaded, setLoaded] = useState(false);
+  // Nach „Karte laden“ verschwindet der Knopf – der Fokus geht auf die Karte
+  const focusFrame = useCallback((el: HTMLIFrameElement | null) => el?.focus(), []);
 
   return (
     <div
@@ -40,6 +43,7 @@ export function MapEmbed({ className }: { className?: string }) {
       <div className="relative min-h-80 md:min-h-[26rem]">
         {loaded ? (
           <iframe
+            ref={focusFrame}
             src={MAP_EMBED_SRC}
             title={praxisSection.mapIframeTitle}
             loading="lazy"
@@ -80,13 +84,18 @@ export function MapEmbed({ className }: { className?: string }) {
             </span>
 
             <div className="absolute inset-x-0 bottom-0 flex flex-col items-start gap-3 p-6 md:p-7">
-              <p className="max-w-md text-xs leading-relaxed text-cream/70">
-                {praxisSection.mapPrivacyNote}
+              <p className="max-w-md text-sm leading-relaxed text-cream/80">
+                {praxisSection.mapPrivacyNote}{" "}
+                <Link href="/datenschutz/#karte" className="font-medium text-cream underline underline-offset-4 hover:text-accent">
+                  {praxisSection.mapPrivacyLink}
+                </Link>
+                .
               </p>
+              {/* Ruhig (Rahmen statt Fläche): Das Grün gehört der Terminbuchung */}
               <button
                 type="button"
                 onClick={() => setLoaded(true)}
-                className="inline-flex min-h-11 items-center gap-2.5 rounded-full bg-accent px-6 py-2.5 text-sm font-semibold text-deep transition-colors hover:bg-[#76a81f]"
+                className="inline-flex min-h-11 items-center gap-2.5 rounded-full border border-white/30 px-6 py-2.5 text-sm font-medium text-cream transition-colors hover:border-accent hover:text-accent active:bg-white/10"
               >
                 <Icon name="pin" size={16} />
                 {praxisSection.mapLoadLabel}
@@ -116,7 +125,7 @@ export function MapEmbed({ className }: { className?: string }) {
             <Icon name="arrow-right" size={16} />
           </a>
         </div>
-        <Button href="/#kontakt" withArrow className="shrink-0">
+        <Button href="/#kontakt" variant="outline-dark" withArrow className="shrink-0">
           {ctaLabel}
         </Button>
       </div>

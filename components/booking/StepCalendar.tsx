@@ -21,6 +21,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * geladen …“; scheitert es, steht genau das da – mit „Erneut versuchen“ und
  * Telefon. Geblättert wird nur, wo es etwas zu buchen gibt: nicht vor den
  * aktuellen Monat und nicht über den letzten buchbaren Tag hinaus.
+ *
+ * Mit echter Verfügbarkeit (verbindlicher Modus) öffnet der Kalender im
+ * Monat des frühesten freien Tages; darüber steht ein Knopf, der diesen Tag
+ * mit einem Tipp wählt. Bis der Tag feststeht, hält ein Platzhalter die
+ * Maße – nichts springt, wenn Knopf und Monat erscheinen.
  */
 
 interface StepCalendarProps {
@@ -45,6 +50,12 @@ const dayLabelFormat = new Intl.DateTimeFormat("de-DE", {
   day: "numeric",
   month: "long",
   year: "numeric",
+});
+/** „Mo., 19. Oktober“ – im Knopf zum frühesten freien Tag */
+const earliestFormat = new Intl.DateTimeFormat("de-DE", {
+  weekday: "short",
+  day: "numeric",
+  month: "long",
 });
 
 /** Führende Leerzellen + Monatstage zu 7er-Wochen gruppieren. */
@@ -122,10 +133,77 @@ function CalendarCell({
 /** Erst nach dieser Zeit erscheint der Ladehinweis – kurzes Laden flackert nicht. */
 const LOADING_HINT_MS = 400;
 
-export function StepCalendar({ provider, typeId, selected, onSelect }: StepCalendarProps) {
+/** Höhe des Rasters, solange die Tage laden: Platz für fünf Wochen. */
+const GRID_RESERVE = "min-h-[14.75rem] max-md:min-h-[14.25rem]";
+
+function WeekdayRow() {
+  return (
+    <div className="mt-4 grid grid-cols-7 text-center" aria-hidden="true">
+      {bookingCopy.weekdaysShort.map((weekday) => (
+        <span
+          key={weekday}
+          className="pb-2 text-xs font-medium tracking-wide text-ink/70 uppercase"
+        >
+          {weekday}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+export function StepCalendar(props: StepCalendarProps) {
+  const { provider, typeId } = props;
+  // undefined = wird gesucht, null = keiner bekannt (oder Laden gescheitert –
+  // das meldet dann der Monat selbst)
+  const [earliest, setEarliest] = useState<ISODate | null | undefined>(() =>
+    typeId && provider.getEarliestDate ? undefined : null,
+  );
+  const [hint, setHint] = useState(false);
+
+  useEffect(() => {
+    if (!typeId || !provider.getEarliestDate) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => setHint(true), LOADING_HINT_MS);
+    provider.getEarliestDate(typeId).then(
+      (date) => !cancelled && setEarliest(date),
+      () => !cancelled && setEarliest(null),
+    );
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [provider, typeId]);
+
+  if (earliest !== undefined) return <MonthCalendar {...props} earliest={earliest} />;
+
+  // Platzhalter in den Maßen des Kalenders: Knopf, Monatszeile, Wochentage, Raster
+  return (
+    <div className="max-md:-mx-4" aria-busy="true">
+      <div className="mb-4 min-h-14 max-md:mx-4" />
+      <div className="h-11" />
+      <WeekdayRow />
+      <div className={cn("relative", GRID_RESERVE)}>
+        {hint && (
+          <p role="status" className="absolute inset-0 flex items-center justify-center text-sm text-ink/70">
+            {bookingCopy.loadingDays}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MonthCalendar({
+  provider,
+  typeId,
+  selected,
+  onSelect,
+  earliest,
+}: StepCalendarProps & { earliest: ISODate | null }) {
   const [today] = useState(() => new Date());
+  // Ohne gewählten Tag: der Monat des frühesten freien Tages
   const [view, setView] = useState(() => {
-    const base = selected ? fromISO(selected) : today;
+    const base = selected ? fromISO(selected) : earliest ? fromISO(earliest) : today;
     return { year: base.getFullYear(), month: base.getMonth() };
   });
   const [attempt, setAttempt] = useState(0);
@@ -273,6 +351,22 @@ export function StepCalendar({ provider, typeId, selected, onSelect }: StepCalen
   // Tagesfelder trotz sieben Spalten breit genug zum Tippen werden.
   return (
     <div className="max-md:-mx-4">
+      {earliest && (
+        <div className="mb-4 max-md:mx-4">
+          <button
+            type="button"
+            onClick={() => onSelect(earliest)}
+            className="flex min-h-14 w-full items-center gap-3 rounded-xl border border-primary/30 bg-white px-4 py-2 text-left text-sm text-ink transition-colors duration-200 hover:border-primary active:bg-mist"
+          >
+            <Icon name="calendar" size={18} className="shrink-0 text-primary-deep" />
+            <span className="flex min-w-0 flex-1 flex-wrap gap-x-1.5">
+              <span>{bookingCopy.earliestDay}</span>
+              <span className="font-semibold">{earliestFormat.format(fromISO(earliest))}</span>
+            </span>
+            <Icon name="arrow-right" size={16} className="shrink-0 text-primary-deep" />
+          </button>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         {/* aria-disabled statt disabled: Der Fokus bleibt auf dem Knopf, wenn
             er am Rand ankommt, statt im Nichts zu landen. */}
@@ -305,16 +399,7 @@ export function StepCalendar({ provider, typeId, selected, onSelect }: StepCalen
         </button>
       </div>
 
-      <div className="mt-4 grid grid-cols-7 text-center" aria-hidden="true">
-        {bookingCopy.weekdaysShort.map((weekday) => (
-          <span
-            key={weekday}
-            className="pb-2 text-[11px] font-medium tracking-wide text-ink/70 uppercase"
-          >
-            {weekday}
-          </span>
-        ))}
-      </div>
+      <WeekdayRow />
 
       {failed ? (
         <div className="max-md:mx-4">
@@ -331,7 +416,7 @@ export function StepCalendar({ provider, typeId, selected, onSelect }: StepCalen
         // sonst schrumpft die Karte kurz und wächst dann wieder.
         className={cn(
           "animate-step-in relative grid grid-cols-7 gap-1 max-md:gap-0.5",
-          days === null && "min-h-[14.75rem] max-md:min-h-[14.25rem]",
+          days === null && GRID_RESERVE,
         )}
       >
         {showLoadingHint && (

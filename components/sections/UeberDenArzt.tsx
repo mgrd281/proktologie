@@ -35,7 +35,15 @@ export function UeberDenArzt() {
           >
             {arzt.name}
           </h2>
-          <p className="mt-3 text-sm font-medium text-ink/70">{arzt.role}</p>
+          {/* Qualifikationen untereinander statt als eine lange Zeile */}
+          <ul className="mt-3 space-y-1 text-sm font-medium text-ink/70">
+            {arzt.role.split(" · ").map((title) => (
+              <li key={title} className="flex items-start gap-2.5">
+                <span aria-hidden="true" className="mt-2 size-1 shrink-0 rounded-full bg-primary" />
+                {title}
+              </li>
+            ))}
+          </ul>
 
           <div className="mt-7 space-y-5">
             {arzt.philosophy.map((paragraph) => (

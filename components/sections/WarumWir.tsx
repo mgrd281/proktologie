@@ -1,6 +1,7 @@
 import { Reveal } from "@/components/ui/Reveal";
 import { SectionHeading } from "@/components/ui/SectionHeading";
-import { SwipeHint, swipeItem, swipeList } from "@/components/ui/Swipe";
+import { swipeItem } from "@/components/ui/Swipe";
+import { SwipeRow } from "@/components/ui/SwipeRow";
 import { cn } from "@/lib/cn";
 import { benefits, benefitsIntro } from "@/content/benefits";
 
@@ -22,10 +23,12 @@ export function WarumWir() {
           />
         </Reveal>
 
-        <ol
-          tabIndex={0}
-          aria-label={benefitsIntro.kicker}
-          className={cn("mt-14 border-t border-white/10 max-md:mt-10 max-md:border-t-0", swipeList)}
+        <SwipeRow
+          as="ol"
+          label={benefitsIntro.kicker}
+          count={benefits.length}
+          onDark
+          className="mt-14 border-t border-white/10 max-md:mt-10 max-md:border-t-0"
         >
           {benefits.map((benefit, index) => (
             <li
@@ -35,7 +38,7 @@ export function WarumWir() {
                 swipeItem,
               )}
             >
-              <Reveal delay={index * 60}>
+              <Reveal delay={index * 60} swipe>
                 <div className="grid items-baseline gap-3 py-7 max-md:px-6 md:grid-cols-[7rem_1fr_1.4fr] md:gap-8 md:py-9">
                   <span
                     aria-hidden="true"
@@ -53,8 +56,7 @@ export function WarumWir() {
               </Reveal>
             </li>
           ))}
-        </ol>
-        <SwipeHint onDark />
+        </SwipeRow>
       </div>
     </section>
   );

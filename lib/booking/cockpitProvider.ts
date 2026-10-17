@@ -25,12 +25,19 @@ import type {
  *   drei Sekunden alt sein (Missbrauchsschutz) – der Provider wartet
  *   notfalls kurz, statt den Nutzer mit einem Fehler zu konfrontieren.
  * - Der Honigtopf (`website`) wird als `hp` mitgeschickt: leer für Menschen.
+ * - Was ein Abruf an freien Zeiten liefert, gilt eine Minute lang: Der
+ *   früheste freie Tag (Kamerafahrt, Kalender) und der Monat, in dem er
+ *   liegt, kommen so aus EINEM Abruf.
  */
 
 // Eine Quelle für die Basis-URL: content/site.ts liest die Umgebung
 const API_BASE = site.cockpitApiUrl;
 const MIN_TOKEN_AGE_MS = 3200;
 const MAX_TOKEN_AGE_MS = 25 * 60_000;
+/** So lange gilt geladene Verfügbarkeit als frisch (wie der Status im Cockpit). */
+const FRESH_MS = 60_000;
+/** Größter Zeitraum je Abruf – wie MAX_RANGE_DAYS in cockpit/lib/booking/public.ts. */
+const MAX_RANGE_DAYS = 45;
 
 interface AvailabilityResponse {
   typeId: string;
@@ -55,6 +62,10 @@ class ApiError extends Error {
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const toISO = (d: Date): ISODate => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const addDays = (iso: ISODate, n: number): ISODate => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+};
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -63,7 +74,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { Accept: "application/json", ...(init?.body ? { "Content-Type": "application/json" } : {}), ...(init?.headers ?? {}) },
   });
   const body = (await res.json().catch(() => ({}))) as T & ApiErrorBody;
-  if (!res.ok) throw new ApiError(body.error?.code ?? "http", body.error?.message ?? bookingCopy.errors.send);
+  if (!res.ok) throw new ApiError(body.error?.code ?? "http", body.error?.message ?? bookingCopy.errors.sendConfirmed);
   return body;
 }
 
@@ -75,13 +86,33 @@ export class CockpitBookingProvider implements BookingProvider {
   private types: AppointmentType[] | null = null;
   /** typeId → letzter buchbarer Tag */
   private readonly lastDates = new Map<string, ISODate>();
+  /** typeId → frisch geladene Zeiträume (die Zeiten selbst liegen in `slots`) */
+  private readonly loaded = new Map<string, Array<{ from: ISODate; to: ISODate; at: number }>>();
+  /** typeId → frühester freier Tag (laufender oder fertiger Abruf) */
+  private readonly earliest = new Map<string, { at: number; value: Promise<ISODate | null> }>();
 
   private async fetchAvailability(typeId: string, from: ISODate, to: ISODate): Promise<AvailabilityResponse> {
     const r = await request<AvailabilityResponse>(`/api/public/v1/availability?type=${encodeURIComponent(typeId)}&from=${from}&to=${to}`);
     for (const d of r.days) this.slots.set(`${typeId}|${d.date}`, d.slots);
     if (r.lastDate) this.lastDates.set(typeId, r.lastDate);
     this.token = { value: r.formToken, issuedAt: Date.now() };
+    const now = Date.now();
+    const fresh = (this.loaded.get(typeId) ?? []).filter((x) => now - x.at < FRESH_MS);
+    this.loaded.set(typeId, [...fresh, { from: r.from, to: r.to, at: now }]);
     return r;
+  }
+
+  /** Deckt ein frischer Abruf den Zeitraum ab? Dann stimmen die Zeiten in `slots`. */
+  private isFresh(typeId: string, from: ISODate, to: ISODate): boolean {
+    const now = Date.now();
+    return (this.loaded.get(typeId) ?? []).some((x) => now - x.at < FRESH_MS && x.from <= from && to <= x.to);
+  }
+
+  /** Nach einer Buchung (oder „schon vergeben“) ist die Belegung veraltet. */
+  private forget(typeId: string, date: ISODate) {
+    this.slots.delete(`${typeId}|${date}`);
+    this.loaded.delete(typeId);
+    this.earliest.delete(typeId);
   }
 
   lastBookableDate(typeId?: string | null): ISODate | null {
@@ -115,12 +146,39 @@ export class CockpitBookingProvider implements BookingProvider {
     }
     if (!typeId || last < today) return days;
     const from = first < today ? toISO(today) : toISO(first);
+    const to = toISO(last);
     // Fehler gehen bewusst an die Oberfläche: Ein Monat, in dem nur alles
     // grau ist, sähe aus wie „ausgebucht“ – die Karte sagt stattdessen, dass
     // das Laden gescheitert ist, und bietet „Erneut versuchen“ und das Telefon.
-    const r = await this.fetchAvailability(typeId, from, toISO(last));
-    const withSlots = new Set(r.days.filter((d) => d.slots.length > 0).map((d) => d.date));
-    return days.map((d) => ({ ...d, selectable: withSlots.has(d.date) }));
+    if (!this.isFresh(typeId, from, to)) await this.fetchAvailability(typeId, from, to);
+    return days.map((d) => ({
+      ...d,
+      selectable: d.date >= from && (this.slots.get(`${typeId}|${d.date}`)?.length ?? 0) > 0,
+    }));
+  }
+
+  getEarliestDate(typeId: string): Promise<ISODate | null> {
+    const known = this.earliest.get(typeId);
+    if (known && Date.now() - known.at < FRESH_MS) return known.value;
+    const value = (async () => {
+      // Je Abruf höchstens 45 Tage; der Buchungshorizont (meist 56 Tage) ist
+      // nach spätestens zwei Abrufen erreicht – drei sind die Sicherung.
+      let from = toISO(new Date());
+      for (let round = 0; round < 3; round++) {
+        const r = await this.fetchAvailability(typeId, from, addDays(from, MAX_RANGE_DAYS - 1));
+        const first = r.days.find((d) => d.slots.length > 0);
+        if (first) return first.date;
+        if (!r.lastDate || r.to >= r.lastDate) return null;
+        from = addDays(r.to, 1);
+      }
+      return null;
+    })();
+    this.earliest.set(typeId, { at: Date.now(), value });
+    // Ein Ladefehler wird nicht gemerkt – der nächste Blick fragt neu
+    value.catch(() => {
+      if (this.earliest.get(typeId)?.value === value) this.earliest.delete(typeId);
+    });
+    return value;
   }
 
   async getAvailableSlots(date: ISODate, typeId?: string | null): Promise<BookingSlot[]> {
@@ -143,7 +201,7 @@ export class CockpitBookingProvider implements BookingProvider {
   }
 
   async createBooking(draft: BookingDraft): Promise<BookingResult> {
-    if (!draft.typeId || !draft.date || !draft.time) return { ok: false, error: bookingCopy.errors.send };
+    if (!draft.typeId || !draft.date || !draft.time) return { ok: false, error: bookingCopy.errors.sendConfirmed };
     const payload = (formToken: string) => ({
       typeId: draft.typeId,
       date: draft.date,
@@ -156,11 +214,12 @@ export class CockpitBookingProvider implements BookingProvider {
       formToken,
       hp: draft.website ?? "",
     });
+    type Booked = { ref: string; startsAt: string; endsAt: string; calendarUid?: string };
     const send = async (formToken: string) =>
-      request<{ ref: string; startsAt: string; endsAt: string }>("/api/public/v1/bookings", { method: "POST", body: JSON.stringify(payload(formToken)) });
+      request<Booked>("/api/public/v1/bookings", { method: "POST", body: JSON.stringify(payload(formToken)) });
 
     try {
-      let r: { ref: string; startsAt: string; endsAt: string };
+      let r: Booked;
       try {
         r = await send(await this.freshToken(draft.typeId, draft.date));
       } catch (e) {
@@ -170,15 +229,15 @@ export class CockpitBookingProvider implements BookingProvider {
         r = await send(await this.freshToken(draft.typeId, draft.date));
       }
       // Belegung ist jetzt veraltet – beim nächsten Blick neu laden
-      this.slots.delete(`${draft.typeId}|${draft.date}`);
-      return { ok: true, method: "confirmed", ref: r.ref, startsAt: r.startsAt, endsAt: r.endsAt };
+      this.forget(draft.typeId, draft.date);
+      return { ok: true, method: "confirmed", ref: r.ref, startsAt: r.startsAt, endsAt: r.endsAt, calendarUid: r.calendarUid };
     } catch (e) {
       if (e instanceof ApiError) {
-        if (e.code === "slot_taken") this.slots.delete(`${draft.typeId}|${draft.date}`);
+        if (e.code === "slot_taken") this.forget(draft.typeId, draft.date);
         const known = ["slot_taken", "too_many", "paused", "not_live", "rate_limited", "validation"];
-        return { ok: false, code: e.code, error: known.includes(e.code) ? e.message : bookingCopy.errors.send };
+        return { ok: false, code: e.code, error: known.includes(e.code) ? e.message : bookingCopy.errors.sendConfirmed };
       }
-      return { ok: false, error: bookingCopy.errors.send };
+      return { ok: false, error: bookingCopy.errors.sendConfirmed };
     }
   }
 

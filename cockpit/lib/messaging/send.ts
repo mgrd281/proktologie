@@ -36,9 +36,14 @@ export function manageUrlFor(token: string | null): string | null {
  * und Sequenz – Kalender-Apps führen so nur EINEN Eintrag und ziehen ihn bei
  * Verschiebung oder Absage nach.
  */
+/** Kalender-UID eines Termins – in Mails, auf der Patientenseite und in der Buchungsantwort dieselbe. */
+export function appointmentUid(appointmentId: string): string {
+  return `${appointmentId}@proktologie-eimsbuettel.de`;
+}
+
 export function appointmentIcs(a: AppointmentView, method: "REQUEST" | "CANCEL" | "PUBLISH", manageUrl: string | null): string {
   return buildIcs({
-    uid: `${a.id}@proktologie-eimsbuettel.de`,
+    uid: appointmentUid(a.id),
     sequence: a.sequence,
     method,
     start: new Date(a.startsAt),

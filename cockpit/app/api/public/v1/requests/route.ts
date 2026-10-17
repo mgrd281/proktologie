@@ -1,4 +1,4 @@
-import { verifyFormToken } from "@/lib/api/formToken";
+import { issueFormToken, verifyFormToken } from "@/lib/api/formToken";
 import { apiError, clientIp, json, preflight, readJson } from "@/lib/api/http";
 import { createCallbackRequest, RequestError } from "@/lib/booking/requests";
 import { getDb } from "@/lib/db/client";
@@ -15,6 +15,11 @@ export const dynamic = "force-dynamic";
  */
 export async function OPTIONS(req: Request) {
   return preflight(req);
+}
+
+/** Formular-Token für das Rückruf-Formular – ohne Datenbank, nie zwischengespeichert. */
+export async function GET(req: Request) {
+  return json(req, { formToken: issueFormToken(Date.now()) }, { cache: "no-store" });
 }
 
 export async function POST(req: Request) {

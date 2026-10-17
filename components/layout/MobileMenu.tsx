@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { LogoLockup } from "@/components/ui/Logo";
+import { OpenStatus } from "@/components/ui/OpenStatus";
 import { ctaHref, ctaLabel, navigation } from "@/content/navigation";
 import { site } from "@/content/site";
 import { useEffect, useRef } from "react";
@@ -10,6 +11,8 @@ import { useEffect, useRef } from "react";
 interface MobileMenuProps {
   open: boolean;
   onClose: () => void;
+  /** Gerade gelesener Abschnitt der Startseite (Header) – im Menü markiert. */
+  activeSection?: string | null;
 }
 
 /**
@@ -19,7 +22,7 @@ interface MobileMenuProps {
  * erreichbar. Das Menü scrollt selbst (`data-lenis-prevent`): Lenis ist
  * bei offenem Menü gestoppt und würde Rad und Wischen sonst verschlucken.
  */
-export function MobileMenu({ open, onClose }: MobileMenuProps) {
+export function MobileMenu({ open, onClose, activeSection = null }: MobileMenuProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -102,6 +105,7 @@ export function MobileMenu({ open, onClose }: MobileMenuProps) {
             {site.phone}
           </span>
         </Button>
+        <OpenStatus onDark className="justify-center" />
       </div>
 
       <nav aria-label="Hauptnavigation" className="mt-8 flex-1 border-t border-white/10 pt-5 pb-4">
@@ -111,12 +115,13 @@ export function MobileMenu({ open, onClose }: MobileMenuProps) {
               <a
                 href={item.href}
                 onClick={onClose}
+                aria-current={item.href === `/#${activeSection}` ? "location" : undefined}
                 className="group flex min-h-12 items-baseline gap-4 py-2"
               >
                 <span className="text-xs font-medium text-accent/70 tabular-nums">
                   {String(index + 1).padStart(2, "0")}
                 </span>
-                <span className="font-display text-2xl font-medium text-cream transition-colors group-hover:text-accent">
+                <span className="font-display text-2xl font-medium text-cream transition-colors group-hover:text-accent group-aria-[current]:text-accent">
                   {item.label}
                 </span>
               </a>

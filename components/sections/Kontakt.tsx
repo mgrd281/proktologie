@@ -1,9 +1,12 @@
 import { BookingCard } from "@/components/booking/BookingCard";
 import { CallbackDisclosure } from "@/components/booking/CallbackDisclosure";
+import { EmergencyLine } from "@/components/ui/EmergencyLine";
 import { Icon } from "@/components/ui/Icon";
+import { OpenStatus } from "@/components/ui/OpenStatus";
 import { Reveal } from "@/components/ui/Reveal";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { terminSection } from "@/content/booking";
+import { hoursLine, unbreakableTimes } from "@/content/chat";
 import { site } from "@/content/site";
 
 /**
@@ -49,6 +52,9 @@ export function Kontakt() {
                 <Icon name="phone" size={22} className="text-primary" />
                 {site.phone}
               </a>
+              {/* Sprechzeit gleich am Telefon: „Jetzt geöffnet · bis 12:00 Uhr“ und die Woche */}
+              <OpenStatus className="mt-2" />
+              <p className="mt-1.5 max-w-md text-sm leading-relaxed text-ink/70">{unbreakableTimes(hoursLine("de"))}</p>
             </div>
 
             {/* Doctolib nur zeigen, wenn die echte Profil-URL konfiguriert ist */}
@@ -83,10 +89,13 @@ export function Kontakt() {
               </p>
             </div>
 
-            <p className="flex items-start gap-2.5 rounded-xl bg-mist px-4 py-3.5 text-sm leading-relaxed text-ink/75">
+            <div className="flex items-start gap-2.5 rounded-xl bg-mist px-4 py-3.5 text-sm leading-relaxed text-ink/75">
               <Icon name="pulse" size={16} className="mt-0.5 shrink-0 text-primary" />
-              {terminSection.acuteNote}
-            </p>
+              <div>
+                <p>{terminSection.acuteNote}</p>
+                <EmergencyLine className="mt-1" />
+              </div>
+            </div>
 
             <CallbackDisclosure />
           </div>

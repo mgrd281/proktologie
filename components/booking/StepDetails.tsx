@@ -11,14 +11,24 @@ import { useState, type FormEvent } from "react";
  * Schritt 4: Minimal nötige Kontaktdaten (kein Geburtsdatum, keine
  * medizinischen Details). Inline-Validierung direkt unter dem Feld,
  * Fokus springt aufs erste fehlerhafte Feld, Sammelmeldung in einer
- * role=alert-Region. Eingaben bleiben beim Vor/Zurück erhalten
- * (Draft-State liegt in BookingCard).
+ * role=alert-Region. Ist ein Feld korrigiert, verschwindet seine Meldung
+ * sofort – neue Meldungen gibt es erst wieder beim Weiter-Klick. Eingaben
+ * bleiben beim Vor/Zurück erhalten (Draft-State liegt in BookingCard).
  */
 
 type FieldKey = "firstName" | "lastName" | "email" | "phone" | "consent";
 type FieldErrors = Partial<Record<FieldKey, string>>;
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const FIELD_ORDER = ["firstName", "lastName", "email", "phone", "consent"] as const;
+
+function fieldError(key: FieldKey, draft: BookingDraft): string | undefined {
+  if (key === "firstName") return draft.firstName.trim() ? undefined : bookingCopy.errors.firstName;
+  if (key === "lastName") return draft.lastName.trim() ? undefined : bookingCopy.errors.lastName;
+  if (key === "email") return EMAIL_PATTERN.test(draft.email.trim()) ? undefined : bookingCopy.errors.email;
+  if (key === "phone") return draft.phone.trim() ? undefined : bookingCopy.errors.phone;
+  return draft.consent ? undefined : bookingCopy.errors.consent;
+}
 
 interface StepDetailsProps {
   draft: BookingDraft;
@@ -34,17 +44,13 @@ export function StepDetails({ draft, onChange, onContinue }: StepDetailsProps) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const next: FieldErrors = {};
-    if (!draft.firstName.trim()) next.firstName = bookingCopy.errors.firstName;
-    if (!draft.lastName.trim()) next.lastName = bookingCopy.errors.lastName;
-    if (!EMAIL_PATTERN.test(draft.email.trim()))
-      next.email = bookingCopy.errors.email;
-    if (!draft.phone.trim()) next.phone = bookingCopy.errors.phone;
-    if (!draft.consent) next.consent = bookingCopy.errors.consent;
+    for (const key of FIELD_ORDER) {
+      const error = fieldError(key, draft);
+      if (error) next[key] = error;
+    }
     setErrors(next);
 
-    const firstInvalid = (
-      ["firstName", "lastName", "email", "phone", "consent"] as const
-    ).find((key) => next[key]);
+    const firstInvalid = FIELD_ORDER.find((key) => next[key]);
     if (firstInvalid) {
       setSummary(bookingCopy.errors.summary);
       event.currentTarget
@@ -54,6 +60,16 @@ export function StepDetails({ draft, onChange, onContinue }: StepDetailsProps) {
     }
     setSummary("");
     onContinue();
+  }
+
+  // Korrigiert? Dann verschwindet die Meldung des Feldes gleich beim Tippen.
+  function update(key: FieldKey, patch: Partial<BookingDraft>) {
+    onChange(patch);
+    if (!errors[key] || fieldError(key, { ...draft, ...patch })) return;
+    const rest = { ...errors };
+    delete rest[key];
+    setErrors(rest);
+    if (Object.keys(rest).length === 0) setSummary("");
   }
 
   const inputClasses = (key: FieldKey) =>
@@ -69,6 +85,8 @@ export function StepDetails({ draft, onChange, onContinue }: StepDetailsProps) {
     label: string,
     type: string,
     autoComplete: string,
+    // Namen groß, E-Mail klein und ohne Autokorrektur (Handy-Tastatur)
+    autoCapitalize: "words" | "none" | undefined,
   ) => (
     <div>
       <label htmlFor={`booking-${key}`} className="mb-1.5 block text-sm font-medium">
@@ -78,12 +96,15 @@ export function StepDetails({ draft, onChange, onContinue }: StepDetailsProps) {
         id={`booking-${key}`}
         type={type}
         autoComplete={autoComplete}
+        autoCapitalize={autoCapitalize}
+        autoCorrect={key === "email" ? "off" : undefined}
+        spellCheck={key === "email" ? false : undefined}
         required
         aria-required="true"
         aria-invalid={Boolean(errors[key])}
         aria-describedby={errors[key] ? `booking-${key}-error` : undefined}
         value={draft[key]}
-        onChange={(event) => onChange({ [key]: event.target.value })}
+        onChange={(event) => update(key, { [key]: event.target.value })}
         className={inputClasses(key)}
       />
       {errors[key] && (
@@ -97,11 +118,11 @@ export function StepDetails({ draft, onChange, onContinue }: StepDetailsProps) {
   return (
     <form onSubmit={handleSubmit} noValidate className="relative space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
-        {field("firstName", copy.firstName, "text", "given-name")}
-        {field("lastName", copy.lastName, "text", "family-name")}
+        {field("firstName", copy.firstName, "text", "given-name", "words")}
+        {field("lastName", copy.lastName, "text", "family-name", "words")}
       </div>
-      {field("email", copy.email, "email", "email")}
-      {field("phone", copy.phone, "tel", "tel")}
+      {field("email", copy.email, "email", "email", "none")}
+      {field("phone", copy.phone, "tel", "tel", undefined)}
 
       <p className="text-xs leading-relaxed text-ink/70">{copy.privacyNote}</p>
 
@@ -115,7 +136,7 @@ export function StepDetails({ draft, onChange, onContinue }: StepDetailsProps) {
             aria-invalid={Boolean(errors.consent)}
             aria-describedby={errors.consent ? "booking-consent-error" : undefined}
             checked={draft.consent}
-            onChange={(event) => onChange({ consent: event.target.checked })}
+            onChange={(event) => update("consent", { consent: event.target.checked })}
             className="mt-0.5 size-5 shrink-0 rounded accent-primary"
           />
           {/* Der Link ersetzt die Erwähnung im Satz – kein doppelter Link */}

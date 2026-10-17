@@ -11,8 +11,9 @@ import { StepFrame } from "@/components/booking/StepFrame";
 import { StepSlots } from "@/components/booking/StepSlots";
 import { StepTypes } from "@/components/booking/StepTypes";
 import { appointmentTypes, bookingCopy, bookingSteps } from "@/content/booking";
+import { buildIcs } from "@/lib/booking/ics";
 import type { BookingProvider } from "@/lib/booking/provider";
-import { createBookingProvider } from "@/lib/booking/provider";
+import { sharedBookingProvider } from "@/lib/booking/provider";
 import type { BookingDraft, BookingSlot } from "@/lib/booking/types";
 import { site } from "@/content/site";
 import { cn } from "@/lib/cn";
@@ -27,7 +28,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * (kein localStorage, keine URLs mit Personenbezug, kein Logging).
  *
  * Im verbindlichen Modus (Provider „cockpit“) endet der Flow mit einer
- * echten Buchung samt Referenz; die Bestätigung kommt per E-Mail.
+ * echten Buchung samt Referenz; die Bestätigung kommt per E-Mail. Der
+ * Abschluss nennt Tag, Uhrzeit und Adresse und bietet „In den Kalender“
+ * (Datei aus dem Browser) und „Anfahrt“.
+ *
+ * Zurück-Geste (Handy) und Zurück-Knopf des Browsers gehen einen Schritt
+ * zurück statt von der Seite: Solange die Buchung unterwegs ist, liegt genau
+ * EIN eigener Verlaufseintrag obenauf (ohne Adressänderung – Next.js lädt
+ * dabei nichts neu). Wird er verlassen, geht die Karte einen Schritt zurück
+ * und legt ihn neu an, solange noch ein Schritt davor liegt.
  */
 
 const emptyDraft: BookingDraft = {
@@ -48,13 +57,60 @@ const slotDateFormat = new Intl.DateTimeFormat("de-DE", {
   day: "numeric",
   month: "long",
 });
+// Abschluss: Zeit aus der Antwort des Cockpits (UTC), angezeigt in Berlin
+const bookedDateFormat = new Intl.DateTimeFormat("de-DE", {
+  timeZone: "Europe/Berlin",
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+const bookedTimeFormat = new Intl.DateTimeFormat("de-DE", {
+  timeZone: "Europe/Berlin",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+interface Booked {
+  ref: string;
+  startsAt: string;
+  endsAt: string;
+  calendarUid?: string;
+}
 
 type SendState =
   | { kind: "idle" }
   | { kind: "sending" }
   | { kind: "done"; method: "mailto" | "endpoint" }
-  | { kind: "done"; method: "confirmed"; ref: string }
-  | { kind: "error"; text: string };
+  | { kind: "done"; method: "confirmed"; booked: Booked }
+  | { kind: "error"; text: string; code?: string };
+
+/** Verlaufseintrag der Buchung – Next.js ergänzt seine eigenen Felder. */
+const isBookingEntry = (state: unknown) => Boolean((state as { booking?: unknown } | null)?.booking);
+
+const quietButton =
+  "inline-flex min-h-11 items-center gap-2.5 rounded-full border border-ink/25 px-4 text-sm font-medium text-ink transition-colors duration-300 hover:border-primary hover:text-primary active:bg-mist";
+
+/** „In den Kalender“: Datei im Browser erzeugen und herunterladen – nichts geht an einen Dienst. */
+function downloadCalendar(booked: Booked) {
+  const ics = buildIcs({
+    // Gleiche Kennung wie die Einladung aus der Mail; ältere Cockpits melden keine
+    uid: booked.calendarUid ?? `${booked.ref}@proktologie-eimsbuettel.de`,
+    start: new Date(booked.startsAt),
+    end: new Date(booked.endsAt),
+    title: bookingCopy.confirm.calendarTitle,
+    location: `${site.name}, ${site.address.street}, ${site.address.zip} ${site.address.city}`,
+    description: `${bookingCopy.confirm.refLabel}: ${booked.ref}\nTelefon: ${site.phone}`,
+  });
+  const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "termin-proktologie-eimsbuettel.ics";
+  document.body.append(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
 
 export function BookingCard() {
   const [provider, setProvider] = useState<BookingProvider | null>(null);
@@ -64,9 +120,12 @@ export function BookingCard() {
   /** Die Zeiten des gewählten Tages ließen sich nicht laden. */
   const [slotsFailed, setSlotsFailed] = useState(false);
   const [send, setSend] = useState<SendState>({ kind: "idle" });
+  /** „In den Kalender“ geklickt – Hinweis, dass die Datei geladen ist */
+  const [calendarSaved, setCalendarSaved] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const successRef = useRef<HTMLParagraphElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
   // Beim Schrittwechsel gleitet der alte Schritt noch kurz hinaus; verschwindet
   // er, würde ein gewöhnlicher Ref auf null fallen – obwohl der neue längst steht.
   const setHeading = useCallback((el: HTMLHeadingElement | null) => {
@@ -82,7 +141,7 @@ export function BookingCard() {
   const slotsRequest = useRef(0);
 
   useEffect(() => {
-    void createBookingProvider().then(setProvider);
+    void sharedBookingProvider().then(setProvider);
   }, []);
 
   // Fokus-Management: Schrittwechsel → Schritt-Überschrift; Abschluss →
@@ -110,6 +169,17 @@ export function BookingCard() {
     return () => cancelAnimationFrame(frame);
   }, [step, send.kind, scrollTo]);
 
+  // Scheitert das Absenden, steht die Meldung unter dem Knopf – auf dem Handy
+  // oft hinter der Aktionsleiste. Dann rückt sie ins Bild (Fokus bleibt am Knopf).
+  useEffect(() => {
+    const box = errorRef.current;
+    if (send.kind !== "error" || !box) return;
+    const bar = document.querySelector('nav[aria-label="Schnellzugriff"]');
+    const barHeight = bar && getComputedStyle(bar).display !== "none" ? bar.getBoundingClientRect().height : 0;
+    const overflow = box.getBoundingClientRect().bottom - (window.innerHeight - barHeight - 16);
+    if (overflow > 0) scrollTo(window.scrollY + overflow);
+  }, [send.kind, scrollTo]);
+
   const patchDraft = useCallback((patch: Partial<BookingDraft>) => {
     setDraft((d) => ({ ...d, ...patch }));
   }, []);
@@ -127,8 +197,11 @@ export function BookingCard() {
           setStep(2);
         })
         .catch(() => {
-          // Im Kalender bleiben und es sagen – nie still „nichts frei“
-          if (token === slotsRequest.current) setSlotsFailed(true);
+          // Im Kalender bleiben und es sagen – nie still „nichts frei“. Kam der
+          // Abruf aus der Übersicht („Andere Zeit wählen“), zurück in den Kalender.
+          if (token !== slotsRequest.current) return;
+          setSlotsFailed(true);
+          setStep(1);
         });
     },
     [provider, patchDraft, draft.typeId],
@@ -138,16 +211,45 @@ export function BookingCard() {
     if (!provider) return;
     setSend({ kind: "sending" });
     const result = await provider.createBooking(draft);
-    if (!result.ok) setSend({ kind: "error", text: result.error });
-    else if (result.method === "confirmed") setSend({ kind: "done", method: "confirmed", ref: result.ref });
+    if (!result.ok) setSend({ kind: "error", text: result.error, code: result.code });
+    else if (result.method === "confirmed") setSend({ kind: "done", method: "confirmed", booked: result });
     else setSend({ kind: "done", method: result.method });
   }, [provider, draft]);
+
+  // Zurück-Geste: ein eigener Verlaufseintrag, solange die Buchung unterwegs
+  // ist. `onTop` – liegt er gerade obenauf? (Ein Sprunglink legt seinen
+  // Eintrag darüber; dann führt „Zurück“ erst auf unseren Eintrag zurück.)
+  const onTop = useRef(false);
+  const flow = useRef({ step, send: send.kind });
+  useEffect(() => {
+    flow.current = { step, send: send.kind };
+  }, [step, send.kind]);
+  useEffect(() => {
+    onTop.current = isBookingEntry(window.history.state);
+    const onPop = (event: PopStateEvent) => {
+      const left = onTop.current && !isBookingEntry(event.state);
+      onTop.current = isBookingEntry(event.state);
+      const { step: current, send: kind } = flow.current;
+      // Nach der Buchung oder während sie läuft, bleibt die Karte stehen
+      if (!left || current === 0 || kind === "done" || kind === "sending") return;
+      setSend({ kind: "idle" });
+      setStep(current - 1);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  useEffect(() => {
+    if (step === 0 || send.kind === "done" || onTop.current) return;
+    window.history.pushState({ booking: true }, "");
+    onTop.current = true;
+  }, [step, send.kind]);
 
   const reset = useCallback(() => {
     setDraft(emptyDraft);
     setSlots([]);
     setSlotsFailed(false);
     setSend({ kind: "idle" });
+    setCalendarSaved(false);
     setStep(0);
   }, []);
 
@@ -189,6 +291,7 @@ export function BookingCard() {
   return (
     <div
       ref={cardRef}
+      data-booking-card
       className="rounded-2xl bg-white ring-1 ring-ink/8 shadow-[0_20px_50px_-30px_rgba(23,37,27,0.25)]"
     >
       <div className="border-b border-ink/8 px-6 py-5 md:px-8">
@@ -260,6 +363,27 @@ export function BookingCard() {
                   ? bookingCopy.confirm.successHeadingMailto
                   : bookingCopy.confirm.successHeading}
             </p>
+            {/* Was, wann, wo – aus der Antwort des Cockpits, nicht aus der Eingabe */}
+            {send.method === "confirmed" && (
+              <ul className="mt-5 space-y-2.5 rounded-xl bg-mist/60 px-4 py-4 text-sm leading-relaxed text-ink">
+                <li className="flex items-start gap-3">
+                  <Icon name="calendar" size={18} className="mt-0.5 shrink-0 text-primary-deep" />
+                  <span className="font-medium">{bookedDateFormat.format(new Date(send.booked.startsAt))}</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Icon name="clock" size={18} className="mt-0.5 shrink-0 text-primary-deep" />
+                  <span className="font-medium">{bookedTimeFormat.format(new Date(send.booked.startsAt))} Uhr</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Icon name="pin" size={18} className="mt-0.5 shrink-0 text-primary-deep" />
+                  <span>
+                    {site.name}
+                    <br />
+                    {site.address.street}, {site.address.zip} {site.address.city}
+                  </span>
+                </li>
+              </ul>
+            )}
             <p role="status" className="mt-4 text-sm leading-relaxed text-ink/70">
               {send.method === "confirmed"
                 ? bookingCopy.confirm.successConfirmed
@@ -268,12 +392,34 @@ export function BookingCard() {
                   : bookingCopy.confirm.successEndpoint}
             </p>
             {send.method === "confirmed" && (
-              <p className="mt-4 inline-flex items-baseline gap-2 rounded-xl border border-ink/10 bg-mist/40 px-4 py-2.5 text-sm">
-                <span className="text-xs font-medium tracking-wide text-ink/70 uppercase">
-                  {bookingCopy.confirm.refLabel}
-                </span>
-                <span className="font-display text-lg font-medium tabular-nums text-ink">{send.ref}</span>
-              </p>
+              <>
+                <p className="mt-4 inline-flex items-baseline gap-2 rounded-xl border border-ink/10 bg-mist/40 px-4 py-2.5 text-sm">
+                  <span className="text-xs font-medium tracking-wide text-ink/70 uppercase">
+                    {bookingCopy.confirm.refLabel}
+                  </span>
+                  <span className="font-display text-lg font-medium tabular-nums text-ink">{send.booked.ref}</span>
+                </p>
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      downloadCalendar(send.booked);
+                      setCalendarSaved(true);
+                    }}
+                    className={quietButton}
+                  >
+                    <Icon name="calendar" size={16} />
+                    {bookingCopy.confirm.addToCalendar}
+                  </button>
+                  <a href="#praxis" className={quietButton}>
+                    <Icon name="pin" size={16} />
+                    {bookingCopy.confirm.directions}
+                  </a>
+                </div>
+                <p role="status" className="mt-2 text-xs leading-relaxed text-ink/70">
+                  {calendarSaved ? bookingCopy.confirm.calendarSaved : ""}
+                </p>
+              </>
             )}
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
               <button
@@ -302,7 +448,9 @@ export function BookingCard() {
               {step > 0 && (
                 <button
                   type="button"
-                  onClick={() => setStep((s) => s - 1)}
+                  // Während gebucht wird, bleibt der Schritt stehen
+                  onClick={() => send.kind !== "sending" && setStep((s) => s - 1)}
+                  aria-disabled={send.kind === "sending" || undefined}
                   aria-label={bookingCopy.back}
                   className="flex size-9 shrink-0 items-center justify-center rounded-full border border-ink/10 text-ink/70 transition-colors hover:border-primary/50 hover:text-ink max-md:size-11"
                 >
@@ -380,10 +528,33 @@ export function BookingCard() {
                     onSubmit={() => void submit()}
                     onChange={() => setStep(1)}
                   />
+                  {/* Fehler mit Ausweg: bei vergebener Zeit zurück zu den Zeiten
+                      desselben Tages, sonst das Telefon */}
                   {send.kind === "error" && (
-                    <p role="alert" className="mt-4 text-sm font-medium text-red-800">
-                      {send.text}
-                    </p>
+                    <div ref={errorRef} role="alert" className="mt-4 rounded-xl border border-ink/10 bg-mist/60 px-4 py-3 text-sm leading-relaxed">
+                      <p className="font-medium text-red-800">{send.text}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-6">
+                        {send.code === "slot_taken" && draft.date && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSend({ kind: "idle" });
+                              selectDate(draft.date!);
+                            }}
+                            className="inline-flex min-h-11 items-center font-medium text-primary-deep underline underline-offset-4 hover:text-primary"
+                          >
+                            {bookingCopy.confirm.otherTime}
+                          </button>
+                        )}
+                        <a
+                          href={site.phoneHref}
+                          className="inline-flex min-h-11 items-center gap-2 font-medium text-ink hover:text-primary-deep"
+                        >
+                          <Icon name="phone" size={16} className="text-primary-deep" />
+                          {site.phone}
+                        </a>
+                      </div>
+                    </div>
                   )}
                 </>
               )}

@@ -6,6 +6,8 @@ import { Icon } from "@/components/ui/Icon";
 import { LogoLockup } from "@/components/ui/Logo";
 import { MobileMenu } from "@/components/layout/MobileMenu";
 import { ctaHref, ctaLabel, navigation } from "@/content/navigation";
+import { site } from "@/content/site";
+import { useActiveSection } from "@/lib/hooks/useActiveSection";
 import { useLenis } from "@/providers/LenisProvider";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -17,10 +19,15 @@ import { useEffect, useRef, useState } from "react";
  * Auf Unterseiten (ohne #hero) immer deckend – schon im ausgelieferten
  * HTML, nicht erst, wenn das Script läuft.
  */
+/** Abschnitte, die die Navigation markiert („Team“ liegt in der Kamerafahrt und zählt nicht). */
+const SECTION_IDS = navigation.map((item) => item.href.split("#")[1] ?? "").filter((id) => id && id !== "team");
+
 export function Header() {
   const pathname = usePathname();
   const [solid, setSolid] = useState(pathname !== "/");
   const [menuOpen, setMenuOpen] = useState(false);
+  // Wo bin ich? Der gelesene Abschnitt ist in der Navigation markiert.
+  const activeSection = useActiveSection(SECTION_IDS);
   const burgerRef = useRef<HTMLButtonElement>(null);
   const headerRef = useRef<HTMLElement>(null);
   const wasOpenRef = useRef(false);
@@ -158,18 +165,19 @@ export function Header() {
                 <li key={item.href}>
                   <a
                     href={item.href}
+                    aria-current={item.href === `/#${activeSection}` ? "location" : undefined}
                     className={cn(
                       "group relative py-2 text-[13px] font-medium tracking-wide transition-colors",
                       solid
-                        ? "text-ink/75 hover:text-ink"
-                        : "text-cream/80 hover:text-white",
+                        ? "text-ink/75 hover:text-ink aria-[current]:text-ink"
+                        : "text-cream/80 hover:text-white aria-[current]:text-white",
                     )}
                   >
                     {item.label}
                     <span
                       aria-hidden="true"
                       className={cn(
-                        "absolute inset-x-0 -bottom-0.5 h-px origin-left scale-x-0 transition-transform duration-300 group-hover:scale-x-100",
+                        "absolute inset-x-0 -bottom-0.5 h-px origin-left scale-x-0 transition-transform duration-300 group-hover:scale-x-100 group-aria-[current]:scale-x-100",
                         solid ? "bg-primary" : "bg-accent",
                       )}
                     />
@@ -180,11 +188,28 @@ export function Header() {
           </nav>
 
           <div className="flex items-center gap-3">
+            {/* Ab Tablet steht das Telefon in Reichweite – auf dem Handy übernimmt
+                die Leiste unten. Neben der vollen Navigation (ab xl) ist nur Platz für
+                das Symbol; die Nummer steht dann im Tooltip und für Screenreader. */}
+            <a
+              href={site.phoneHref}
+              title={site.phone}
+              className={cn(
+                "hidden min-h-11 min-w-11 items-center justify-center gap-2 rounded-full px-2 text-[13px] font-medium tracking-wide whitespace-nowrap transition-colors md:inline-flex",
+                solid ? "text-ink/80 hover:text-primary-deep" : "text-cream/85 hover:text-white",
+              )}
+            >
+              <Icon name="phone" size={16} className={solid ? "text-primary" : "text-accent"} />
+              <span className="xl:sr-only">
+                <span className="sr-only">Anrufen: </span>
+                {site.phone}
+              </span>
+            </a>
             <span className="hidden md:block">
               <Button
                 href={ctaHref}
                 withArrow
-                className="!min-h-0 !px-5 !py-2.5 !text-[13px]"
+                className="!px-5 !py-2.5 !text-[13px]"
               >
                 {ctaLabel}
               </Button>
@@ -207,7 +232,7 @@ export function Header() {
         </div>
       </header>
 
-      <MobileMenu open={menuOpen} onClose={closeMenu} />
+      <MobileMenu open={menuOpen} onClose={closeMenu} activeSection={activeSection} />
     </>
   );
 }

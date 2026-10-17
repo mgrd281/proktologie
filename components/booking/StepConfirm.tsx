@@ -1,4 +1,3 @@
-import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { appointmentTypes, bookingCopy } from "@/content/booking";
@@ -78,23 +77,30 @@ export function StepConfirm({
       )}
 
       <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+        {/* „Wird gebucht …“: Der Knopf bleibt stehen und gleich breit, der Fokus
+            auch; ein Doppelklick bucht nicht zweimal. */}
         <Button
           type="button"
           withArrow
-          disabled={sending}
+          loading={sending}
+          loadingLabel={mode === "confirmed" ? copy.sendingConfirmed : copy.sendingRequest}
           onClick={onSubmit}
-          className={cn("w-full sm:w-auto", sending && "opacity-60")}
+          className="w-full sm:w-auto"
         >
           {mode === "confirmed" ? copy.submitConfirmed : copy.submitRequest}
         </Button>
         <button
           type="button"
-          onClick={onChange}
-          className="min-h-11 text-sm font-medium text-ink/70 underline-offset-4 hover:text-ink hover:underline"
+          onClick={() => !sending && onChange()}
+          aria-disabled={sending || undefined}
+          className="min-h-11 text-sm font-medium text-ink/70 underline-offset-4 hover:text-ink hover:underline aria-disabled:cursor-progress aria-disabled:opacity-50 aria-disabled:hover:no-underline"
         >
           {copy.change}
         </button>
       </div>
+      <p role="status" className="sr-only">
+        {sending ? (mode === "confirmed" ? copy.sendingConfirmed : copy.sendingRequest) : ""}
+      </p>
 
       {/* Doctolib-Alternative nur, wenn die echte Profil-URL konfiguriert ist –
           und nicht im verbindlichen Modus, in dem die Website selbst verbindlich bucht */}

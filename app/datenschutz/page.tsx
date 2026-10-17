@@ -107,7 +107,7 @@ export default function DatenschutzPage() {
             </p>
           </section>
 
-          <section>
+          <section id="karte">
             <h2 className="font-display text-xl font-medium text-ink">
               5. Google Maps (Zwei-Klick-Lösung)
             </h2>

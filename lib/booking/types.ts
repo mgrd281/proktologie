@@ -56,6 +56,10 @@ export interface BookingDraft {
 
 export type BookingResult =
   | { ok: true; method: "mailto" | "endpoint" }
-  /** Verbindlich gebucht – Referenz für Rückfragen, Zeitpunkt in UTC (ISO). */
-  | { ok: true; method: "confirmed"; ref: string; startsAt: string; endsAt: string }
+  /**
+   * Verbindlich gebucht – Referenz für Rückfragen, Zeitpunkt in UTC (ISO).
+   * `calendarUid` ist die Kennung der Kalender-Einladung aus der Bestätigungs-
+   * Mail: „In den Kalender“ nutzt sie, damit beide Einträge einer sind.
+   */
+  | { ok: true; method: "confirmed"; ref: string; startsAt: string; endsAt: string; calendarUid?: string }
   | { ok: false; error: string; code?: string };

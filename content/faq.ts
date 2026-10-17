@@ -7,6 +7,8 @@
 export const faqIntro = {
   kicker: "Häufige Fragen",
   title: "Was Patientinnen und Patienten uns oft fragen",
+  /** Zeile unter den Fragen – danach die Telefonnummer */
+  phoneLead: "Weitere Fragen beantworten wir gern telefonisch:",
 };
 
 export interface FaqItem {

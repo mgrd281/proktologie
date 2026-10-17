@@ -7,19 +7,27 @@ type Variant = "primary" | "outline" | "outline-dark" | "ghost";
 const base =
   "group inline-flex min-h-11 items-center justify-center gap-3 rounded-full px-7 py-3 text-sm font-medium tracking-wide transition-colors duration-300";
 
+/* Gedrückt (active:): eine Stufe dunkler als Hover – auf dem Handy die einzige Rückmeldung. */
 const variants: Record<Variant, string> = {
   /* Klinikgrün-Fläche mit Deep-Text: 7,0:1 – AA/AAA für Button-Text. */
-  primary: "bg-accent font-semibold text-deep hover:bg-[#76a81f]",
+  primary: "bg-accent font-semibold text-deep hover:bg-[#76a81f] active:bg-[#6a971c]",
   outline:
-    "border border-ink/25 text-ink hover:border-primary hover:text-primary",
+    "border border-ink/25 text-ink hover:border-primary hover:text-primary active:bg-ink/5",
   "outline-dark":
-    "on-dark border border-white/30 text-cream hover:border-accent hover:text-accent",
-  ghost: "text-primary hover:text-[#446628]",
+    "on-dark border border-white/30 text-cream hover:border-accent hover:text-accent active:bg-white/10",
+  ghost: "text-primary hover:text-[#446628] active:text-deep",
 };
 
 interface CommonProps {
   variant?: Variant;
   withArrow?: boolean;
+  /**
+   * Läuft etwas (etwa das Absenden): Der Pfeil wird zum drehenden Symbol, der
+   * Text zu `loadingLabel`. Der Knopf bleibt gleich breit und behält den
+   * Fokus – deshalb aria-disabled statt disabled, Klicks zählen nicht.
+   */
+  loading?: boolean;
+  loadingLabel?: string;
   className?: string;
   children: ReactNode;
 }
@@ -35,17 +43,33 @@ export type ButtonProps = ButtonAsButton | ButtonAsLink;
 export function Button({
   variant = "primary",
   withArrow = false,
+  loading = false,
+  loadingLabel,
   className,
   children,
   ...rest
 }: ButtonProps) {
-  const classes = cn(base, variants[variant], className);
-  const arrow = withArrow && (
-    <Icon
-      name="arrow-right"
-      size={18}
-      className="transition-transform duration-300 group-hover:translate-x-1"
-    />
+  const classes = cn(base, variants[variant], loading && "cursor-progress", className);
+  const arrow = loading ? (
+    <Icon name="refresh" size={18} className="motion-safe:animate-spin" />
+  ) : (
+    withArrow && (
+      <Icon
+        name="arrow-right"
+        size={18}
+        className="transition-transform duration-300 group-hover:translate-x-1"
+      />
+    )
+  );
+  // Beide Texte liegen übereinander in derselben Zelle: Die Breite folgt dem
+  // längeren, der unsichtbare zählt für Screenreader nicht mit.
+  const label = loadingLabel ? (
+    <span className="grid text-center">
+      <span className={cn("col-start-1 row-start-1", loading && "invisible")}>{children}</span>
+      <span className={cn("col-start-1 row-start-1", !loading && "invisible")}>{loadingLabel}</span>
+    </span>
+  ) : (
+    children
   );
 
   if ("href" in rest && typeof rest.href === "string") {
@@ -57,10 +81,21 @@ export function Button({
       </a>
     );
   }
-  const buttonProps = rest as ButtonHTMLAttributes<HTMLButtonElement>;
+  const { onClick, ...buttonProps } = rest as ButtonHTMLAttributes<HTMLButtonElement>;
   return (
-    <button className={classes} {...buttonProps}>
-      {children}
+    <button
+      className={classes}
+      {...buttonProps}
+      aria-disabled={loading || buttonProps["aria-disabled"]}
+      onClick={(event) => {
+        if (loading) {
+          event.preventDefault();
+          return;
+        }
+        onClick?.(event);
+      }}
+    >
+      {label}
       {arrow}
     </button>
   );

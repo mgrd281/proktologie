@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/Button";
+import { EarliestFree } from "@/components/booking/EarliestFree";
 import { HeroMobileMedia } from "@/components/hero/HeroMobileMedia";
 import { Icon } from "@/components/ui/Icon";
 import { heroBeats } from "@/content/hero";
@@ -42,10 +43,12 @@ export function HeroStatic() {
               {welcome.text}
             </p>
             {welcome.cta && (
-              <div className="mt-8">
+              <div className="relative mt-8">
                 <Button href={welcome.cta.href} withArrow>
                   {welcome.cta.label}
                 </Button>
+                {/* Absolut darunter: erscheint sie nach dem Laden, rückt nichts */}
+                <EarliestFree className="absolute top-full left-0 mt-3" />
               </div>
             )}
           </div>
@@ -69,7 +72,7 @@ export function HeroStatic() {
                       className="text-accent transition-transform duration-300 group-hover:translate-x-1"
                     />
                   </span>
-                  <span className="text-xs text-cream/55">{teaser.note}</span>
+                  <span className="text-xs text-cream/70">{teaser.note}</span>
                 </a>
               </li>
             ))}

@@ -12,7 +12,7 @@
  * - Gesetzliche Feiertage in Hamburg sperren wie „geschlossen“ (holidays.ts).
  * Alles in Europe/Berlin; Rückgabe als UTC-Zeitpunkte plus Anzeige "HH:MM".
  */
-import { addDays, dateKey, isoWeekday, minutesOfDay, zonedToUtc } from "../time.ts";
+import { addDays, dateKey, isoWeekday, minutesOfDay, timeKey, zonedToUtc } from "../time.ts";
 import { holidayName } from "./holidays.ts";
 
 export interface OpeningWindow {
@@ -146,6 +146,50 @@ export function findConflicts(candidate: BusySpan, busy: BusySpan[]): Conflict[]
   return busy
     .filter((b) => overlaps(s, e, b.startsAt.getTime(), b.endsAt.getTime() + (b.bufferMin ?? 0) * MS))
     .map((b) => ({ with: b }));
+}
+
+/**
+ * Wann ist die Praxis an einem Tag erreichbar? Für die Zeile „Jetzt geöffnet
+ * · bis 12:00 Uhr“ der Website: Sprechzeiten abzüglich „geschlossen“ und
+ * „Urlaub“. Blocker und extern belegte Zeiten schließen die Praxis nicht –
+ * das Telefon ist dann trotzdem besetzt. Feiertage: geschlossen.
+ */
+export function openWindows(date: string, hours: OpeningWindow[], exceptions: ExceptionSpan[]): Array<{ from: string; to: string }> {
+  if (holidayName(date)) return [];
+  const closed = exceptions
+    .filter((e) => e.kind === "closed" || e.kind === "urlaub")
+    .map((e): [number, number] => [e.startsAt.getTime(), e.endsAt.getTime()]);
+  const out: Array<{ from: string; to: string }> = [];
+  for (const w of windowsForDay(date, hours)) {
+    let parts: Array<[number, number]> = [[w.start.getTime(), w.end.getTime()]];
+    for (const [cs, ce] of closed) {
+      parts = parts.flatMap(([s, e]): Array<[number, number]> => {
+        if (ce <= s || cs >= e) return [[s, e]];
+        return [...(cs > s ? [[s, cs] as [number, number]] : []), ...(ce < e ? [[ce, e] as [number, number]] : [])];
+      });
+    }
+    for (const [s, e] of parts) if (e > s) out.push({ from: timeKey(new Date(s)), to: timeKey(new Date(e)) });
+  }
+  return out;
+}
+
+export interface OpeningSummary {
+  /** Der Tag, für den `today` gilt ("YYYY-MM-DD", Berlin) */
+  date: string;
+  today: Array<{ from: string; to: string }>;
+  /** Erster Tag nach heute mit Sprechzeit (bis `horizonDays` voraus) */
+  next: { date: string; from: string } | null;
+}
+
+/** Sprechzeit heute und die nächste Öffnung danach. */
+export function openingSummary(today: string, hours: OpeningWindow[], exceptions: ExceptionSpan[], horizonDays = 21): OpeningSummary {
+  let next: OpeningSummary["next"] = null;
+  for (let i = 1; i <= horizonDays && !next; i++) {
+    const date = addDays(today, i);
+    const first = openWindows(date, hours, exceptions)[0];
+    if (first) next = { date, from: first.from };
+  }
+  return { date: today, today: openWindows(today, hours, exceptions), next };
 }
 
 /**

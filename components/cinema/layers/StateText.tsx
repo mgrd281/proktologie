@@ -1,6 +1,6 @@
 import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/cn";
-import { forwardRef, type CSSProperties } from "react";
+import { forwardRef, type CSSProperties, type ReactNode } from "react";
 
 /**
  * Der Textblock EINES Zustands der Kamerafahrt.
@@ -48,11 +48,16 @@ interface StateTextProps {
   isFirst?: boolean;
   /** Startbild der Fahrt (Frame 1); Standard: unsichtbar. */
   initialStyle?: CSSProperties;
+  /**
+   * Zeile unter den Wegen (etwa „Freie Termine ab …“). Sie liegt absolut
+   * darunter: Erscheint sie nach dem Laden, rückt nichts.
+   */
+  ctaNote?: ReactNode;
   className?: string;
 }
 
 export const StateText = forwardRef<HTMLDivElement, StateTextProps>(
-  function StateText({ content, isFirst = false, initialStyle, className }, ref) {
+  function StateText({ content, isFirst = false, initialStyle, ctaNote, className }, ref) {
     const Heading = isFirst ? "h1" : "h2";
 
     return (
@@ -119,7 +124,7 @@ export const StateText = forwardRef<HTMLDivElement, StateTextProps>(
           )}
 
           {(content.cta || content.secondary) && (
-            <div className="mt-9 flex flex-wrap items-center gap-4 [@media(max-height:599px)]:mt-6">
+            <div className="relative mt-9 flex flex-wrap items-center gap-4 [@media(max-height:599px)]:mt-6">
               {content.cta && (
                 <a
                   href={content.cta.href}
@@ -138,6 +143,7 @@ export const StateText = forwardRef<HTMLDivElement, StateTextProps>(
                   <Icon name="arrow-right" size={16} />
                 </a>
               )}
+              {ctaNote && <div className="absolute top-full left-0 mt-4">{ctaNote}</div>}
             </div>
           )}
         </div>

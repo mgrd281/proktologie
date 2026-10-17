@@ -44,18 +44,18 @@ export function MasterRail({ active, onSelect }: MasterRailProps) {
                   */}
                 <span
                   className={cn(
-                    "cinema-rail-label pointer-events-none absolute right-full mr-3 text-[11px] tracking-[0.14em] whitespace-nowrap transition-all duration-500",
+                    "cinema-rail-label pointer-events-none absolute right-full mr-3 text-xs tracking-[0.14em] whitespace-nowrap drop-shadow-[0_1px_4px_rgba(23,37,27,0.7)] transition-all duration-500",
                     isActive
                       ? "text-cream opacity-100"
-                      : "text-cream/60 opacity-0 group-hover:opacity-100",
+                      : "text-cream/80 opacity-0 group-hover:opacity-100",
                   )}
                 >
                   {state.label}
                 </span>
                 <span
                   className={cn(
-                    "cinema-rail-label text-[11px] tabular-nums transition-colors duration-500",
-                    isActive ? "text-accent" : isPast ? "text-cream/55" : "text-cream/30",
+                    "cinema-rail-label text-xs tabular-nums drop-shadow-[0_1px_4px_rgba(23,37,27,0.7)] transition-colors duration-500",
+                    isActive ? "text-accent" : "text-cream/70",
                   )}
                 >
                   {String(index + 1).padStart(2, "0")}

@@ -143,6 +143,19 @@ export function ChatWidget() {
     });
   }, [open, preload]);
 
+  // Ist die Buchungskarte im Bild, tritt „Termin“ in der Leiste zurück: Der
+  // Weg ist schon da, und pro Ansicht handelt nur ein Grün.
+  const [bookingInView, setBookingInView] = useState(false);
+  useEffect(() => {
+    const card = document.querySelector("[data-booking-card]");
+    if (!card) return;
+    const observer = new IntersectionObserver(([entry]) => setBookingInView(Boolean(entry?.isIntersecting)), {
+      threshold: 0.15,
+    });
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, []);
+
   const close = useCallback(() => {
     setOpen(false);
     // Fokus zurück an den Knopf, von dem aus geöffnet wurde
@@ -210,14 +223,19 @@ export function ChatWidget() {
           <a
             href={site.phoneHref}
             aria-label={copy.callLabel}
-            className="flex h-12 flex-col items-center justify-center gap-0.5 rounded-xl text-[11px] font-medium text-ink/80 active:bg-ink/5"
+            className="flex h-12 flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-medium text-ink/80 active:bg-ink/5"
           >
             <Icon name="phone" size={20} className="text-primary-deep" />
             {mobileBar.call}
           </a>
           <a
             href={ctaHref}
-            className="flex h-12 items-center justify-center gap-2 rounded-full bg-accent px-4 text-sm font-semibold text-deep active:bg-[#76a81f]"
+            className={cn(
+              "flex h-12 items-center justify-center gap-2 rounded-full border px-4 text-sm font-semibold transition-colors duration-300",
+              bookingInView
+                ? "border-ink/15 text-ink/80 active:bg-ink/5"
+                : "border-transparent bg-accent text-deep active:bg-[#76a81f]",
+            )}
           >
             <Icon name="calendar" size={18} />
             {mobileBar.termin}
@@ -235,7 +253,7 @@ export function ChatWidget() {
             aria-label={open ? copy.launcherClose : copy.launcherOpen}
             aria-expanded={open}
             aria-controls="site-chat-window"
-            className="flex h-12 flex-col items-center justify-center gap-0.5 rounded-xl text-[11px] font-medium text-ink/80 active:bg-ink/5"
+            className="flex h-12 flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-medium text-ink/80 active:bg-ink/5"
           >
             <Icon name={open ? "close" : "chat"} size={20} className="text-primary-deep" />
             {mobileBar.chat}

@@ -171,7 +171,10 @@ diese Tokens**, nie über Rohwerte. Dunkelmodus über `data-theme="dark"` oder
 (`brand-dark #a5d64a`, ≥ 7:1).
 
 ### Named Rules
-- **Ein Grün handelt.** Pro Ansicht genau eine primäre Handlung in accent.
+- **Ein Grün handelt.** Pro Ansicht genau eine primäre Handlung in accent. Termin-Knöpfe in
+  den Abschnitten, „Karte laden“ und „Rückruf anfordern“ sind deshalb Outline – das Grün gehört
+  dem Header bzw. der Handy-Leiste; deren „Termin“ tritt zurück (Rahmen), solange die
+  Buchungskarte im Bild ist.
 - **Status ist nie nur Farbe.** ok/warn/danger immer mit Wort oder Icon.
 - **Keine Fremdpaletten.** Paletten aus UI/UX Pro Max dienen nur dem Vergleich, nie der Übernahme.
 
@@ -201,8 +204,10 @@ diese Tokens**, nie über Rohwerte. Dunkelmodus über `data-theme="dark"` oder
   - Feste **Aktionsleiste** unten (Anrufen · Termin · Chat, 64 px + Safe-Area); kein weiteres
     schwebendes Element darüber.
   - Lange Kartenstapel werden **Wischreihen** (`components/ui/Swipe.tsx`, CSS-Scroll-Snap,
-    Karte ≈ 84 % breit, nächste lugt hervor). Rasterkinder, die eine Wischreihe enthalten,
-    brauchen `min-w-0`.
+    Karte ≈ 84 % breit, nächste lugt hervor; `SwipeRow` ergänzt den Zähler „2 / 8“, mit Maus
+    Pfeile und eine schmale Leiste, und ist nur fokussierbar, wo wirklich gescrollt wird).
+    Karten darin erscheinen sofort (`Reveal swipe`). Rasterkinder, die eine Wischreihe
+    enthalten, brauchen `min-w-0`. Bis vier Karten bleibt es eine Liste.
   - Kein waagrechtes Scrollen der Seite (`scrollWidth == clientWidth`).
   - Kamerafahrt mobil 500vh, Desktop 1000vh; Text darüber immer mit Leseschleier.
 - Cockpit: Seitenleiste + Inhaltsfläche; Drawer von rechts für Details, zentrierter Dialog nur
@@ -222,9 +227,8 @@ diese Tokens**, nie über Rohwerte. Dunkelmodus über `data-theme="dark"` oder
 
 - Buttons, Chips, Icon-Knöpfe: **`rounded-full`**.
 - Karten, Dialoge, Tabellenrahmen: **`rounded-2xl`** (16 px).
-- Eingabefelder (Website-Buchung und Cockpit), Listeneinträge, Navigationspunkte: `rounded-xl`
-  (12 px). Das Rückrufformular der Website nutzt noch `rounded-lg` – bei der nächsten
-  Überarbeitung angleichen, nicht als Vorbild nehmen.
+- Eingabefelder (Website-Buchung, Rückruf und Cockpit), Listeneinträge, Navigationspunkte:
+  `rounded-xl` (12 px).
 - Icons: eigene Linien-Icons (`components/ui/Icon.tsx`, 24er Raster, Strich 1,6, `currentColor`);
   keine Emoji, keine zweite Icon-Bibliothek.
 
@@ -245,7 +249,7 @@ Größen `sm` 36 px nur in dichten Desktop-Tabellenzeilen, `md` 44 px).
 | Gedrückt | `active:` eine Stufe dunkler als Hover, keine Skalierung über 0,98 |
 | Fokus | globaler Ring 2 px, Abstand 3 px: primary auf hell, accent auf dunkel – nie entfernen |
 | Deaktiviert | `opacity-50`, `cursor-not-allowed`, kein Hover; Grund steht daneben, wenn nicht offensichtlich |
-| Lädt | Icon wird zum drehenden `refresh`, Button bleibt gleich breit, `disabled` während der Anfrage |
+| Lädt | Icon wird zum drehenden `refresh`, Button bleibt gleich breit, `disabled` während der Anfrage (Website: `loading` + `loadingLabel`, z. B. „Wird gebucht …“; dort `aria-disabled`, damit der Fokus stehen bleibt) |
 
 Varianten und wofür:
 1. **Primary** – genau eine Haupthandlung je Ansicht (accent-Fläche, deep-Text).
@@ -279,7 +283,9 @@ Symbol nicht sofort verständlich ist.
   (`data-header-dark`), auf Unterseiten schon im HTML; ohne JavaScript scrollt er auf der
   Startseite mit dem dunklen Block weg. Unter 1280 px Vollbild-Menü (deep, weich einblendend):
   „Termin vereinbaren“ und Telefon oben, darunter die Links in Fraunces 24 px; das Menü scrollt
-  selbst (`data-lenis-prevent`).
+  selbst (`data-lenis-prevent`). Das Telefon steht ab Tablet im Header (neben der vollen
+  Navigation ab xl nur als Symbol, die Nummer im Tooltip). Der gerade gelesene Abschnitt ist in
+  Header und Menü markiert (`aria-current`, `lib/hooks/useActiveSection.ts`).
 - Sprünge: Anker landen über `scroll-padding-top` unter dem Header (Lenis rechnet ihn ein),
   der Fokus geht aufs Ziel; weite Sprünge (über die Kamerafahrt) ohne Fahrt. Sprunglinks
   „Zum Inhalt springen“ und auf der Startseite „Zur Terminbuchung“.
@@ -317,7 +323,13 @@ Symbol nicht sofort verständlich ist.
 - Zeiten immer in **Europe/Berlin**, Sommer-/Winterzeit über die Zeitzone, nie per Hand
   (Kalenderdateien: `cockpit/lib/ics.ts`).
 - Ablauf in klaren Schritten (Terminart → Datum → Uhrzeit → Angaben → Bestätigung) mit
-  Fortschritt „1 / 5"; Zurück jederzeit ohne Datenverlust.
+  Fortschritt „1 / 5"; Zurück jederzeit ohne Datenverlust – auch per Zurück-Geste des Handys
+  (ein eigener Verlaufseintrag, solange die Buchung unterwegs ist).
+- **Schnell zum Termin (verbindlicher Modus):** „Freie Termine ab …“ unter dem ersten
+  Termin-Knopf der Fahrt; der Kalender öffnet im Monat des frühesten freien Tages, darüber
+  „Frühester freier Tag: …“ als Abkürzung. Zeiten nach „Vormittag“/„Nachmittag“ gegliedert.
+  Der Abschluss nennt Tag, Uhrzeit und Adresse, mit „In den Kalender“ (Datei aus dem Browser,
+  neutraler Titel, UID wie die Mail-Einladung – `lib/booking/ics.ts`) und „Anfahrt“.
 - Solange die Website nicht weiß, ob sie bucht oder nur anfragt (Antwort des Cockpits),
   bleiben Kartentitel und Modus-Hinweis unsichtbar – nie kurz das falsche Wort zeigen.
 - **Handy:** Titel und Fortschritt stehen untereinander; der Modus-Hinweis nur im ersten

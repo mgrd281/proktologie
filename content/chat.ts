@@ -1,3 +1,4 @@
+import { notfallLine } from "@/content/notfall";
 import { site } from "@/content/site";
 
 /**
@@ -11,6 +12,16 @@ import { site } from "@/content/site";
  */
 
 export type ChatLang = "de" | "en";
+
+/**
+ * Für die Anzeige: Zeitspannen („07:00 – 12:00 Uhr“) brechen nicht mitten
+ * durch. Nach dem Halbgeviertstrich erlaubt Unicode trotz geschütztem
+ * Leerzeichen einen Umbruch – das unsichtbare Wortverbindungszeichen
+ * (U+2060) verhindert ihn.
+ */
+export function unbreakableTimes(text: string): string {
+  return text.replace(/(\d{2}:\d{2}) – (\d{2}:\d{2})/g, "$1\u00a0–\u2060\u00a0$2").replace(/ Uhr/g, "\u00a0Uhr");
+}
 
 /** Sprechzeiten in einer Zeile: „Mo, Mi, Fr 07:00 – 12:00 Uhr · …“ */
 export function hoursLine(lang: ChatLang): string {
@@ -73,6 +84,8 @@ export interface ChatCopy {
   privacyHref: string;
   quickStart: Array<{ id: string; label: string }>;
   emergencyTitle: string;
+  /** Notfallknöpfe – voll beschriftet, nicht nur die Nummer. */
+  emergencyNumbers: Array<{ label: string; href: string }>;
   offlineTitle: string;
   offline: (hours: string) => string;
   callLabel: string;
@@ -127,7 +140,7 @@ const de: ChatCopy = {
   slow: "Das dauert gerade länger …",
   retry: "Nochmal senden",
   greeting: (hours) =>
-    `Guten Tag, hier ist der Assistent der ${site.name} (${site.doctor}). Sprechzeiten: ${hours}. Wie kann ich helfen?`,
+    `Guten Tag, hier ist der Assistent der ${site.name} (${site.doctor}). Sprechzeiten: ${hours}. ${notfallLine}. Wie kann ich helfen?`,
   privacyNote:
     "Hinweis: Bitte keine Gesundheitsdaten in den Chat schreiben. Der Verlauf bleibt nur in Ihrem Browser, bis Sie den Tab schließen.",
   privacyLink: "Datenschutzerklärung",
@@ -138,6 +151,10 @@ const de: ChatCopy = {
     { id: "directions", label: "Anfahrt" },
   ],
   emergencyTitle: "Notfall",
+  emergencyNumbers: [
+    { label: "Notruf 112", href: "tel:112" },
+    { label: "Bereitschaftsdienst 116 117", href: "tel:116117" },
+  ],
   offlineTitle: "Chat gerade nicht verfügbar",
   offline: (hours) => `Sie erreichen uns telefonisch unter ${site.phone}. Sprechzeiten: ${hours}.`,
   callLabel: `Anrufen: ${site.phone}`,
@@ -192,7 +209,7 @@ const en: ChatCopy = {
   slow: "This is taking longer than usual …",
   retry: "Send again",
   greeting: (hours) =>
-    `Hello, this is the assistant of ${site.name} (${site.doctor}). Opening hours: ${hours}. How can I help?`,
+    `Hello, this is the assistant of ${site.name} (${site.doctor}). Opening hours: ${hours}. Outside opening hours: medical on-call service 116 117 · emergency number 112. How can I help?`,
   privacyNote:
     "Please do not write any health data in this chat. The conversation stays in your browser only, until you close the tab.",
   privacyLink: "Privacy policy",
@@ -203,6 +220,10 @@ const en: ChatCopy = {
     { id: "directions", label: "Getting here" },
   ],
   emergencyTitle: "Emergency",
+  emergencyNumbers: [
+    { label: "Emergency 112", href: "tel:112" },
+    { label: "On-call doctor 116 117", href: "tel:116117" },
+  ],
   offlineTitle: "Chat unavailable",
   offline: (hours) => `You can reach us by phone on ${site.phone}. Opening hours: ${hours}.`,
   callLabel: `Call us: ${site.phone}`,

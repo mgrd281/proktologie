@@ -99,6 +99,36 @@ html.lenis body {
 }
 
 /*
+ * FAQ (components/ui/Accordion.tsx): Antworten gleiten auf, wo der Browser
+ * ::details-content kennt – sonst klappen sie einfach auf.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .faq-item {
+    interpolate-size: allow-keywords;
+  }
+  .faq-item::details-content {
+    block-size: 0;
+    overflow-y: clip;
+    transition:
+      block-size 0.4s var(--ease-out-soft),
+      content-visibility 0.4s allow-discrete;
+  }
+  .faq-item[open]::details-content {
+    block-size: auto;
+  }
+}
+
+/*
+ * Wischreihen (components/ui/SwipeRow.tsx) mit Maus: Wischen geht dort nicht –
+ * statt keiner Leiste eine schmale, sichtbare. Bei Touch bleibt sie verborgen.
+ */
+@media (max-width: 47.99rem) and (hover: hover) and (pointer: fine) {
+  .swipe-row {
+    scrollbar-width: thin;
+  }
+}
+
+/*
  * Scroll-Reveal: Elemente starten sichtbar (No-JS-Fallback) und werden erst
  * per JS in den Ausgangszustand versetzt – kein Inhalt geht ohne JS verloren.
  */

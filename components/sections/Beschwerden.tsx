@@ -1,8 +1,6 @@
 import { Button } from "@/components/ui/Button";
 import { Reveal } from "@/components/ui/Reveal";
 import { SectionHeading } from "@/components/ui/SectionHeading";
-import { SwipeHint, swipeItem, swipeList } from "@/components/ui/Swipe";
-import { cn } from "@/lib/cn";
 import {
   beschwerden,
   beschwerdenCta,
@@ -34,18 +32,14 @@ export function Beschwerden() {
           </Reveal>
         </div>
 
-        {/* min-w-0: Ein Rasterkind ist sonst mindestens so breit wie die
-            Wischreihe darin – die ganze Seite würde seitlich scrollen. */}
+        {/* Vier Karten: auch auf dem Handy eine Liste – zum Wischen sind es zu
+            wenige. min-w-0 hält das Rasterkind so schmal wie seine Spalte. */}
         <div className="min-w-0">
-          <ul
-            tabIndex={0}
-            aria-label={beschwerdenIntro.kicker}
-            className={cn("space-y-4 max-md:space-y-0", swipeList)}
-          >
+          <ul aria-label={beschwerdenIntro.kicker} className="space-y-4">
             {beschwerden.map((cluster, index) => (
-              <li key={cluster.id} className={cn("max-md:h-full", swipeItem)}>
-                <Reveal delay={index * 70} className="max-md:h-full">
-                  <article className="rounded-2xl bg-white p-7 ring-1 ring-ink/5 max-md:h-full max-md:p-6 md:p-8">
+              <li key={cluster.id}>
+                <Reveal delay={index * 70}>
+                  <article className="rounded-2xl bg-white p-7 ring-1 ring-ink/5 max-md:p-6 md:p-8">
                     <h3 className="font-display text-xl font-medium text-ink">
                       {cluster.symptom}
                     </h3>
@@ -60,13 +54,13 @@ export function Beschwerden() {
               </li>
             ))}
           </ul>
-          <SwipeHint />
           <Reveal delay={200}>
-            <div className="mt-8 flex flex-col items-start gap-5 rounded-2xl bg-deep p-7 max-md:mt-6 max-md:p-6 md:flex-row md:items-center md:justify-between md:p-8">
-              <p className="on-dark max-w-md text-sm leading-relaxed text-cream/85">
+            {/* on-dark für den Fokusring; der Knopf ruhig – das Grün gehört der Buchung */}
+            <div className="on-dark mt-8 flex flex-col items-start gap-5 rounded-2xl bg-deep p-7 max-md:mt-6 max-md:p-6 md:flex-row md:items-center md:justify-between md:p-8">
+              <p className="max-w-md text-sm leading-relaxed text-cream/85">
                 {beschwerdenCta.text}
               </p>
-              <Button href={beschwerdenCta.href} withArrow className="shrink-0">
+              <Button href={beschwerdenCta.href} variant="outline-dark" withArrow className="shrink-0">
                 {beschwerdenCta.label}
               </Button>
             </div>

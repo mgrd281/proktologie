@@ -4,9 +4,10 @@ import { audit } from "../audit.ts";
 import { enqueue } from "../jobs/queue.ts";
 import { hit } from "../ratelimit.ts";
 import { addDays, dateKey, startOfDay, zonedToUtc } from "../time.ts";
-import { appointmentIcs, manageUrlFor } from "../messaging/send.ts";
+import { appointmentIcs, appointmentUid, manageUrlFor } from "../messaging/send.ts";
 import { PRACTICE } from "../practice.ts";
 import { acceptOffer, afterBooked, afterCancelled, afterRescheduled } from "./lifecycle.ts";
+import type { OpeningSummary } from "./engine.ts";
 import type { AppointmentView, Locale, WaitlistView } from "./model.ts";
 import * as repo from "./repo.ts";
 import { voiceConfigured } from "../voice/openai.ts";
@@ -55,11 +56,18 @@ export interface PublicStatus {
   chatEnabled: boolean;
   /** Mikrofon im Chatfenster – nur mit eingerichtetem Sprachanbieter. */
   voice: boolean;
+  /**
+   * Sprechzeit heute und nächste Öffnung (Urlaub, Schließtage, Feiertage
+   * eingerechnet). Die Website rechnet daraus mit ihrer Uhr „Jetzt geöffnet ·
+   * bis 12:00 Uhr“ – gilt nur, solange `date` heute ist.
+   */
+  hours: OpeningSummary;
 }
 
 export async function publicStatus(): Promise<PublicStatus> {
-  const s = await repo.getSettings();
+  const [s, hours] = await Promise.all([repo.getSettings(), repo.openingSummaryFor()]);
   return {
+    hours,
     bookingLive: s.bookingLive,
     bookingPaused: s.bookingPaused,
     banner: s.bannerText?.trim() || null,
@@ -127,6 +135,8 @@ export interface PublicBookingResult {
   startsAt: string;
   endsAt: string;
   typeLabel: string;
+  /** Kalender-UID wie in der Mail-Einladung – „In den Kalender“ der Website erzeugt so denselben Eintrag */
+  calendarUid?: string;
 }
 
 /**
@@ -216,7 +226,7 @@ export async function createPublicBooking(raw: unknown, ip: string, now = new Da
   const tok = verifyFormToken(v.formToken, now.getTime());
   if (!tok.ok) throw new PublicError(400, "form_token", "Das Formular ist abgelaufen. Bitte laden Sie die Seite neu und versuchen Sie es noch einmal.");
   const booked = await bookPublicSlot(v, { ip, source: "web", now });
-  return { ref: booked.ref, startsAt: booked.startsAt, endsAt: booked.endsAt, typeLabel: booked.typeLabel };
+  return { ref: booked.ref, startsAt: booked.startsAt, endsAt: booked.endsAt, typeLabel: booked.typeLabel, calendarUid: appointmentUid(booked.appointmentId) };
 }
 
 // ---------- Terminverwaltung durch Patient:innen ----------

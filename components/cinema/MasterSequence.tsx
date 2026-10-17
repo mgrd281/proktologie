@@ -10,6 +10,7 @@ import {
 } from "@/components/cinema/layers/LeistungenLayer";
 import { PraxisLayer } from "@/components/cinema/layers/PraxisLayer";
 import { StateText } from "@/components/cinema/layers/StateText";
+import { EarliestFree } from "@/components/booking/EarliestFree";
 import {
   SymptomeLayer,
   type SymptomeLayerHandle,
@@ -706,6 +707,7 @@ export function MasterSequence() {
               content={content}
               isFirst={index === 0}
               initialStyle={START_TEXT[index]}
+              ctaNote={index === 0 ? <EarliestFree /> : undefined}
               className={
                 /*
                  * Unter lg liegt die Praxis-Karte mittig über der vollen
@@ -750,9 +752,10 @@ export function MasterSequence() {
 
             <FrameCounter ref={counterRef} />
 
+            {/* Ab md links neben dem Chat-Knopf (unten rechts), nicht darunter */}
             <p
               aria-hidden={active !== TEAM_SCENE}
-              className="cinema-counter pointer-events-none absolute right-5 bottom-24 font-display text-sm text-cream/70 tabular-nums transition-opacity duration-500 md:right-10 md:bottom-10"
+              className="cinema-counter pointer-events-none absolute right-5 bottom-24 font-display text-sm text-cream/70 tabular-nums transition-opacity duration-500 md:right-28 md:bottom-10"
               style={{ opacity: active === TEAM_SCENE ? 1 : 0 }}
             >
               {memberLabel(teamChapter)}

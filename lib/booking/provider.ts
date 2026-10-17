@@ -9,7 +9,7 @@ import type {
 } from "@/lib/booking/types";
 import { site } from "@/content/site";
 import { bookingCopy } from "@/content/booking";
-import { chooseProvider, fetchCockpitStatus } from "@/lib/booking/status";
+import { chooseProvider, sharedCockpitStatus } from "@/lib/booking/status";
 
 /**
  * Abstraktion der Terminquelle. Die UI (components/booking/*) spricht
@@ -35,6 +35,11 @@ export interface BookingProvider {
    * Kalender. Erst nach dem ersten Laden von getAvailableDates verlässlich.
    */
   lastBookableDate?(typeId?: string | null): ISODate | null;
+  /**
+   * Frühester Tag mit freier Zeit für die Terminart – nur Provider mit echter
+   * Verfügbarkeit. null: bis zum Buchungshorizont ist nichts frei.
+   */
+  getEarliestDate?(typeId: string): Promise<ISODate | null>;
   getAvailableSlots(date: ISODate, typeId?: string | null): Promise<BookingSlot[]>;
   createBooking(draft: BookingDraft): Promise<BookingResult>;
   cancelBooking(bookingId: string): Promise<BookingResult>;
@@ -61,7 +66,8 @@ export async function createBookingProvider(): Promise<BookingProvider> {
   if (site.bookingProvider === "cockpit") {
     // Erst der Zustand der Praxis – das Cockpit entscheidet, ob die Website
     // verbindlich bucht. Fällt die Antwort aus, verspricht die Karte nichts.
-    const status = await fetchCockpitStatus(site.cockpitApiUrl);
+    // Derselbe Abruf wie für die Sprechzeit-Zeile – nur einmal je Seitenaufruf
+    const status = await sharedCockpitStatus(site.cockpitApiUrl);
     const choice = chooseProvider(status, bookingCopy.pausedNotice);
     if (choice.kind === "cockpit") {
       const { CockpitBookingProvider } = await import("@/lib/booking/cockpitProvider");
@@ -74,4 +80,22 @@ export async function createBookingProvider(): Promise<BookingProvider> {
     "@/lib/booking/requestProvider"
   );
   return new RequestBookingProvider();
+}
+
+let shared: Promise<BookingProvider> | null = null;
+
+/**
+ * Ein Provider je Seitenaufruf: Die Buchungskarte und die Zeile „Freie
+ * Termine ab …“ in der Kamerafahrt teilen Zustand und Zwischenspeicher –
+ * was die Fahrt schon geladen hat, zeigt der Kalender ohne zweiten Abruf.
+ */
+export function sharedBookingProvider(): Promise<BookingProvider> {
+  if (!shared) {
+    shared = createBookingProvider();
+    // Ein gescheiterter Abruf (etwa ein Code-Teil, der nicht lud) bleibt nicht hängen
+    shared.catch(() => {
+      shared = null;
+    });
+  }
+  return shared;
 }

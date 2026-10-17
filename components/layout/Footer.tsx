@@ -1,5 +1,8 @@
 import Link from "next/link";
+import { EmergencyLine } from "@/components/ui/EmergencyLine";
 import { LogoLockup } from "@/components/ui/Logo";
+import { OpenStatus } from "@/components/ui/OpenStatus";
+import { hoursLine, unbreakableTimes } from "@/content/chat";
 import { legalNavigation, navigation } from "@/content/navigation";
 import { footerContent } from "@/content/sections";
 import { site } from "@/content/site";
@@ -14,7 +17,7 @@ export function Footer() {
         <div className="grid gap-12 max-md:gap-10 md:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
           <div>
             <LogoLockup onDark />
-            <p className="mt-6 max-w-xs text-sm leading-relaxed text-cream/60">
+            <p className="mt-6 max-w-xs text-sm leading-relaxed text-cream/75">
               {footerContent.tagline}
             </p>
           </div>
@@ -72,7 +75,19 @@ export function Footer() {
                   {site.email}
                 </a>
               </p>
+              <p>
+                {unbreakableTimes(hoursLine("de"))
+                  .split(" · ")
+                  .map((line, i) => (
+                    <span key={line}>
+                      {i > 0 && <br />}
+                      {line}
+                    </span>
+                  ))}
+              </p>
+              <OpenStatus onDark />
             </address>
+            <EmergencyLine onDark className="mt-4" />
           </div>
 
           <nav aria-label="Rechtliches">
@@ -94,7 +109,7 @@ export function Footer() {
           </nav>
         </div>
 
-        <div className="mt-14 flex flex-col gap-2 border-t border-white/10 pt-7 text-xs text-cream/55 md:flex-row md:items-center md:justify-between">
+        <div className="mt-14 flex flex-col gap-2 border-t border-white/10 pt-7 text-xs text-cream/70 md:flex-row md:items-center md:justify-between">
           <p>
             © {year} {site.name} – {site.doctor}
           </p>

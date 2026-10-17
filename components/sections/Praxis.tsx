@@ -4,6 +4,7 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { MapEmbed } from "@/components/ui/MapEmbed";
 import { praxisSection } from "@/content/sections";
 import { site } from "@/content/site";
+import { HoursList } from "@/components/ui/HoursList";
 
 /**
  * Praxis & Standort.
@@ -58,16 +59,7 @@ export function Praxis() {
               <h3 className="font-display mt-5 text-lg font-medium text-ink">
                 {praxisSection.hoursTitle}
               </h3>
-              <dl className="mt-3 space-y-2 text-sm text-ink/70 max-md:space-y-3">
-                {site.hours.map((entry) => (
-                  <div key={entry.days} className="flex justify-between gap-4 max-md:flex-col max-md:gap-0.5">
-                    <dt>{entry.days}</dt>
-                    <dd className="text-right font-medium text-ink/80 max-md:text-left">
-                      {entry.time}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
+              <HoursList />
               {site.isPlaceholderData && (
                 <p className="mt-4 text-xs font-medium text-amber-800 italic">
                   {praxisSection.hoursPlaceholderNote}

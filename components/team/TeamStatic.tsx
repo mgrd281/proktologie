@@ -66,7 +66,7 @@ export function TeamStatic() {
                       )}
                     </span>
                   ) : (
-                    <span className="text-[11px] font-semibold tracking-[0.2em] text-cream/80 uppercase">
+                    <span className="text-xs font-semibold tracking-[0.2em] text-cream/80 uppercase">
                       {TEAM_PLACEHOLDER_LABEL}
                     </span>
                   )}
@@ -83,7 +83,7 @@ export function TeamStatic() {
       <Reveal delay={80}>
         <div className="mt-16 flex flex-col items-start gap-5 border-t border-ink/10 pt-10 sm:flex-row sm:items-center sm:justify-between">
           <p className="font-display text-2xl font-medium text-ink">{teamOutro.line}</p>
-          <Button href={teamOutro.cta.href} withArrow>
+          <Button href={teamOutro.cta.href} variant="outline" withArrow>
             {teamOutro.cta.label}
           </Button>
         </div>

@@ -72,7 +72,17 @@ freier Text ohne Prüfregel; keine Übergangsregeln.
    und noch frei? → höchstens 2 offene Termine je E-Mail.
 3. Einfügen als `booked`; bei gleichzeitiger Buchung greift die Datenbank (Fehler 23P01 →
    409 „Diese Zeit wurde gerade vergeben. Bitte wählen Sie eine andere.").
-4. Erfolg erst nach Serverantwort: „Termin verbindlich gebucht", Referenz „PE-…".
+4. Erfolg erst nach Serverantwort: „Termin verbindlich gebucht", Referenz „PE-…", dazu Tag,
+   Uhrzeit (aus `startsAt`, in Berlin) und Adresse. Die Antwort nennt `calendarUid` – die
+   Kennung der Mail-Einladung: „In den Kalender" der Website erzeugt die Datei im Browser
+   (`lib/booking/ics.ts`, `TZID=Europe/Berlin`, neutraler Titel „Termin · Proktologie
+   Eimsbüttel") mit derselben UID, Kalender-Apps führen einen Eintrag. Während gebucht wird,
+   steht „Wird gebucht …" (ein zweiter Klick bucht nicht noch einmal); scheitert es, steht der
+   Grund da, mit Telefon und – bei „gerade vergeben" – „Andere Zeit wählen".
+   Vor der Buchung: Der Kalender öffnet im Monat des frühesten freien Tages
+   (`getEarliestDate`: Abrufe à 45 Tage bis `lastDate`, eine Minute zwischengespeichert;
+   dieselbe Antwort füllt den Monat), darüber „Frühester freier Tag: …"; unter dem ersten
+   Termin-Knopf der Kamerafahrt steht „Freie Termine ab …" (Terminart „Beschwerden / unklar").
 5. Bestätigungs-Mail mit Kalenderdatei über die Warteschlange (Brevo); Link zum Verwalten
    (`/t/#<token>`, Token nur im Fragment) für Bestätigen, Verschieben, Absagen.
    Die Verwaltungsseite (`cockpit/app/(public)/t/ManageClient.tsx`):
@@ -109,7 +119,18 @@ freier Text ohne Prüfregel; keine Übergangsregeln.
 - Telefon 040 490 80 21 in Fehlermeldungen, Mails, Verwaltungsseite und als Ausweg, wenn die
   Buchung nicht lädt.
 - Notfall: Chat erkennt Notfälle vor allem anderen und verweist auf 112 / 116 117. Die
-  Buchungskarte selbst hat keinen Notfallhinweis (nur der Kontaktbereich).
+  Buchungskarte selbst hat keinen Notfallhinweis; Kontaktbereich, Footer, FAQ-Ende und die
+  Chat-Begrüßung nennen „Außerhalb der Sprechzeiten: Ärztlicher Bereitschaftsdienst 116 117 ·
+  Notruf 112" (`content/notfall.ts`).
+- Sprechzeit live: `GET /api/public/v1/status` liefert `hours` (heute und nächste Öffnung, mit
+  Urlaub, Schließtagen und Feiertagen; `engine.openingSummary`). Die Website rechnet daraus mit
+  ihrer Uhr „Jetzt geöffnet · bis 12:00 Uhr" / „Heute geschlossen · wieder Mo ab 07:00 Uhr"
+  (`lib/booking/opening.ts`) – am Telefon im Kontaktbereich, im Handy-Menü und im Footer.
+- Rückruf „Kein passender Termin dabei?": Ist die Buchung live (auch pausiert), geht er über
+  `POST /api/public/v1/requests` (Formular-Token aus `GET` derselben Route, Einwilligung,
+  Honigtopf) in den Posteingang „Anfragen"; die Praxis bekommt eine Hinweis-Mail. Sonst
+  bleibt der vorbereitete E-Mail-Entwurf, mit Telefon und E-Mail als Ersatz
+  (`lib/booking/callback.ts`).
 
 ## 7. Lücken – nach Wirkung sortiert
 

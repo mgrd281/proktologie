@@ -7,7 +7,7 @@ import { getDb } from "../db/client.ts";
 import * as t from "../db/schema.ts";
 import { makeRef } from "../ref.ts";
 import { addDays, dateKey, startOfDay, startOfWeek } from "../time.ts";
-import { dayIsClosed, findConflicts, generateSlots, overlaps, withinOpeningHours, type BusySpan, type ExceptionSpan } from "./engine.ts";
+import { dayIsClosed, findConflicts, generateSlots, openingSummary, overlaps, withinOpeningHours, type BusySpan, type ExceptionSpan, type OpeningSummary } from "./engine.ts";
 import {
   ACTIVE_STATUSES,
   type AppointmentSource,
@@ -245,6 +245,13 @@ export async function busySpans(from: Date, to: Date, exceptId?: string): Promis
 async function exceptionSpans(from: Date, to: Date): Promise<ExceptionSpan[]> {
   const rows = await listExceptions(from, to);
   return rows.map((r) => ({ kind: r.kind, startsAt: new Date(r.startsAt), endsAt: new Date(r.endsAt), allDay: r.allDay }));
+}
+
+/** Sprechzeit heute und nächste Öffnung (mit Urlaub, Schließtagen, Feiertagen) – für die Website. */
+export async function openingSummaryFor(now = new Date()): Promise<OpeningSummary> {
+  const today = dateKey(now);
+  const [hours, exceptions] = await Promise.all([listHours(), exceptionSpans(startOfDay(today), startOfDay(addDays(today, 22)))]);
+  return openingSummary(today, hours, exceptions);
 }
 
 /**

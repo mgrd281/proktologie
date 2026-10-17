@@ -13,6 +13,14 @@
  * halten kann.
  */
 
+/** Sprechzeit heute und nächste Öffnung, wie das Cockpit sie kennt (Urlaub, Feiertage eingerechnet). */
+export interface HoursInfo {
+  /** Tag, für den `today` gilt ("YYYY-MM-DD", Berlin) */
+  date: string;
+  today: Array<{ from: string; to: string }>;
+  next: { date: string; from: string } | null;
+}
+
 export interface CockpitStatus {
   bookingLive: boolean;
   bookingPaused: boolean;
@@ -32,6 +40,8 @@ export interface CockpitStatus {
    * Knopf, und Zuhören kostet je Minute.
    */
   voice: boolean;
+  /** Fehlt bei älteren Cockpits – dann gibt es keine „Jetzt geöffnet“-Zeile. */
+  hours: HoursInfo | null;
 }
 
 export type ProviderChoice = {
@@ -51,6 +61,22 @@ export function chooseProvider(status: CockpitStatus | null, pausedNotice: strin
   return { kind: "cockpit" };
 }
 
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME = /^\d{2}:\d{2}$/;
+
+function parseHours(raw: unknown): HoursInfo | null {
+  if (!raw || typeof raw !== "object") return null;
+  const h = raw as Record<string, unknown>;
+  if (typeof h.date !== "string" || !DATE.test(h.date) || !Array.isArray(h.today)) return null;
+  const today = h.today.filter(
+    (w): w is { from: string; to: string } =>
+      !!w && typeof w === "object" && TIME.test(String((w as { from?: unknown }).from)) && TIME.test(String((w as { to?: unknown }).to)),
+  );
+  const n = h.next as { date?: unknown; from?: unknown } | null | undefined;
+  const next = n && typeof n.date === "string" && DATE.test(n.date) && typeof n.from === "string" && TIME.test(n.from) ? { date: n.date, from: n.from } : null;
+  return { date: h.date, today: today.map((w) => ({ from: w.from, to: w.to })), next };
+}
+
 function parseStatus(body: unknown): CockpitStatus | null {
   if (!body || typeof body !== "object") return null;
   const b = body as Record<string, unknown>;
@@ -62,6 +88,7 @@ function parseStatus(body: unknown): CockpitStatus | null {
     banner: banner || null,
     chatEnabled: typeof b.chatEnabled === "boolean" ? b.chatEnabled : true,
     voice: b.voice === true,
+    hours: parseHours(b.hours),
   };
 }
 
@@ -94,4 +121,15 @@ export async function fetchCockpitStatus(
   } finally {
     clearTimeout(timer);
   }
+}
+
+let shared: { base: string; promise: Promise<CockpitStatus | null> } | null = null;
+
+/**
+ * Ein Abruf je Seitenaufruf, geteilt von Terminkarte, Chat und der
+ * Sprechzeit-Zeile – statt dreimal dasselbe zu fragen.
+ */
+export function sharedCockpitStatus(apiBase: string): Promise<CockpitStatus | null> {
+  if (!shared || shared.base !== apiBase) shared = { base: apiBase, promise: fetchCockpitStatus(apiBase) };
+  return shared.promise;
 }

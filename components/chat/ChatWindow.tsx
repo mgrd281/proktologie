@@ -45,11 +45,6 @@ export interface ChatWindowProps {
 
 type TalkPayload = { message?: string; action?: Parameters<typeof sendChat>[1]["action"] };
 
-const EMERGENCY_NUMBERS = [
-  { label: "112", href: "tel:112" },
-  { label: "116 117", href: "tel:116117" },
-];
-
 export function ChatWindow({ lang, onLang, onClose, available, voice, checking, hours }: ChatWindowProps) {
   const copy = chatCopy[lang];
   const storeRef = useRef<SessionStore | null>(null);
@@ -530,8 +525,8 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
           {emergency && (
             <div role="alert" className="border-t border-mist bg-white px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-primary-deep">{copy.emergencyTitle}</p>
-              <div className="mt-2 flex gap-2">
-                {EMERGENCY_NUMBERS.map((n) => (
+              <div className="mt-2 grid gap-2">
+                {copy.emergencyNumbers.map((n) => (
                   <a
                     key={n.href}
                     href={n.href}
@@ -608,7 +603,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
                 </p>
               ) : (
                 (listening === "listening" || listening === "hearing") && (
-                  <p className="mt-1 text-[11px] leading-snug text-ink/60">{copy.voice.hint}</p>
+                  <p className="mt-1 text-xs leading-snug text-ink/70">{copy.voice.hint}</p>
                 )
               )}
             </div>

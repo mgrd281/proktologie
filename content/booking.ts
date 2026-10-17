@@ -57,6 +57,12 @@ export const bookingCopy = {
   today: "Heute",
   slotsFor: "Wunschzeiten am",
   slotsForConfirmed: "Freie Zeiten am",
+  /** Gliederung der Uhrzeiten, sobald es vor- und nachmittags Zeiten gibt. */
+  slotGroups: { morning: "Vormittag", afternoon: "Nachmittag" },
+  /** Knopf über dem Kalender (verbindlicher Modus): ein Tipp zum frühesten Tag. */
+  earliestDay: "Frühester freier Tag:",
+  /** Zeile unter dem ersten Termin-Knopf der Kamerafahrt. */
+  freeFrom: "Freie Termine ab",
   noSlots:
     "An diesem Tag hat die Praxis keine Sprechzeiten. Bitte wählen Sie einen anderen Tag.",
   noSlotsConfirmed:
@@ -90,6 +96,9 @@ export const bookingCopy = {
     doctor: "Behandler",
     submitRequest: "Terminanfrage senden",
     submitConfirmed: "Termin verbindlich buchen",
+    /** Ladezustand des Absende-Knopfs */
+    sendingRequest: "Wird gesendet …",
+    sendingConfirmed: "Wird gebucht …",
     change: "Termin ändern",
     requestHint:
       "Die Praxis prüft Ihren Wunschtermin und meldet sich zeitnah mit einer Bestätigung – telefonisch oder per E-Mail.",
@@ -99,6 +108,14 @@ export const bookingCopy = {
     successConfirmed:
       "Ihre Bestätigung mit Kalendereintrag ist unterwegs. Über den Link in der E-Mail können Sie den Termin jederzeit verschieben oder absagen – ganz ohne Anruf.",
     refLabel: "Ihre Referenz",
+    /** Kalenderdatei aus dem Browser – Titel ohne Terminart (Datenschutz) */
+    addToCalendar: "In den Kalender",
+    calendarTitle: "Termin · Proktologie Eimsbüttel",
+    calendarSaved:
+      "Die Kalenderdatei ist geladen – öffnen Sie sie, um den Termin in Ihren Kalender zu übernehmen.",
+    directions: "Anfahrt",
+    /** Die gewählte Zeit wurde gerade vergeben: zurück zu den Zeiten desselben Tages */
+    otherTime: "Andere Zeit wählen",
     newBooking: "Weiteren Termin buchen",
     doctolibAlt: "Lieber sofort verbindlich buchen?",
     doctolibCta: "Termin über Doctolib buchen",
@@ -120,6 +137,7 @@ export const bookingCopy = {
     consent: "Bitte bestätigen Sie die Datenschutzerklärung.",
     summary: "Bitte prüfen Sie die markierten Felder.",
     send: "Ihre Anfrage konnte nicht übermittelt werden. Bitte versuchen Sie es erneut oder rufen Sie uns an.",
+    sendConfirmed: "Der Termin konnte gerade nicht gebucht werden. Bitte versuchen Sie es erneut oder rufen Sie uns an.",
     notLive:
       "Die Online-Buchung ist derzeit nicht verfügbar. Bitte rufen Sie uns an oder nutzen Sie den Doctolib-Weg.",
     cancelUnsupported:
@@ -145,16 +163,31 @@ export const terminSection = {
     question: "Kein passender Termin dabei?",
     open: "Rückruf anfordern",
     close: "Schließen",
-    name: "Ihr Name",
+    firstName: "Vorname",
+    lastName: "Nachname",
     phone: "Telefonnummer",
     timeLabel: "Bevorzugte Zeit",
     timeOptions: ["Egal", "Vormittags", "Nachmittags"],
+    /* Einwilligung (nur wenn die Bitte ins Praxis-Cockpit geht): Der Link
+       ersetzt die Erwähnung im Satz – wie in der Buchung */
+    consentPrefix: "Ich habe die",
+    consentLinkLabel: "Datenschutzerklärung",
+    consentSuffix: "zur Kenntnis genommen und bin mit der Verarbeitung meiner Angaben für den Rückruf einverstanden.",
     submit: "Rückruf anfordern",
+    sending: "Wird gesendet …",
+    /** Angekommen im Cockpit – danach folgt die Referenz */
+    successCockpit: "Danke – wir rufen Sie zurück. Ihre Referenz:",
     success:
       "Ihr E-Mail-Programm öffnet sich mit der vorbereiteten Rückrufbitte. Bitte senden Sie die E-Mail ab.",
+    /** mailto kann still scheitern (kein E-Mail-Programm) – dann diese Wege */
+    fallbackLead: "Falls sich kein E-Mail-Programm öffnet: Rufen Sie uns an",
+    fallbackOr: "oder schreiben Sie an",
     errors: {
-      name: "Bitte geben Sie Ihren Namen ein.",
+      firstName: "Bitte geben Sie Ihren Vornamen ein.",
+      lastName: "Bitte geben Sie Ihren Nachnamen ein.",
       phone: "Bitte geben Sie Ihre Telefonnummer ein.",
+      consent: "Bitte bestätigen Sie die Datenschutzerklärung.",
+      send: "Ihre Rückrufbitte konnte gerade nicht übermittelt werden. Bitte versuchen Sie es erneut oder rufen Sie uns an.",
     },
     mailSubject: "Rückrufbitte über die Website",
   },
