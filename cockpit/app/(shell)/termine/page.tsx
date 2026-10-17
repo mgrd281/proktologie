@@ -8,7 +8,7 @@ export const metadata = { title: "Termine" };
 export default async function TerminePage({
   searchParams,
 }: {
-  searchParams: Promise<{ v?: string; d?: string; neu?: string; ausnahme?: string; id?: string }>;
+  searchParams: Promise<{ v?: string; d?: string; neu?: string; ausnahme?: string; id?: string; t?: string; art?: string }>;
 }) {
   await requireActorOrRedirect();
   const sp = await searchParams;
@@ -42,6 +42,8 @@ export default async function TerminePage({
       types={types}
       hours={hours}
       openNew={sp.neu === "1"}
+      openTime={/^\d{2}:\d{2}$/.test(sp.t ?? "") ? sp.t! : null}
+      openType={sp.art ?? null}
       openException={sp.ausnahme === "1"}
       openId={target?.id ?? null}
     />

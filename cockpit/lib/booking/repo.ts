@@ -1007,9 +1007,11 @@ export interface TodayOverview {
   appointments: AppointmentView[];
   counts: Record<"total" | "open" | "confirmed" | "completed" | "noShow" | "cancelled", number>;
   weekLoad: Array<{ date: string; count: number }>;
-  /** Termine des Folgetags – damit das Team den Tag vorbereiten kann */
-  tomorrow: { date: string; appointments: AppointmentView[] };
+  /** Termine des nächsten Praxistags – damit das Team ihn vorbereiten kann (freitags: Montag) */
+  nextDay: { date: string; appointments: AppointmentView[] };
   openRequests: number;
+  /** Offene Anfragen über der Frist – und wie viele davon Rückrufe sind */
+  overdueRequests: { total: number; callbacks: number };
   /** Buchungen der letzten 7 Tage über Website und Chat */
   webBookingsWeek: number;
   waitlistOpen: number;
@@ -1022,10 +1024,12 @@ export async function todayOverview(now = new Date()): Promise<TodayOverview> {
   const date = dateKey(now);
   const from = startOfDay(date);
   const to = startOfDay(addDays(date, 1));
-  const tomorrowDate = addDays(date, 1);
-  const [appointments, tomorrowAppointments, settings, demoCount] = await Promise.all([
+  const [hours, exceptions] = await Promise.all([listHours(), exceptionSpans(from, startOfDay(addDays(date, 22)))]);
+  // Nächster Tag mit Sprechzeit (ohne Feiertage, Urlaub, Schließtage); sonst morgen
+  const nextDate = openingSummary(date, hours, exceptions).next?.date ?? addDays(date, 1);
+  const [appointments, nextAppointments, settings, demoCount] = await Promise.all([
     listAppointments(from, to, { includeCancelled: true }),
-    listAppointments(startOfDay(tomorrowDate), startOfDay(addDays(tomorrowDate, 1))),
+    listAppointments(startOfDay(nextDate), startOfDay(addDays(nextDate, 1))),
     getSettings(),
     countDemo(),
   ]);
@@ -1066,6 +1070,15 @@ export async function todayOverview(now = new Date()): Promise<TodayOverview> {
     .from(t.requests)
     .where(inArray(t.requests.status, ["neu", "in_arbeit", "wartet"]));
   const openRequests = openRow?.n ?? 0;
+  const overdueRows = await db
+    .select({ kind: t.requests.kind, n: count() })
+    .from(t.requests)
+    .where(and(inArray(t.requests.status, ["neu", "in_arbeit", "wartet"]), lt(t.requests.slaDueAt, now)))
+    .groupBy(t.requests.kind);
+  const overdueRequests = {
+    total: overdueRows.reduce((sum, r) => sum + Number(r.n), 0),
+    callbacks: Number(overdueRows.find((r) => r.kind === "rueckruf")?.n ?? 0),
+  };
   const [webRow] = await db
     .select({ n: count() })
     .from(t.appointments)
@@ -1077,8 +1090,9 @@ export async function todayOverview(now = new Date()): Promise<TodayOverview> {
     appointments,
     counts,
     weekLoad,
-    tomorrow: { date: tomorrowDate, appointments: tomorrowAppointments },
+    nextDay: { date: nextDate, appointments: nextAppointments },
     openRequests: Number(openRequests ?? 0),
+    overdueRequests,
     webBookingsWeek: Number(webRow?.n ?? 0),
     waitlistOpen,
     demoCount,
@@ -1087,15 +1101,31 @@ export async function todayOverview(now = new Date()): Promise<TodayOverview> {
   };
 }
 
-/** Nächster freier Slot ab jetzt für eine Terminart – für den Schnellblick im Dashboard. */
-export async function nextFreeSlot(typeId: string, now = new Date(), horizonDays = 21) {
-  let date = dateKey(now);
-  for (let i = 0; i < horizonDays; i++) {
-    const slots = await availability(typeId, date, now);
-    if (slots.length) return slots[0]!;
-    date = addDays(date, 1);
-  }
-  return null;
+/**
+ * Nächste freie Zeit ab jetzt je Terminart – für den Schnellblick auf
+ * „Heute“. Fürs Team (ohne Vorlauf der Website); Sprechzeiten, Ausnahmen und
+ * Belegung kommen einmal für alle Arten, statt je Art und Tag neu.
+ */
+export async function nextFreeSlots(typeIds: string[], now = new Date(), horizonDays = 21): Promise<Array<{ date: string; time: string } | null>> {
+  const today = dateKey(now);
+  const from = startOfDay(today);
+  const to = startOfDay(addDays(today, horizonDays));
+  const [types, settings, hours, exceptions, busy] = await Promise.all([
+    Promise.all(typeIds.map((id) => getType(id))),
+    getSettings(),
+    listHours(),
+    exceptionSpans(from, to),
+    busySpans(from, to),
+  ]);
+  return types.map((type) => {
+    if (!type) return null;
+    const spec = slotSpec(type, true);
+    for (let i = 0, date = today; i < horizonDays; i++, date = addDays(date, 1)) {
+      const first = generateSlots({ date, type: spec, hours, exceptions, busy, stepMin: settings.slotStepMin, now })[0];
+      if (first) return { date, time: first.time };
+    }
+    return null;
+  });
 }
 
 export const helpers = { lte };

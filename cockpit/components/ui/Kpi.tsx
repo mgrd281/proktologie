@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
@@ -25,6 +26,7 @@ export function KpiTile({
   sub,
   spark,
   tone = "neutral",
+  href,
   className,
 }: {
   label: string;
@@ -33,11 +35,14 @@ export function KpiTile({
   sub?: ReactNode;
   spark?: number[];
   tone?: "neutral" | "ok" | "warn" | "danger";
+  /** Die Zahl führt zur Liste dahinter */
+  href?: string;
   className?: string;
 }) {
   const toneCls = { neutral: "text-brand", ok: "text-ok", warn: "text-warn", danger: "text-danger" }[tone];
-  return (
-    <div className={cn("flex flex-col justify-between rounded-2xl bg-surface-raised p-5 ring-1 ring-line", className)}>
+  const box = cn("flex flex-col justify-between rounded-2xl bg-surface-raised p-5 ring-1 ring-line", href && "transition-shadow hover:ring-line-strong hover:shadow-sm", className);
+  const content = (
+    <>
       <p className="text-[11px] font-semibold tracking-[0.16em] text-text-muted uppercase">{label}</p>
       <div className="mt-3 flex items-end justify-between gap-3">
         <p className="font-display tnum text-[36px] leading-none font-medium text-text">
@@ -47,6 +52,13 @@ export function KpiTile({
         {spark && <Sparkline values={spark} className={toneCls} />}
       </div>
       {sub && <p className="mt-3 text-[12px] text-text-muted">{sub}</p>}
-    </div>
+    </>
+  );
+  return href ? (
+    <Link href={href} className={box}>
+      {content}
+    </Link>
+  ) : (
+    <div className={box}>{content}</div>
   );
 }

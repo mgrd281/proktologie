@@ -21,7 +21,8 @@ export interface NewPrefill {
 }
 
 export type DrawerState =
-  | { mode: "new"; date: string; time?: string; prefill?: NewPrefill }
+  /** typeId: Vorauswahl (z. B. „Nächster freier Termin“); warning: Praxis zu (Urlaub, Feiertag, außerhalb der Sprechzeit) */
+  | { mode: "new"; date: string; time?: string; typeId?: string; prefill?: NewPrefill; warning?: string }
   | { mode: "edit"; appointment: AppointmentView }
   | null;
 
@@ -108,7 +109,7 @@ export function AppointmentDrawer({
     const snap: FormSnapshot =
       state.mode === "new"
         ? {
-            typeId: state.prefill?.typeId ?? typesRef.current[0]?.id ?? "",
+            typeId: state.prefill?.typeId ?? (typesRef.current.some((t) => t.id === state.typeId) ? state.typeId! : (typesRef.current[0]?.id ?? "")),
             date: state.date,
             time: state.time ?? "",
             firstName: state.prefill?.pii.firstName ?? "",
@@ -400,6 +401,8 @@ export function AppointmentDrawer({
             )}
           </div>
         )}
+
+        {state.mode === "new" && state.warning && <Notice tone="warn">{state.warning} Anlegen geht trotzdem.</Notice>}
 
         {editing?.holdUntil && isOpen && (
           <Notice tone="info">

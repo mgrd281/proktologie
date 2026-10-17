@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { ToastProvider } from "@/components/ui/Toast";
+import { AutoRefresh } from "./AutoRefresh";
 import { CommandPalette } from "./CommandPalette";
 import { SessionGuard } from "./SessionGuard";
 import { Sidebar } from "./Sidebar";
@@ -39,6 +40,7 @@ export function AppShell({
       <CommandPalette open={palette} onOpenChange={setPalette} />
       {/* Außerhalb von #cockpit-shell: bleibt bedienbar, auch wenn ein Drawer offen ist */}
       <SessionGuard absoluteSeconds={absoluteSeconds} />
+      <AutoRefresh />
     </ToastProvider>
   );
 }
