@@ -491,6 +491,8 @@ test("Überschneidung: Das Fenster nennt die nächsten freien Zeiten – Ladefeh
   await expect(page.getByText(/Termin angelegt · PE-/)).toBeVisible();
 
   // Pflichtfelder: Der Fehler steht am Feld, der Fokus geht hin
+  await expect(drawer).toHaveCount(0);
+  await page.waitForLoadState("networkidle");
   await page.getByRole("button", { name: "Neuer Termin" }).click();
   // Erst die erste freie Zeit abwarten – sonst fehlt noch die Uhrzeit, und der Fokus geht zu Recht dorthin
   await expect(drawer.getByText("Freie Zeiten werden geladen …")).toHaveCount(0);
