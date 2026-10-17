@@ -18,9 +18,10 @@ import { TeamStage, type TeamStageHandle } from "@/components/cinema/layers/Team
 import { TerminLayer } from "@/components/cinema/layers/TerminLayer";
 import { HeroBackground } from "@/components/hero/HeroBackground";
 import { DoctorPortrait } from "@/components/ui/DoctorPortrait";
+import { Icon } from "@/components/ui/Icon";
 import { arzt } from "@/content/arzt";
-import { CINEMA_TEXTS } from "@/content/cinema";
-import { teamIntro } from "@/content/team";
+import { CINEMA_TEXTS, cinemaSkip } from "@/content/cinema";
+import { ctaHref } from "@/content/navigation";
 import {
   ANCHOR_FRAMES,
   FRAME_LAYERS,
@@ -30,6 +31,7 @@ import {
   ROOM_BRIGHT,
   SCENES,
   SCENE_COUNT,
+  STILL_QUERY,
   SYMPTOME_SCENE,
   TEAM_SCENE,
   TOTAL_FRAMES,
@@ -44,7 +46,7 @@ import {
 import { clamp, smoothstep } from "@/lib/cinema/timeline";
 import { useScrollProgress } from "@/lib/hooks/useScrollProgress";
 import { useLenis } from "@/providers/LenisProvider";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 
 /**
  * DAS Filmwerk der Startseite – eine scrubbares 500-Frame-Master-Timeline.
@@ -78,6 +80,76 @@ const EPSILON_F = 0.02;
 /** Drift des Arzt-Freistellers über die Szenen 01–02. */
 const DOCTOR_SPAN: [number, number] = [SCENES[0].first, SCENES[1].last];
 
+/**
+ * Ab diesem Abstand zum Ziel springt der Film, statt nachzulaufen: Ein
+ * Sprung über die ganze Fahrt (Anker, Überspringen, Pos1/Ende) spulte
+ * sonst Hunderte Filmbilder durch – sichtbar nur als Flackern, und jedes
+ * davon wurde geladen. Normales Scrollen bewegt das Ziel pro Bild nur um
+ * Bruchteile davon und gleitet weiter.
+ */
+const SNAP_FRAMES = 150;
+
+/** Sichtbarkeit und Lage eines Szenentexts – rAF-Loop und Startbild teilen die Formel. */
+function textAt(f: number, i: number, release: number) {
+  const alpha = sceneAlpha(f, i);
+  /*
+   * Gamma drückt die Geisterphase weg (große Serifentypo liest sich
+   * schon bei 4 %); unter 12 % wird abgeschaltet. Alle Texte gehen
+   * mit dem Release.
+   */
+  const shown = (alpha < 0.12 ? 0 : Math.pow(alpha, 1.6)) * (1 - release);
+  // Eintritt von unten, Austritt nach oben – die Szenen ziehen durch
+  const y = (0.5 - sceneLocal(f, i)) * 54;
+  return { alpha, shown, y };
+}
+
+/** Lesbarkeitsschleier links – in Szene 01 etwas zurückgenommen (s. Loop). */
+function scrimAt(f: number, maxAlpha: number, release: number) {
+  const scrimEase = 1 - 0.22 * (1 - smoothstep(46, 76, f));
+  return (0.35 + maxAlpha * 0.65) * scrimEase * (1 - release);
+}
+
+/** Lage des Arzt-Freistellers (Drift über 01–02, dezente Zeiger-Parallaxe). */
+function doctorTransform(f: number, pointerX: number) {
+  const drift = clamp((f - DOCTOR_SPAN[0]) / (DOCTOR_SPAN[1] - DOCTOR_SPAN[0]));
+  const scale = 1.06 - drift * 0.14;
+  return (
+    `translate3d(${(drift * 8 + pointerX * 0.6).toFixed(2)}%, ${(drift * 4).toFixed(2)}%, 0) ` +
+    `scale(${scale.toFixed(3)})`
+  );
+}
+
+/**
+ * Startbild (Frame 1) schon im ausgelieferten HTML – berechnet mit
+ * denselben Formeln wie der Loop, damit beim Übernehmen nichts springt.
+ * Vorher standen Überschrift, Text und Arzt unsichtbar da, bis das Skript
+ * lief (auf langsamem 4G mehrere Sekunden lang nur das Bild).
+ */
+const START_FRAME = 1;
+const START_RELEASE = FRAME_LAYERS.release(START_FRAME);
+const HIDDEN: CSSProperties = { opacity: 0, visibility: "hidden" };
+const START_TEXT: CSSProperties[] = SCENES.map((_, i) => {
+  const t = textAt(START_FRAME, i, START_RELEASE);
+  return t.shown <= 0.004
+    ? HIDDEN
+    : { opacity: Number(t.shown.toFixed(3)), transform: `translate3d(0, ${t.y.toFixed(1)}px, 0)` };
+});
+const START_MAX_ALPHA = Math.max(...SCENES.map((_, i) => sceneAlpha(START_FRAME, i)));
+const START_SCRIM: CSSProperties = {
+  opacity: Number(scrimAt(START_FRAME, START_MAX_ALPHA, START_RELEASE).toFixed(3)),
+};
+const START_DOCTOR: CSSProperties =
+  FRAME_LAYERS.doctor(START_FRAME) <= 0.004
+    ? HIDDEN
+    : {
+        opacity: Number(FRAME_LAYERS.doctor(START_FRAME).toFixed(3)),
+        transform: doctorTransform(START_FRAME, 0),
+      };
+const START_GLOW: CSSProperties = {
+  opacity: Number((FRAME_LAYERS.glow(START_FRAME) * 0.9).toFixed(3)),
+  transform: "translate3d(-8.0%, 6.0%, 0)",
+};
+
 export function MasterSequence() {
   const trackRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -89,9 +161,9 @@ export function MasterSequence() {
   const terminRef = useRef<HTMLDivElement>(null);
   const scrimRef = useRef<HTMLDivElement>(null);
   const veilRef = useRef<HTMLDivElement>(null);
-  const cueRef = useRef<HTMLDivElement>(null);
   const releaseRef = useRef<HTMLDivElement>(null);
   const chromeRef = useRef<HTMLDivElement>(null);
+  const skipRef = useRef<HTMLAnchorElement>(null);
   const trailRef = useRef<SVGPathElement>(null);
   const trailGlowRef = useRef<SVGPathElement>(null);
   const textRefs = useRef<HTMLDivElement[]>([]);
@@ -110,6 +182,13 @@ export function MasterSequence() {
   const activeRef = useRef(0);
   const teamChapterRef = useRef(1);
   const lastTrailQ = useRef(-1);
+
+  /** Darf das Canvas laden und zeichnen? Nur im Bild und nicht unter dem Release. */
+  const canvasVisible = useRef({ inView: true, covered: false });
+  const syncCanvas = useCallback(() => {
+    const v = canvasVisible.current;
+    canvasRef.current?.setActive(v.inView && !v.covered && !document.hidden);
+  }, []);
 
   const [active, setActive] = useState(0);
   const [teamChapter, setTeamChapter] = useState(1);
@@ -151,12 +230,13 @@ export function MasterSequence() {
     const track = trackRef.current;
     if (!track) return;
     const observer = new IntersectionObserver(([entry]) => {
-      canvasRef.current?.setActive(entry.isIntersecting);
+      canvasVisible.current.inView = entry.isIntersecting;
+      syncCanvas();
       if (entry.isIntersecting) dirty.current = true;
     });
     observer.observe(track);
     const onVisibility = () => {
-      canvasRef.current?.setActive(!document.hidden);
+      syncCanvas();
       if (!document.hidden) dirty.current = true;
     };
     document.addEventListener("visibilitychange", onVisibility);
@@ -164,7 +244,7 @@ export function MasterSequence() {
       observer.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, []);
+  }, [syncCanvas]);
 
   const onTeamChapter = useCallback((chapter: number) => {
     const shown = Math.min(6, Math.max(1, chapter));
@@ -175,7 +255,8 @@ export function MasterSequence() {
   }, []);
 
   useEffect(() => {
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+    // Ruhige Fassung statt Fahrt: reduzierte Bewegung oder zu niedriges Fenster
+    const still = window.matchMedia(STILL_QUERY);
 
     // Probe-Fläche der Browser-Tests – ein Objekt, nur mutiert
     const probe = { f: 1, p: 0, scene: 0, release: 0 };
@@ -198,7 +279,7 @@ export function MasterSequence() {
       if (settled && !dirty.current) return;
       dirty.current = false;
 
-      current.current += delta * LERP;
+      current.current = Math.abs(delta) > SNAP_FRAMES ? targetF : current.current + delta * LERP;
       pointer.current.sx += pdx * LERP;
       pointer.current.sy += pdy * LERP;
 
@@ -207,6 +288,16 @@ export function MasterSequence() {
 
       probe.f = f;
       probe.p = p;
+
+      // Ganz unter dem Release (am Ende der Fahrt) ist vom Film nichts zu
+      // sehen – dann lädt und zeichnet das Canvas auch nichts.
+      const release = FRAME_LAYERS.release(f);
+      probe.release = release;
+      const covered = release >= 0.999;
+      if (covered !== canvasVisible.current.covered) {
+        canvasVisible.current.covered = covered;
+        syncCanvas();
+      }
 
       // ---- Compositor: Lichtsequenz + echter Untersuchungsraum ----
       canvasRef.current?.render(f, { x: pointer.current.sx, y: pointer.current.sy });
@@ -261,31 +352,21 @@ export function MasterSequence() {
       if (trailRef.current) trailRef.current.style.opacity = trail.toFixed(3);
       if (trailGlowRef.current) trailGlowRef.current.style.opacity = (trail * 0.5).toFixed(3);
 
-      const release = FRAME_LAYERS.release(f);
-      probe.release = release;
-
       // ---- Szenentexte: überlappende Blenden statt Austausch ----
       let maxAlpha = 0;
       for (let i = 0; i < SCENE_COUNT; i++) {
         const el = textRefs.current[i];
-        const alpha = sceneAlpha(f, i);
+        const { alpha, shown, y } = textAt(f, i, release);
         if (alpha > maxAlpha) maxAlpha = alpha;
         if (!el) continue;
         // War null und bleibt null → nichts schreiben
         if (alpha <= 0.004 && textShown.current[i] === 0) continue;
         textShown.current[i] = alpha <= 0.004 ? 0 : 1;
-        /*
-         * Gamma drückt die Geisterphase weg (große Serifentypo liest sich
-         * schon bei 4 %); unter 12 % wird abgeschaltet. Alle Texte gehen
-         * mit dem Release – am Ende visibility:hidden, damit keine
-         * unsichtbaren Links unter der Cream-Fläche fokussierbar bleiben.
-         */
-        const shown = (alpha < 0.12 ? 0 : Math.pow(alpha, 1.6)) * (1 - release);
+        // Am Ende visibility:hidden, damit keine unsichtbaren Links unter
+        // der Cream-Fläche fokussierbar bleiben.
         el.style.opacity = shown.toFixed(3);
         el.style.visibility = shown <= 0.004 ? "hidden" : "visible";
-        // Eintritt von unten, Austritt nach oben – die Szenen ziehen durch
-        const local = sceneLocal(f, i);
-        el.style.transform = `translate3d(0, ${((0.5 - local) * 54).toFixed(1)}px, 0)`;
+        el.style.transform = `translate3d(0, ${y.toFixed(1)}px, 0)`;
       }
 
       /*
@@ -295,11 +376,8 @@ export function MasterSequence() {
        * Der Nachlass läuft bis Frame 76 auf null aus, alle späteren Szenen
        * behalten exakt ihren bisherigen Wert.
        */
-      const scrimEase = 1 - 0.22 * (1 - smoothstep(46, 76, f));
       if (scrimRef.current) {
-        scrimRef.current.style.opacity = (
-          (0.35 + maxAlpha * 0.65) * scrimEase * (1 - release)
-        ).toFixed(3);
+        scrimRef.current.style.opacity = scrimAt(f, maxAlpha, release).toFixed(3);
       }
 
       // ---- Arzt-Freisteller: trägt 01–02, weicht den Tafeln ----
@@ -308,13 +386,7 @@ export function MasterSequence() {
         doctorRef.current.style.opacity = doctor.toFixed(3);
         doctorRef.current.style.visibility = doctor <= 0.004 ? "hidden" : "visible";
         if (doctor > 0.004) {
-          const drift = clamp(
-            (f - DOCTOR_SPAN[0]) / (DOCTOR_SPAN[1] - DOCTOR_SPAN[0]),
-          );
-          const scale = 1.06 - drift * 0.14;
-          doctorRef.current.style.transform =
-            `translate3d(${(drift * 8 + pointer.current.sx * 0.6).toFixed(2)}%, ${(drift * 4).toFixed(2)}%, 0) ` +
-            `scale(${scale.toFixed(3)})`;
+          doctorRef.current.style.transform = doctorTransform(f, pointer.current.sx);
         }
       }
 
@@ -361,11 +433,6 @@ export function MasterSequence() {
         terminRef.current.style.transform = `translate3d(0, ${((1 - termin) * 36).toFixed(1)}px, 0)`;
       }
 
-      // ---- Scroll-Hinweis nur ganz am Anfang ----
-      if (cueRef.current) {
-        cueRef.current.style.opacity = Math.max(0, 1 - (f - 1) / 25).toFixed(3);
-      }
-
       /*
        * Release: Die Bühne wird NICHT skaliert (das legte die Seitenkanten
        * frei), sondern löst sich in genau den Farbton auf, mit dem die
@@ -376,6 +443,15 @@ export function MasterSequence() {
         releaseRef.current.style.opacity = release.toFixed(3);
         releaseRef.current.style.visibility = release <= 0.004 ? "hidden" : "visible";
       }
+      // „Einführung überspringen“ gehört zum Anfang: Mit Szene 02 tritt der
+      // Knopf zurück – unten links stünde er sonst im Text kleiner Handys.
+      // Danach führen Kopf-Knopf und Handy-Leiste genauso direkt zum Termin.
+      if (skipRef.current) {
+        const skip = 1 - smoothstep(30, 55, f);
+        skipRef.current.style.opacity = skip.toFixed(3);
+        skipRef.current.style.visibility = skip <= 0.004 ? "hidden" : "visible";
+      }
+
       // Leiste, Zähler und Hinweis gehören zum Film – sie gehen mit.
       if (chromeRef.current) {
         const chrome = 1 - release;
@@ -416,14 +492,14 @@ export function MasterSequence() {
      * SOFORT auf die Systemeinstellung – der Loop zieht hier mit, statt
      * die Präferenz nur einmal beim Mount zu lesen.
      */
-    const onChange = () => (reduced.matches ? stop() : start());
-    reduced.addEventListener("change", onChange);
+    const onChange = () => (still.matches ? stop() : start());
+    still.addEventListener("change", onChange);
     onChange();
     return () => {
-      reduced.removeEventListener("change", onChange);
+      still.removeEventListener("change", onChange);
       stop();
     };
-  }, []);
+  }, [syncCanvas]);
 
   const goToScene = useCallback(
     (index: number) => {
@@ -450,8 +526,9 @@ export function MasterSequence() {
         <style>{`.cinema-track{display:none !important}.cinema-still{display:block !important}`}</style>
       </noscript>
 
-      {/* Ohne erlaubte Bewegung: ruhige, vollständige Fassung ohne Scroll-Kopplung */}
-      <div className="cinema-still motion-safe:hidden">
+      {/* Ohne erlaubte Bewegung (oder in sehr niedrigen Fenstern): ruhige,
+          vollständige Fassung ohne Scroll-Kopplung */}
+      <div className="cinema-still film:hidden">
         <CinemaStatic />
       </div>
 
@@ -465,7 +542,7 @@ export function MasterSequence() {
         ref={trackRef}
         data-header-solid={headerSolidProgress()}
         data-total-frames={TOTAL_FRAMES}
-        className="cinema-track relative hidden h-[500vh] motion-safe:block md:h-[1000vh]"
+        className="cinema-track relative hidden h-[500vh] film:block md:h-[1000vh]"
       >
         <div
           ref={stageRef}
@@ -492,7 +569,7 @@ export function MasterSequence() {
               * eigene Bilder.
               */}
             <source
-              media="(prefers-reduced-motion: reduce)"
+              media="(prefers-reduced-motion: reduce), (max-height: 449px)"
               srcSet="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
             />
             <source media="(max-width: 767px)" srcSet="/sequence/mobile/frame_0001.webp" />
@@ -538,6 +615,7 @@ export function MasterSequence() {
             ref={glowRef}
             aria-hidden="true"
             className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_45%_40%_at_62%_38%,rgba(134,188,35,0.16)_0%,transparent_70%)]"
+            style={START_GLOW}
           />
 
           {/* 5 – Team-Ebenen (erscheinen vor ihrer Szene, weichen danach zurück) */}
@@ -573,7 +651,7 @@ export function MasterSequence() {
           <div
             ref={doctorRef}
             className="pointer-events-none absolute inset-y-0 right-0 w-[52%] origin-bottom md:w-[44%] xl:right-[4%] xl:w-[38%]"
-            style={{ opacity: 0, visibility: "hidden" }}
+            style={START_DOCTOR}
           >
             <DoctorPortrait
               alt={arzt.portraitAlt}
@@ -610,6 +688,7 @@ export function MasterSequence() {
             ref={scrimRef}
             aria-hidden="true"
             className="pointer-events-none absolute inset-y-0 left-0 w-full bg-gradient-to-r from-deep via-deep/85 to-transparent max-md:bg-[linear-gradient(to_right,rgba(23,37,27,0.9),rgba(23,37,27,0.62))] md:w-[66%] lg:w-[56%]"
+            style={START_SCRIM}
           />
 
           {/*
@@ -626,6 +705,7 @@ export function MasterSequence() {
               }}
               content={content}
               isFirst={index === 0}
+              initialStyle={START_TEXT[index]}
               className={
                 /*
                  * Unter lg liegt die Praxis-Karte mittig über der vollen
@@ -678,18 +758,21 @@ export function MasterSequence() {
               {memberLabel(teamChapter)}
             </p>
 
-            <div
-              ref={cueRef}
-              aria-hidden="true"
-              className="pointer-events-none absolute bottom-24 left-5 flex items-center gap-4 md:bottom-9 md:left-10"
+            {/*
+              * Überspringen: Wer die Fahrt kennt oder es eilig hat, landet
+              * sofort bei der Terminbuchung (Sprung ohne Durchspulen, Fokus
+              * auf der Buchung – siehe LenisProvider). Ein ruhiger Knopf mit
+              * eigener Fläche, damit er über hellen wie dunklen Bildern lesbar
+              * bleibt. Sichtbar in der Eröffnung (s. Loop).
+              */}
+            <a
+              ref={skipRef}
+              href={ctaHref}
+              className="pointer-events-auto absolute bottom-24 left-5 inline-flex min-h-11 items-center gap-2 rounded-full border border-cream/25 bg-deep/70 px-4 text-xs font-medium tracking-wide text-cream transition-colors duration-200 hover:border-accent hover:text-accent md:bottom-9 md:left-10"
             >
-              <span className="flex h-9 w-5.5 shrink-0 items-start justify-center rounded-full border border-cream/30 pt-1.5">
-                <span className="animate-scroll-cue block h-1.5 w-1 rounded-full bg-accent" />
-              </span>
-              <span className="text-[11px] tracking-[0.16em] text-cream/50 uppercase">
-                {teamIntro.scrollCue}
-              </span>
-            </div>
+              {cinemaSkip}
+              <Icon name="arrow-down" size={14} />
+            </a>
           </div>
         </div>
       </div>

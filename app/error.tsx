@@ -1,16 +1,26 @@
 "use client";
 
 import { useEffect } from "react";
-import { CinemaStatic } from "@/components/cinema/CinemaStatic";
+import { NoticePage } from "@/components/layout/NoticePage";
+import { Button } from "@/components/ui/Button";
 
 /**
- * Fehlerauffangstelle der Seiten. Ohne sie ließ ein einziger Fehler im
- * Browser zehn Bildschirmhöhen mit einem starren Bild und ohne Text
- * zurück. Jetzt steht die ruhige, vollständige Fassung da.
+ * Fehlerauffangstelle der Seiten. Fehler in der Kamerafahrt fängt schon
+ * deren eigene Grenze (CinemaBoundary) – hier landet nur, was die Seite
+ * selbst nicht mehr tragen kann. Dann zählt: ehrlich sagen, neu laden
+ * anbieten, das Telefon zeigen. Kopf und Fuß der Seite bleiben stehen.
  */
 export default function Error({ error }: { error: Error & { digest?: string } }) {
   useEffect(() => {
-    console.error("[seite] Fehler abgefangen, ruhige Fassung gezeigt:", error);
+    console.error("[seite] Fehler abgefangen:", error);
   }, [error]);
-  return <CinemaStatic />;
+  return (
+    <NoticePage title="Hier ist etwas schiefgelaufen.">
+      {/* Bewusst ein voller Neuladevorgang: Häufigste Ursache ist ein
+          veralteter Programmteil nach einer neuen Version. */}
+      <Button type="button" onClick={() => window.location.reload()}>
+        Seite neu laden
+      </Button>
+    </NoticePage>
+  );
 }

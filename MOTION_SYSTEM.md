@@ -32,8 +32,8 @@ viele sind älter, viele lesen auf dem Handy. Darum:
 | Kurz | 150–200 ms | Tailwind `duration-150/200` | Hover, Farbe, kleine Zustände |
 | Mittel | 280–320 ms | `rise-in`, `slide-in-right`, `step-in`, `menu-in`, `duration-300` | Dialog, Drawer, Toast, Buchungsschritt, Handy-Menü |
 | Lang | 500–700 ms | `reveal-in`, `beat-label`, `team-veil`, `duration-500/700` | Einblendung beim Scrollen, Filmszenen |
-| Scroll-Glättung | Lenis, `duration: 1.2`, Exponential-Kurve | `providers/LenisProvider.tsx` | nur Startseiten-Kamerafahrt; bei reduzierter Bewegung gar nicht gestartet |
-| Film-Nachlauf | `LERP = 0.12` pro Bild | `lib/cinema/frames.ts` | eine einzige rAF-Schleife folgt dem Scrollen |
+| Scroll-Glättung | Lenis, `duration: 1.2`, Exponential-Kurve | `providers/LenisProvider.tsx` | nur Startseiten-Kamerafahrt; bei reduzierter Bewegung gar nicht gestartet; Anker-Sprünge über mehr als zwei Bildschirmhöhen ohne Fahrt (`immediate`) |
+| Film-Nachlauf | `LERP = 0.12` pro Bild | `lib/cinema/frames.ts` | eine einzige rAF-Schleife folgt dem Scrollen; ab 150 Bildern Abstand springt der Film (`SNAP_FRAMES`, kein Durchspulen) |
 
 Neue Werte nur, wenn keiner der vorhandenen passt – dann hier eintragen.
 
@@ -61,10 +61,10 @@ Bahn, `color`/`text-shadow` der Filmbeschriftung). Kein `filter: blur()` und kei
 
 | Bewegung | Umsetzung | Dauer / Kurve | Reduzierte Bewegung | Ohne JS |
 |---|---|---|---|---|
-| **Kamerafahrt** durch die Praxis (Startseite) | `components/cinema/MasterSequence.tsx`: 500 Bilder (Handy 250), Spur 1000vh (Handy 500vh), Scroll → Bildnummer, ein rAF mit LERP | folgt dem Scrollen | Spur ausgeblendet (`motion-safe:block`), stattdessen Standbild (`cinema-still`, `<source media="(prefers-reduced-motion: reduce)">`) und statische Fassungen (`CinemaStatic`, `HeroStatic`, `TeamStatic`) | Standbild + Beat 1 sichtbar |
+| **Kamerafahrt** durch die Praxis (Startseite) | `components/cinema/MasterSequence.tsx`: 500 Bilder (Handy 250), Spur 1000vh (Handy 500vh), Scroll → Bildnummer, ein rAF mit LERP. Startbild (Frame 1: Text, Arzt, Schleier) steht schon im HTML; unter dem Release lädt und zeichnet das Canvas nicht; Fehler ersetzen nur die Fahrt (`CinemaBoundary`) | folgt dem Scrollen | Spur ausgeblendet (Variante `film:` = Bewegung erwünscht **und** Fenster ≥ 450 px hoch), stattdessen Standbild (`cinema-still`, `<source media="(prefers-reduced-motion: reduce), (max-height: 449px)">`) und statische Fassungen (`CinemaStatic`, `HeroStatic`, `TeamStatic`) – dieselbe ruhige Fassung auch in sehr niedrigen Fenstern (200 % Zoom am Laptop, Handy quer) | Standbild + Beat 1 sichtbar |
 | Beat-Beschriftung („0X — …") | `.beat-label-enter` | 0,5 s `ease-out-soft` | aus | Beat 1 sichtbar |
 | Team-Bühne / Leistungs-Korridor | `TeamStage`, `LeistungenLayer`: Tiefe über `transform` + Schleier | Schleier 0,5–0,6 s | statische Fassung | statische Fassung |
-| Scroll-Hinweis | `.animate-scroll-cue` | 2,2 s `ease-in-out`, endlos | eine Runde, dann still | – |
+| „Einführung überspringen“ | `MasterSequence`: Deckkraft folgt dem Frame, 1 → 0 zwischen Frame 30 und 55 (danach `visibility: hidden`) | folgt dem Scrollen | – (ruhige Fassung ohne Fahrt) | sichtbar im Startbild |
 | Einblendung beim Scrollen | `components/ui/Reveal.tsx` (IntersectionObserver, einmalig), `.reveal-init` → `.reveal-in` | 0,7 s `ease-out-soft`, Staffelung über `--reveal-delay` | nie versteckt | sichtbar (Ausblendung erst nach dem Laden) |
 | Buchungsschritte | Motion, `StepFrame`: neuer Schritt von rechts herein, alter nach links hinaus (zurück: umgekehrt); Kartenhöhe gleitet mit | 280 ms herein / 180 ms hinaus, 24 px, `ease-out-soft` | sofortiger Wechsel | erster Schritt sichtbar |
 | Kalendermonat, Rückruf | `.animate-step-in` | 0,3 s `ease-out-soft`, 10 px nach oben | aus | – (Buchung braucht JS) |

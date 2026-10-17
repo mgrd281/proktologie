@@ -1,6 +1,5 @@
 import { Icon } from "@/components/ui/Icon";
 import { CINEMA_TERMIN } from "@/content/cinema";
-import Link from "next/link";
 import { forwardRef } from "react";
 
 /**
@@ -50,13 +49,15 @@ export const TerminLayer = forwardRef<HTMLDivElement>(function TerminLayer(_, re
           </ol>
         </div>
 
-        <Link
+        {/* Einfacher Link (kein next/link): läuft über die Anker-Logik im
+            LenisProvider – Abstand unter dem Header, Fokus auf der Buchung. */}
+        <a
           href={CINEMA_TERMIN.cta.href}
           className="pointer-events-auto mt-6 inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-full bg-accent px-7 text-sm font-semibold text-deep transition-colors duration-300 hover:bg-[#76a81f]"
         >
           {CINEMA_TERMIN.cta.label}
           <Icon name="arrow-right" size={16} />
-        </Link>
+        </a>
       </div>
     </div>
   );

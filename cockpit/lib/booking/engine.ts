@@ -9,9 +9,11 @@
  * - Belegte Intervalle blockieren inklusive ihres eigenen Puffers.
  * - Vorlauf (leadTimeHours) und Horizont (maxAheadDays) gelten je Terminart.
  * - Ausnahmen: closed/urlaub sperren, blocker/extern belegen.
+ * - Gesetzliche Feiertage in Hamburg sperren wie „geschlossen“ (holidays.ts).
  * Alles in Europe/Berlin; Rückgabe als UTC-Zeitpunkte plus Anzeige "HH:MM".
  */
 import { addDays, dateKey, isoWeekday, minutesOfDay, zonedToUtc } from "../time.ts";
+import { holidayName } from "./holidays.ts";
 
 export interface OpeningWindow {
   /** ISO-Wochentag 1–7 */
@@ -81,7 +83,9 @@ export function windowsForDay(
     .sort((a, b) => a.start.getTime() - b.start.getTime());
 }
 
-function dayIsClosed(date: string, exceptions: ExceptionSpan[]): boolean {
+/** Feiertag oder ganzer Tag „geschlossen“/„Urlaub“ – dann gibt es keine Online-Termine. */
+export function dayIsClosed(date: string, exceptions: ExceptionSpan[]): boolean {
+  if (holidayName(date)) return true;
   const start = zonedToUtc(date, "00:00").getTime();
   const end = zonedToUtc(addDays(date, 1), "00:00").getTime();
   return exceptions.some(
@@ -144,8 +148,12 @@ export function findConflicts(candidate: BusySpan, busy: BusySpan[]): Conflict[]
     .map((b) => ({ with: b }));
 }
 
-/** Liegt der Zeitpunkt innerhalb der Sprechzeiten? (Interne Anlage warnt nur, sperrt nicht.) */
+/**
+ * Liegt der Zeitpunkt innerhalb der Sprechzeiten? (Interne Anlage warnt nur,
+ * sperrt nicht.) Ein Feiertag zählt als außerhalb – das Team darf trotzdem.
+ */
 export function withinOpeningHours(start: Date, end: Date, hours: OpeningWindow[]): boolean {
   const date = dateKey(start);
+  if (holidayName(date)) return false;
   return windowsForDay(date, hours).some((w) => w.start <= start && end <= w.end);
 }

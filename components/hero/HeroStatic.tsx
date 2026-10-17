@@ -7,6 +7,8 @@ import { heroBeats } from "@/content/hero";
  * Statische Hero-Variante: Mobile/Tablet sowie alle Viewports bei
  * prefers-reduced-motion. Gleiche Identität, ohne Scroll-Kopplung –
  * schnell, ruhig und vollständig ohne JavaScript nutzbar.
+ * `data-header-dark`: Bis zum Ende dieses Blocks bleibt der Header
+ * durchsichtig, danach wird er deckend (components/layout/Header.tsx).
  */
 
 /** Kompakte Teaser auf die wichtigsten Abschnitte (statt der Scroll-Beats). */
@@ -20,7 +22,7 @@ export function HeroStatic() {
   const welcome = heroBeats[0];
 
   return (
-    <div className="on-dark relative overflow-hidden bg-deep text-cream">
+    <div data-header-dark className="on-dark relative overflow-hidden bg-deep text-cream">
       <div className="mx-auto flex min-h-svh max-w-7xl flex-col justify-end px-5 pt-28 pb-10 md:px-8">
         <div className="grid items-end gap-10 lg:grid-cols-2">
           <div className="max-w-xl">

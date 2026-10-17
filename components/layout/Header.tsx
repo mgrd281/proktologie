@@ -14,15 +14,16 @@ import { useEffect, useRef, useState } from "react";
 /**
  * Fixer Header: über dem dunklen Hero transparent mit hellem Text,
  * danach deckend (Warm White + Blur) mit dunklem Text.
- * Auf Unterseiten (ohne #hero) immer deckend.
+ * Auf Unterseiten (ohne #hero) immer deckend – schon im ausgelieferten
+ * HTML, nicht erst, wenn das Script läuft.
  */
 export function Header() {
-  const [solid, setSolid] = useState(false);
+  const pathname = usePathname();
+  const [solid, setSolid] = useState(pathname !== "/");
   const [menuOpen, setMenuOpen] = useState(false);
   const burgerRef = useRef<HTMLButtonElement>(null);
   const headerRef = useRef<HTMLElement>(null);
   const wasOpenRef = useRef(false);
-  const pathname = usePathname();
   const { stop, start } = useLenis();
 
   useEffect(() => {
@@ -36,16 +37,22 @@ export function Header() {
      * Die Kamerafahrt ist 1000vh lang (Handy: 500vh) und wird in ihrem letzten Drittel hell
      * (Empfangsraum). Erst am Ende der Sektion umzuschalten hieße: heller
      * Text auf hellem Grund. Die Fahrt hinterlegt deshalb am Track den
-     * Fortschritt, ab dem der Header deckend sein soll; ohne Fahrt
-     * (reduzierte Bewegung, Unterseiten) gilt weiter das Sektionsende.
+     * Fortschritt, ab dem der Header deckend sein soll. Ohne Fahrt
+     * (reduzierte Bewegung) folgen auf den dunklen Eröffnungsblock helle
+     * Abschnitte – dort zählt das Ende dieses Blocks (`data-header-dark`),
+     * nicht das Ende der ganzen Sektion.
      */
     let threshold = 0;
     const measure = () => {
       const cinema = hero.querySelector<HTMLElement>("[data-header-solid]");
       const at = Number(cinema?.dataset.headerSolid);
+      const dark = hero.querySelector<HTMLElement>("[data-header-dark]");
       if (cinema && cinema.offsetHeight > 0 && Number.isFinite(at)) {
         const top = cinema.getBoundingClientRect().top + window.scrollY;
         threshold = top + at * Math.max(1, cinema.offsetHeight - window.innerHeight);
+      } else if (dark && dark.offsetHeight > 0) {
+        const bottom = dark.getBoundingClientRect().bottom + window.scrollY;
+        threshold = bottom - (headerRef.current?.offsetHeight ?? 80);
       } else {
         threshold = hero.offsetTop + hero.offsetHeight - 120;
       }
@@ -65,11 +72,15 @@ export function Header() {
     };
     measure();
     update();
+    // Wechsel der Systemeinstellung tauscht Fahrt und ruhige Fassung
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onResize, { passive: true });
+    reduced.addEventListener("change", onResize);
     return () => {
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onResize);
+      reduced.removeEventListener("change", onResize);
       cancelAnimationFrame(raf);
     };
     // Bei Routenwechsel neu auswerten (Header bleibt über Navigationen gemountet)
@@ -117,8 +128,18 @@ export function Header() {
 
   return (
     <>
+      {/*
+        * Ohne JavaScript wird der Header nie deckend. Auf der Startseite
+        * scrollt er deshalb mit dem dunklen Eröffnungsblock weg, statt mit
+        * heller Schrift über den hellen Abschnitten stehen zu bleiben.
+        */}
+      <noscript>
+        <style>{`#site-header[data-solid="false"]{position:absolute}`}</style>
+      </noscript>
       <header
         ref={headerRef}
+        id="site-header"
+        data-solid={solid}
         className={cn(
           "fixed inset-x-0 top-0 z-50 transition-colors duration-500",
           solid

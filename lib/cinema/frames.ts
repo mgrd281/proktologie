@@ -171,6 +171,13 @@ export function brightnessF(f: number): number {
 export const ROOM_BRIGHT = 0.55;
 
 /**
+ * Wann statt der Fahrt die ruhige Fassung steht: reduzierte Bewegung oder
+ * ein Fenster unter 450 px Höhe (200 % Zoom am Laptop, Handy quer). Gegenstück
+ * zur CSS-Variante `film:` in app/globals.css.
+ */
+export const STILL_QUERY = "(prefers-reduced-motion: reduce), (max-height: 449px)";
+
+/**
  * Frame, ab dem der fixe Header deckend wird – VOR der hellen Phase
  * (der Untersuchungsraum überschreitet ROOM_BRIGHT bei ~Frame 236).
  */

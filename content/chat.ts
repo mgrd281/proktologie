@@ -61,6 +61,12 @@ export interface ChatCopy {
   };
   send: string;
   typing: string;
+  /** Solange das Fenster nachlädt. */
+  loading: string;
+  /** Laden oder Antwort brauchen ungewöhnlich lange – ehrlich sagen. */
+  slow: string;
+  /** Nach einem Netzfehler: dieselbe Nachricht noch einmal schicken. */
+  retry: string;
   greeting: (hours: string) => string;
   privacyNote: string;
   privacyLink: string;
@@ -78,6 +84,7 @@ export interface ChatCopy {
   };
   submit: string;
   required: string;
+  invalidEmail: string;
   restart: string;
 }
 
@@ -116,6 +123,9 @@ const de: ChatCopy = {
   },
   send: "Senden",
   typing: "Der Assistent schreibt …",
+  loading: "Einen Moment …",
+  slow: "Das dauert gerade länger …",
+  retry: "Nochmal senden",
   greeting: (hours) =>
     `Guten Tag, hier ist der Assistent der ${site.name} (${site.doctor}). Sprechzeiten: ${hours}. Wie kann ich helfen?`,
   privacyNote:
@@ -139,6 +149,7 @@ const de: ChatCopy = {
   },
   submit: "Absenden",
   required: "Pflichtfeld",
+  invalidEmail: "Bitte geben Sie eine gültige E-Mail-Adresse ein.",
   restart: "Neues Gespräch",
 };
 
@@ -177,6 +188,9 @@ const en: ChatCopy = {
   },
   send: "Send",
   typing: "The assistant is typing …",
+  loading: "One moment …",
+  slow: "This is taking longer than usual …",
+  retry: "Send again",
   greeting: (hours) =>
     `Hello, this is the assistant of ${site.name} (${site.doctor}). Opening hours: ${hours}. How can I help?`,
   privacyNote:
@@ -200,6 +214,7 @@ const en: ChatCopy = {
   },
   submit: "Submit",
   required: "Required",
+  invalidEmail: "Please enter a valid e-mail address.",
   restart: "New conversation",
 };
 

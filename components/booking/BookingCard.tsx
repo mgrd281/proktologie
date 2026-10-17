@@ -3,6 +3,7 @@
 import { Icon } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/Button";
 import { BookingProgress } from "@/components/booking/BookingProgress";
+import { LoadError } from "@/components/booking/LoadError";
 import { StepCalendar } from "@/components/booking/StepCalendar";
 import { StepConfirm } from "@/components/booking/StepConfirm";
 import { StepDetails } from "@/components/booking/StepDetails";
@@ -60,6 +61,8 @@ export function BookingCard() {
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<BookingDraft>(emptyDraft);
   const [slots, setSlots] = useState<BookingSlot[]>([]);
+  /** Die Zeiten des gewählten Tages ließen sich nicht laden. */
+  const [slotsFailed, setSlotsFailed] = useState(false);
   const [send, setSend] = useState<SendState>({ kind: "idle" });
   const cardRef = useRef<HTMLDivElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -102,7 +105,8 @@ export function BookingCard() {
     // Ein Bild warten: Wird der neue Schritt kürzer, verschiebt der Browser
     // die Seite (Scroll Anchoring) – Lenis kennt die neue Position erst nach
     // dem nächsten scroll-Ereignis und würde sonst zu kurz fahren.
-    const frame = requestAnimationFrame(() => scrollTo(card));
+    // 16 px Luft unter dem Header (der Header-Abstand selbst kommt aus scroll-padding)
+    const frame = requestAnimationFrame(() => scrollTo(card, -16));
     return () => cancelAnimationFrame(frame);
   }, [step, send.kind, scrollTo]);
 
@@ -113,6 +117,7 @@ export function BookingCard() {
   const selectDate = useCallback(
     (date: string) => {
       patchDraft({ date, slotId: null, time: null });
+      setSlotsFailed(false);
       const token = ++slotsRequest.current;
       provider
         ?.getAvailableSlots(date, draft.typeId)
@@ -122,7 +127,8 @@ export function BookingCard() {
           setStep(2);
         })
         .catch(() => {
-          /* Fehler: im Kalender bleiben, keine falschen Zeiten anzeigen */
+          // Im Kalender bleiben und es sagen – nie still „nichts frei“
+          if (token === slotsRequest.current) setSlotsFailed(true);
         });
     },
     [provider, patchDraft, draft.typeId],
@@ -140,6 +146,7 @@ export function BookingCard() {
   const reset = useCallback(() => {
     setDraft(emptyDraft);
     setSlots([]);
+    setSlotsFailed(false);
     setSend({ kind: "idle" });
     setStep(0);
   }, []);
@@ -212,6 +219,14 @@ export function BookingCard() {
         {confirmed && send.kind !== "done" && (
           <p className={noteClass}>{bookingCopy.confirmedModeNote}</p>
         )}
+        <noscript>
+          <p className="mt-3 rounded-lg bg-mist px-3.5 py-2.5 text-sm leading-relaxed text-ink">
+            {bookingCopy.noScript}{" "}
+            <a href={site.phoneHref} className="font-medium whitespace-nowrap underline underline-offset-4">
+              {site.phone}
+            </a>
+          </p>
+        </noscript>
         {/* Die Praxis hat die Online-Buchung pausiert: ein ruhiger Satz, kein Alarm */}
         {provider?.notice && send.kind !== "done" && (
           <p
@@ -310,6 +325,7 @@ export function BookingCard() {
                   selected={draft.typeId}
                   onSelect={(typeId) => {
                     patchDraft({ typeId });
+                    setSlotsFailed(false);
                     setStep(1);
                   }}
                 />
@@ -317,12 +333,19 @@ export function BookingCard() {
 
               {step === 1 &&
                 (provider ? (
-                  <StepCalendar
-                    provider={provider}
-                    typeId={draft.typeId}
-                    selected={draft.date}
-                    onSelect={selectDate}
-                  />
+                  <>
+                    <StepCalendar
+                      provider={provider}
+                      typeId={draft.typeId}
+                      selected={draft.date}
+                      onSelect={selectDate}
+                    />
+                    {slotsFailed && draft.date && (
+                      <div className="mt-4">
+                        <LoadError onRetry={() => selectDate(draft.date!)} />
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <p className="text-sm text-ink/70">Kalender wird geladen …</p>
                 ))}

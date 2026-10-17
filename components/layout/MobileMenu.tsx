@@ -15,6 +15,9 @@ interface MobileMenuProps {
 /**
  * Vollflächiges Mobilmenü in Deep Green.
  * Fokus-Falle, Esc schließt, Fokus kehrt zum Auslöser zurück (im Header).
+ * Termin und Telefon stehen oben – auch auf kleinen Handys ohne Scrollen
+ * erreichbar. Das Menü scrollt selbst (`data-lenis-prevent`): Lenis ist
+ * bei offenem Menü gestoppt und würde Rad und Wischen sonst verschlucken.
  */
 export function MobileMenu({ open, onClose }: MobileMenuProps) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -73,7 +76,8 @@ export function MobileMenu({ open, onClose }: MobileMenuProps) {
       role="dialog"
       aria-modal="true"
       aria-label="Menü"
-      className="on-dark animate-menu-in fixed inset-0 z-60 flex flex-col overflow-y-auto bg-deep px-6 py-5"
+      data-lenis-prevent
+      className="on-dark animate-menu-in fixed inset-0 z-60 flex flex-col overflow-y-auto overscroll-contain bg-deep px-6 py-5"
     >
       <div className="flex items-center justify-between">
         <LogoLockup onDark />
@@ -87,28 +91,7 @@ export function MobileMenu({ open, onClose }: MobileMenuProps) {
         </button>
       </div>
 
-      <nav aria-label="Hauptnavigation" className="mt-10 flex-1">
-        <ul className="space-y-1">
-          {navigation.map((item, index) => (
-            <li key={item.href}>
-              <a
-                href={item.href}
-                onClick={onClose}
-                className="group flex min-h-12 items-baseline gap-4 py-2"
-              >
-                <span className="text-xs font-medium text-accent/70 tabular-nums">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <span className="font-display text-3xl font-medium text-cream transition-colors group-hover:text-accent">
-                  {item.label}
-                </span>
-              </a>
-            </li>
-          ))}
-        </ul>
-      </nav>
-
-      <div className="mt-10 space-y-6 border-t border-white/10 pt-8 pb-4">
+      <div className="mt-6 grid gap-3">
         <Button href={ctaHref} onClick={onClose} withArrow className="w-full">
           {ctaLabel}
         </Button>
@@ -120,6 +103,27 @@ export function MobileMenu({ open, onClose }: MobileMenuProps) {
           </span>
         </Button>
       </div>
+
+      <nav aria-label="Hauptnavigation" className="mt-8 flex-1 border-t border-white/10 pt-5 pb-4">
+        <ul className="space-y-1">
+          {navigation.map((item, index) => (
+            <li key={item.href}>
+              <a
+                href={item.href}
+                onClick={onClose}
+                className="group flex min-h-12 items-baseline gap-4 py-2"
+              >
+                <span className="text-xs font-medium text-accent/70 tabular-nums">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <span className="font-display text-2xl font-medium text-cream transition-colors group-hover:text-accent">
+                  {item.label}
+                </span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
     </div>
   );
 }

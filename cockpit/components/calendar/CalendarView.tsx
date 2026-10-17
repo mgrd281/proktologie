@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
+import { holidayName } from "@/lib/booking/holidays";
 import { KIND_LABEL, SOURCE_LABEL, type AppointmentView, type ExceptionView, type HoursRow, type TypeView } from "@/lib/booking/model";
 import { addDays, dateKey, fmtLongDate, isoWeekday, minutesOfDay, startOfWeek, timeKey, WEEKDAYS_SHORT_DE, MONTHS_DE, parseDateKey } from "@/lib/time";
 import { DemoBadge, EmptyState, PageTitle, Segmented, StatusPill, TypeDot } from "@/components/ui/Bits";
@@ -241,6 +242,8 @@ function TimeGrid({
           {days.map((date) => {
             const dayExceptions = exceptionsFor(date);
             const allDay = dayExceptions.filter((e) => e.allDay || e.kind === "urlaub" || e.kind === "closed");
+            // Gesetzlicher Feiertag: online geschlossen, von Hand trotzdem buchbar
+            const holiday = holidayName(date);
             return (
               <div
                 key={date}
@@ -254,11 +257,17 @@ function TimeGrid({
                 {hoursList.map((m) => (
                   <div key={`h${m}`} className="absolute inset-x-0 border-t border-dashed border-line/60" style={{ top: (m + 30 - grid.start) * PX_PER_MIN }} />
                 ))}
-                {allDay.length > 0 && (
+                {(allDay.length > 0 || holiday) && (
                   <div className="absolute inset-0 z-[1] bg-[repeating-linear-gradient(135deg,transparent_0_10px,var(--line)_10px_11px)]">
                     <p className="sticky top-1 mx-2 mt-2 inline-block rounded-md bg-surface-raised px-2 py-1 text-[11px] font-medium text-text-muted ring-1 ring-line">
-                      {KIND_LABEL[allDay[0]!.kind]}
-                      {allDay[0]!.label ? ` · ${allDay[0]!.label}` : ""}
+                      {holiday ? (
+                        `Feiertag · ${holiday}`
+                      ) : (
+                        <>
+                          {KIND_LABEL[allDay[0]!.kind]}
+                          {allDay[0]!.label ? ` · ${allDay[0]!.label}` : ""}
+                        </>
+                      )}
                     </p>
                   </div>
                 )}

@@ -30,6 +30,11 @@ export interface BookingProvider {
    * Verfügbarkeit gilt je Terminart – Provider ohne Live-Daten ignorieren typeId.
    */
   getAvailableDates(month: string, typeId?: string | null): Promise<BookingDay[]>;
+  /**
+   * Letzter buchbarer Tag (falls bekannt) – begrenzt das Blättern im
+   * Kalender. Erst nach dem ersten Laden von getAvailableDates verlässlich.
+   */
+  lastBookableDate?(typeId?: string | null): ISODate | null;
   getAvailableSlots(date: ISODate, typeId?: string | null): Promise<BookingSlot[]>;
   createBooking(draft: BookingDraft): Promise<BookingResult>;
   cancelBooking(bookingId: string): Promise<BookingResult>;

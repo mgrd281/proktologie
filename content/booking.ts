@@ -62,6 +62,13 @@ export const bookingCopy = {
   noSlotsConfirmed:
     "An diesem Tag ist nichts mehr frei. Bitte wählen Sie einen anderen Tag.",
   slotUnavailable: "nicht verfügbar",
+  /** Erscheint nur, wenn das Laden der freien Tage spürbar dauert. */
+  loadingDays: "Freie Tage werden geladen …",
+  /** Laden gescheitert – nie als „alles ausgebucht“ tarnen. */
+  loadError: "Die freien Termine konnten gerade nicht geladen werden.",
+  retry: "Erneut versuchen",
+  /** Ohne JavaScript lässt sich in der Karte nichts wählen – dann direkt das Telefon. */
+  noScript: "Die Online-Buchung braucht JavaScript – bitte rufen Sie uns an:",
   details: {
     firstName: "Vorname",
     lastName: "Nachname",

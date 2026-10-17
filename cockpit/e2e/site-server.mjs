@@ -62,8 +62,15 @@ createServer(async (req, res) => {
     res.writeHead(200, { "content-type": types[extname(file)] ?? "application/octet-stream", "cache-control": "no-store" });
     res.end(body);
   } catch {
-    res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
-    res.end("Nicht gefunden");
+    // Wie der Host (Vercel): Unbekannte Adressen bekommen die 404-Seite der Website
+    try {
+      const body = await readFile(join(root, "404.html"));
+      res.writeHead(404, { "content-type": types[".html"], "cache-control": "no-store" });
+      res.end(body);
+    } catch {
+      res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      res.end("Nicht gefunden");
+    }
   }
 }).listen(port, () => {
   console.log(`Website (statisch) auf http://localhost:${port}/ aus ${root}`);

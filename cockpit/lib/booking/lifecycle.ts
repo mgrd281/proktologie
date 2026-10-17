@@ -59,6 +59,9 @@ export async function offerNext(typeId: string, startsAt: Date, now = new Date()
   // Slot muss nach den öffentlichen Regeln noch verfügbar sein
   const type = await repo.getType(typeId);
   if (!type || !type.active) return { offered: false };
+  // … und der Kalender darf ihn nicht inzwischen schließen (Feiertag, Urlaub, Sperre)
+  const endsAt = new Date(startsAt.getTime() + type.durationMin * 60_000);
+  if (!(await repo.slotOpenInCalendar(startsAt, endsAt))) return { offered: false };
   const token = repo.newManageToken();
   const holdUntil = new Date(now.getTime() + settings.waitlistHoldHours * 3600_000);
   let a: AppointmentView;

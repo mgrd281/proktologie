@@ -1,6 +1,7 @@
 "use client";
 
 import { camAt, sourceRectFor, STILL_DPR_CAP, type Cam } from "@/lib/cinema/camera";
+import { STILL_QUERY } from "@/lib/cinema/frames";
 import { SOURCES, type FramesSource, type StillSource } from "@/lib/cinema/sources";
 import {
   DEFAULT_STORE_CONFIG,
@@ -85,7 +86,8 @@ export const SceneCanvas = forwardRef<
       const context = canvas.getContext("2d");
       if (!context) return;
 
-      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+      // Ruhige Fassung (reduzierte Bewegung, sehr niedriges Fenster): keine Sequenz
+      const reduced = window.matchMedia(STILL_QUERY);
       const mobileAssets = window.matchMedia("(max-width: 767px)");
 
       let disposed = false;

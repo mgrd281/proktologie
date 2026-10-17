@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/cn";
+import { LoadError } from "@/components/booking/LoadError";
 import { Icon } from "@/components/ui/Icon";
 import { bookingCopy } from "@/content/booking";
 import type { BookingProvider } from "@/lib/booking/provider";
@@ -15,6 +16,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * PageUp/PageDown (Monat), aria-selected, sprechende Datums-Labels.
  * Touch-Ziele ≥ 44 px. Wird ausschließlich clientseitig nach einer
  * Nutzerinteraktion gerendert (kein Hydration-Konflikt mit „heute").
+ *
+ * Ehrlich im Zustand: Dauert das Laden, steht „Freie Tage werden
+ * geladen …“; scheitert es, steht genau das da – mit „Erneut versuchen“ und
+ * Telefon. Geblättert wird nur, wo es etwas zu buchen gibt: nicht vor den
+ * aktuellen Monat und nicht über den letzten buchbaren Tag hinaus.
  */
 
 interface StepCalendarProps {
@@ -113,33 +119,45 @@ function CalendarCell({
   );
 }
 
+/** Erst nach dieser Zeit erscheint der Ladehinweis – kurzes Laden flackert nicht. */
+const LOADING_HINT_MS = 400;
+
 export function StepCalendar({ provider, typeId, selected, onSelect }: StepCalendarProps) {
-  const today = useRef(new Date()).current;
+  const [today] = useState(() => new Date());
   const [view, setView] = useState(() => {
     const base = selected ? fromISO(selected) : today;
     return { year: base.getFullYear(), month: base.getMonth() };
   });
-  const [days, setDays] = useState<BookingDay[] | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const [loaded, setLoaded] = useState<{ key: string; days: BookingDay[] | null; failed: boolean } | null>(null);
+  const [hintKey, setHintKey] = useState<string | null>(null);
   const [focusDate, setFocusDate] = useState<ISODate | null>(selected);
   const gridRef = useRef<HTMLDivElement>(null);
   const pendingFocus = useRef<ISODate | null>(null);
 
+  // Ein Schlüssel je Anfrage: Wechselt Monat, Terminart oder Versuch, gilt
+  // sofort „lädt“ – ohne den Zustand im Effekt erst zurückzusetzen.
+  const requestKey = `${monthKey(view.year, view.month)}|${typeId ?? ""}|${attempt}`;
   useEffect(() => {
     let cancelled = false;
-    setDays(null);
+    const hint = window.setTimeout(() => setHintKey(requestKey), LOADING_HINT_MS);
     provider
       .getAvailableDates(monthKey(view.year, view.month), typeId)
       .then((result) => {
-        if (!cancelled) setDays(result);
+        if (!cancelled) setLoaded({ key: requestKey, days: result, failed: false });
       })
       .catch(() => {
-        // Fehler: leerer Monat statt hängendem Ladezustand – nichts Falsches anzeigen
-        if (!cancelled) setDays([]);
+        if (!cancelled) setLoaded({ key: requestKey, days: null, failed: true });
       });
     return () => {
       cancelled = true;
+      window.clearTimeout(hint);
     };
-  }, [provider, view, typeId]);
+  }, [provider, view, typeId, requestKey]);
+  const current = loaded?.key === requestKey ? loaded : null;
+  const days = current?.days ?? null;
+  const failed = current?.failed ?? false;
+  const showLoadingHint = !current && hintKey === requestKey;
 
   // Nach Monatswechsel per Tastatur: Fokus auf den Zieltag setzen
   useEffect(() => {
@@ -154,12 +172,29 @@ export function StepCalendar({ provider, typeId, selected, onSelect }: StepCalen
     });
   }, [days]);
 
-  const changeMonth = useCallback((delta: number) => {
-    setView((v) => {
-      const d = new Date(v.year, v.month + delta, 1);
-      return { year: d.getFullYear(), month: d.getMonth() };
-    });
-  }, []);
+  // Blättergrenzen: kein Monat vor dem heutigen, keiner hinter dem letzten
+  // buchbaren Tag (den kennt nur der verbindliche Modus nach dem ersten Laden).
+  const lastDate = days ? (provider.lastBookableDate?.(typeId) ?? null) : null;
+  const monthAllowed = useCallback(
+    (year: number, month: number) => {
+      if (year * 12 + month < today.getFullYear() * 12 + today.getMonth()) return false;
+      return !lastDate || `${monthKey(year, month)}-01` <= lastDate;
+    },
+    [today, lastDate],
+  );
+  const prevMonth = new Date(view.year, view.month - 1, 1);
+  const nextMonth = new Date(view.year, view.month + 1, 1);
+  const canPrev = monthAllowed(prevMonth.getFullYear(), prevMonth.getMonth());
+  const canNext = monthAllowed(nextMonth.getFullYear(), nextMonth.getMonth());
+
+  const changeMonth = useCallback(
+    (delta: number) => {
+      const d = new Date(view.year, view.month + delta, 1);
+      if (!monthAllowed(d.getFullYear(), d.getMonth())) return;
+      setView({ year: d.getFullYear(), month: d.getMonth() });
+    },
+    [view, monthAllowed],
+  );
 
   const moveFocus = useCallback(
     (base: ISODate, deltaDays: number) => {
@@ -170,6 +205,7 @@ export function StepCalendar({ provider, typeId, selected, onSelect }: StepCalen
         target.getFullYear() !== view.year ||
         target.getMonth() !== view.month
       ) {
+        if (!monthAllowed(target.getFullYear(), target.getMonth())) return;
         pendingFocus.current = targetISO;
         setView({ year: target.getFullYear(), month: target.getMonth() });
       } else {
@@ -181,7 +217,7 @@ export function StepCalendar({ provider, typeId, selected, onSelect }: StepCalen
         });
       }
     },
-    [view],
+    [view, monthAllowed],
   );
 
   const onKeyDown = useCallback(
@@ -216,11 +252,12 @@ export function StepCalendar({ provider, typeId, selected, onSelect }: StepCalen
           0,
         ).getDate();
         first.setDate(Math.min(source.getDate(), lastDay));
+        if (!monthAllowed(first.getFullYear(), first.getMonth())) return;
         pendingFocus.current = toISO(first);
         setView({ year: first.getFullYear(), month: first.getMonth() });
       }
     },
-    [moveFocus],
+    [moveFocus, monthAllowed],
   );
 
   const monthLabel = `${bookingCopy.months[view.month]} ${view.year}`;
@@ -237,11 +274,17 @@ export function StepCalendar({ provider, typeId, selected, onSelect }: StepCalen
   return (
     <div className="max-md:-mx-4">
       <div className="flex items-center justify-between">
+        {/* aria-disabled statt disabled: Der Fokus bleibt auf dem Knopf, wenn
+            er am Rand ankommt, statt im Nichts zu landen. */}
         <button
           type="button"
           onClick={() => changeMonth(-1)}
           aria-label={bookingCopy.prevMonth}
-          className="flex size-11 items-center justify-center rounded-full border border-ink/10 text-ink/70 transition-colors hover:border-primary/50 hover:text-ink"
+          aria-disabled={!canPrev || undefined}
+          className={cn(
+            "flex size-11 items-center justify-center rounded-full border border-ink/10 text-ink/70 transition-colors",
+            canPrev ? "hover:border-primary/50 hover:text-ink" : "cursor-default opacity-35",
+          )}
         >
           <Icon name="arrow-right" size={16} className="rotate-180" />
         </button>
@@ -252,7 +295,11 @@ export function StepCalendar({ provider, typeId, selected, onSelect }: StepCalen
           type="button"
           onClick={() => changeMonth(1)}
           aria-label={bookingCopy.nextMonth}
-          className="flex size-11 items-center justify-center rounded-full border border-ink/10 text-ink/70 transition-colors hover:border-primary/50 hover:text-ink"
+          aria-disabled={!canNext || undefined}
+          className={cn(
+            "flex size-11 items-center justify-center rounded-full border border-ink/10 text-ink/70 transition-colors",
+            canNext ? "hover:border-primary/50 hover:text-ink" : "cursor-default opacity-35",
+          )}
         >
           <Icon name="arrow-right" size={16} />
         </button>
@@ -269,18 +316,29 @@ export function StepCalendar({ provider, typeId, selected, onSelect }: StepCalen
         ))}
       </div>
 
+      {failed ? (
+        <div className="max-md:mx-4">
+          <LoadError onRetry={() => setAttempt((a) => a + 1)} />
+        </div>
+      ) : (
       <div
         ref={gridRef}
         role="grid"
         aria-label={monthLabel}
+        aria-busy={days === null || undefined}
         key={monthKey(view.year, view.month)}
         // Während die freien Tage laden, ist Platz für fünf Wochen reserviert –
         // sonst schrumpft die Karte kurz und wächst dann wieder.
         className={cn(
-          "animate-step-in grid grid-cols-7 gap-1 max-md:gap-0.5",
+          "animate-step-in relative grid grid-cols-7 gap-1 max-md:gap-0.5",
           days === null && "min-h-[14.75rem] max-md:min-h-[14.25rem]",
         )}
       >
+        {showLoadingHint && (
+          <p role="status" className="absolute inset-0 flex items-center justify-center text-sm text-ink/70">
+            {bookingCopy.loadingDays}
+          </p>
+        )}
         {/* Gültige Grid-Semantik: Zellen in Wochen-Rows (display:contents
             lässt die Zellen weiter am 7-Spalten-Grid teilnehmen). */}
         {chunkIntoWeeks(leadingBlanks, days ?? []).map((week, weekIndex) => (
@@ -308,6 +366,7 @@ export function StepCalendar({ provider, typeId, selected, onSelect }: StepCalen
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 }

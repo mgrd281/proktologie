@@ -12,8 +12,13 @@ import {
 interface LenisContextValue {
   /** Aktuelle Lenis-Instanz (null bei Reduced Motion oder vor dem Mount). */
   getLenis: () => Lenis | null;
-  /** Smooth-Scroll zu einem Ziel; fällt ohne Lenis auf natives Scrollen zurück. */
-  scrollTo: (target: number | string | HTMLElement, offset?: number) => void;
+  /**
+   * Smooth-Scroll zu einem Ziel; fällt ohne Lenis auf natives Scrollen zurück.
+   * Elemente landen unter dem festen Header: Den Abstand liefert
+   * `scroll-padding-top` (app/globals.css), Lenis rechnet ihn selbst ein.
+   * `offset`: zusätzlicher Abstand; `immediate`: springen statt fahren.
+   */
+  scrollTo: (target: number | string | HTMLElement, offset?: number, immediate?: boolean) => void;
   /** Scrollen sperren/freigeben (z. B. bei geöffnetem Mobilmenü). */
   stop: () => void;
   start: () => void;
@@ -26,9 +31,6 @@ export function useLenis(): LenisContextValue {
   if (!ctx) throw new Error("useLenis must be used within LenisProvider");
   return ctx;
 }
-
-/** Fixe Header-Höhe als Scroll-Offset für Anker-Ziele. */
-const HEADER_OFFSET = -80;
 
 export default function LenisProvider({ children }: { children: ReactNode }) {
   const lenisRef = useRef<Lenis | null>(null);
@@ -72,12 +74,12 @@ export default function LenisProvider({ children }: { children: ReactNode }) {
 
   const value = useRef<LenisContextValue>({
     getLenis: () => lenisRef.current,
-    scrollTo: (target, offset = HEADER_OFFSET) => {
+    scrollTo: (target, offset = 0, immediate = false) => {
       const lenis = lenisRef.current;
       if (lenis) {
         // force: sonst verwirft Lenis den Aufruf, solange es gestoppt ist
         // (z. B. im selben Klick, der das Mobilmenü gerade schließt)
-        lenis.scrollTo(target, { offset, force: true });
+        lenis.scrollTo(target, { offset, force: true, immediate });
         return;
       }
       // Fallback ohne Lenis (u. a. Reduced Motion): natives Springen
@@ -88,7 +90,9 @@ export default function LenisProvider({ children }: { children: ReactNode }) {
             ? target
             : null;
       if (el) {
-        const top = el.getBoundingClientRect().top + window.scrollY + offset;
+        // Wie Lenis: Abstand unter dem Header aus scroll-padding-top
+        const padding = Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
+        const top = el.getBoundingClientRect().top + window.scrollY - padding + offset;
         window.scrollTo({ top, behavior: "auto" });
       } else if (typeof target === "number") {
         window.scrollTo({ top: target, behavior: "auto" });
@@ -98,7 +102,12 @@ export default function LenisProvider({ children }: { children: ReactNode }) {
     start: () => lenisRef.current?.start(),
   }).current;
 
-  // Anker-Links (/#sektion) auf der Startseite sanft anfahren
+  /*
+   * Anker-Links (/#sektion) auf der Startseite: nahe Ziele sanft anfahren,
+   * weite (mehr als zwei Bildschirmhöhen, etwa über die Kamerafahrt) sofort
+   * anspringen. Eine Fahrt über zehn Bildschirmhöhen Film dauerte, erklärte
+   * nichts und lud dabei Hunderte Filmbilder.
+   */
   useEffect(() => {
     const onClick = (event: MouseEvent) => {
       if (event.defaultPrevented || event.metaKey || event.ctrlKey) return;
@@ -111,7 +120,8 @@ export default function LenisProvider({ children }: { children: ReactNode }) {
       const el = document.getElementById(match[1]);
       if (!el) return;
       event.preventDefault();
-      value.scrollTo(el);
+      const far = Math.abs(el.getBoundingClientRect().top) > window.innerHeight * 2;
+      value.scrollTo(el, 0, far);
       window.history.pushState(null, "", `#${match[1]}`);
       // Fokus mitnehmen (wie bei nativer Anker-Navigation) – wichtig für
       // Tastatur-Nutzer, insbesondere den Skip-Link (WCAG 2.4.1)

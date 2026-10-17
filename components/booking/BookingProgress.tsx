@@ -38,7 +38,8 @@ export function BookingProgress({ step }: { step: number }) {
                   ? "text-ink"
                   : index < step
                     ? "text-primary-deep"
-                    : "text-ink/40",
+                    // ink/65: kommende Schritte zurückgenommen, aber lesbar (≥ 4,5:1)
+                    : "text-ink/65",
               )}
             >
               <span className="tabular-nums">

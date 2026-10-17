@@ -28,6 +28,9 @@ function beat(id: string) {
   return found;
 }
 
+/** Knopf in der Fahrt: springt sofort zur Terminbuchung. */
+export const cinemaSkip = "Einführung überspringen";
+
 /** Die neun Texte des Films – Reihenfolge = SCENES (8 Szenen + Finale). */
 export const CINEMA_TEXTS: StateTextContent[] = [
   // 01 – Willkommen (H1)

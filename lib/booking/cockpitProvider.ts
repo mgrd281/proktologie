@@ -37,6 +37,8 @@ interface AvailabilityResponse {
   from: ISODate;
   to: ISODate;
   days: Array<{ date: ISODate; slots: string[] }>;
+  /** Letzter buchbarer Tag der Terminart (ältere Cockpits liefern ihn nicht). */
+  lastDate?: ISODate | null;
   formToken: string;
 }
 interface ApiErrorBody {
@@ -71,12 +73,19 @@ export class CockpitBookingProvider implements BookingProvider {
   private readonly slots = new Map<string, string[]>();
   private token: { value: string; issuedAt: number } | null = null;
   private types: AppointmentType[] | null = null;
+  /** typeId → letzter buchbarer Tag */
+  private readonly lastDates = new Map<string, ISODate>();
 
   private async fetchAvailability(typeId: string, from: ISODate, to: ISODate): Promise<AvailabilityResponse> {
     const r = await request<AvailabilityResponse>(`/api/public/v1/availability?type=${encodeURIComponent(typeId)}&from=${from}&to=${to}`);
     for (const d of r.days) this.slots.set(`${typeId}|${d.date}`, d.slots);
+    if (r.lastDate) this.lastDates.set(typeId, r.lastDate);
     this.token = { value: r.formToken, issuedAt: Date.now() };
     return r;
+  }
+
+  lastBookableDate(typeId?: string | null): ISODate | null {
+    return (typeId && this.lastDates.get(typeId)) || null;
   }
 
   async getAppointmentTypes(): Promise<AppointmentType[]> {
@@ -106,25 +115,21 @@ export class CockpitBookingProvider implements BookingProvider {
     }
     if (!typeId || last < today) return days;
     const from = first < today ? toISO(today) : toISO(first);
-    try {
-      const r = await this.fetchAvailability(typeId, from, toISO(last));
-      const withSlots = new Set(r.days.filter((d) => d.slots.length > 0).map((d) => d.date));
-      return days.map((d) => ({ ...d, selectable: withSlots.has(d.date) }));
-    } catch {
-      return days;
-    }
+    // Fehler gehen bewusst an die Oberfläche: Ein Monat, in dem nur alles
+    // grau ist, sähe aus wie „ausgebucht“ – die Karte sagt stattdessen, dass
+    // das Laden gescheitert ist, und bietet „Erneut versuchen“ und das Telefon.
+    const r = await this.fetchAvailability(typeId, from, toISO(last));
+    const withSlots = new Set(r.days.filter((d) => d.slots.length > 0).map((d) => d.date));
+    return days.map((d) => ({ ...d, selectable: withSlots.has(d.date) }));
   }
 
   async getAvailableSlots(date: ISODate, typeId?: string | null): Promise<BookingSlot[]> {
     if (!typeId) return [];
     let times = this.slots.get(`${typeId}|${date}`);
     if (!times) {
-      try {
-        const r = await this.fetchAvailability(typeId, date, date);
-        times = r.days.find((d) => d.date === date)?.slots ?? [];
-      } catch {
-        return [];
-      }
+      // Wie bei den Tagen: Ein Ladefehler ist kein „nichts mehr frei“.
+      const r = await this.fetchAvailability(typeId, date, date);
+      times = r.days.find((d) => d.date === date)?.slots ?? [];
     }
     return times.map((time) => ({ id: `${date}T${time}`, time, available: true }));
   }

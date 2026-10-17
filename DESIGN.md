@@ -275,7 +275,16 @@ Symbol nicht sofort verständlich ist.
 
 ### Navigation
 - Website: transparenter Header über der Kamerafahrt, danach deckend `bg-cream/97` (Handy 64 px,
-  ab md 80 px). Unter 1280 px Vollbild-Menü (deep, Fraunces 30 px, weich einblendend).
+  ab md 80 px). In der ruhigen Fassung deckend ab dem Ende des dunklen Eröffnungsblocks
+  (`data-header-dark`), auf Unterseiten schon im HTML; ohne JavaScript scrollt er auf der
+  Startseite mit dem dunklen Block weg. Unter 1280 px Vollbild-Menü (deep, weich einblendend):
+  „Termin vereinbaren“ und Telefon oben, darunter die Links in Fraunces 24 px; das Menü scrollt
+  selbst (`data-lenis-prevent`).
+- Sprünge: Anker landen über `scroll-padding-top` unter dem Header (Lenis rechnet ihn ein),
+  der Fokus geht aufs Ziel; weite Sprünge (über die Kamerafahrt) ohne Fahrt. Sprunglinks
+  „Zum Inhalt springen“ und auf der Startseite „Zur Terminbuchung“.
+- Unbekannte Adressen: deutsche 404, Fehler: ruhige Fehlerseite – beide `NoticePage` (klare
+  Aussage, Weg zum Termin bzw. „Seite neu laden“, Telefon).
 - Cockpit: Seitenleiste mit 40 px hohen Einträgen, Befehlspalette (⌘K).
 
 ### Tables & Lists (Cockpit)
@@ -285,7 +294,10 @@ Symbol nicht sofort verständlich ist.
 ### Dialogs & Bottom Sheets
 - Cockpit: Drawer rechts (`slide-in-right`), Bestätigungsdialog zentriert (`rise-in`,
   `max-w-md`), Hintergrund `deep/30–40` + `backdrop-blur-[2px]`, Fokusfalle, Esc schließt.
-- Website-Chat: auf dem Handy Bottom-Sheet (`max-h-[85dvh]`), am Desktop schwebendes Fenster.
+- Website-Chat: auf dem Handy (unter `sm`) echter Dialog als Bottom-Sheet (`max-h-[85dvh]`):
+  Seite `deep/40` abgedunkelt und gesperrt, Tippen daneben schließt. Am Desktop schwebendes
+  Fenster ohne Sperre. Der Rahmen steht sofort mit „Einen Moment …“, der Inhalt lädt nach;
+  Eingabefelder auf dem Handy 16 px (kein Zoom unter iOS).
 - Kopf-Knöpfe in Sheets/Dialogen ≥ 44 px.
 
 ### Icons
@@ -313,6 +325,11 @@ Symbol nicht sofort verständlich ist.
   nutzt einen Teil des Kartenrands, damit die Tagesfelder breit genug sind (390 px: 46 px).
 - Freie Zeiten als Liste/Knöpfe (≥ 44 px), belegte nicht anklickbar und nicht nur farblich
   markiert; leere Tage sagen den nächsten freien Tag.
+- **Ladefehler nie als „ausgebucht“ tarnen:** Hinweis, „Erneut versuchen“ und Telefon
+  (`components/booking/LoadError.tsx`); dauert das Laden spürbar, steht „Freie Tage werden
+  geladen …“. Der Kalender blättert nur vom aktuellen Monat bis zum letzten buchbaren Tag.
+- Gesetzliche Feiertage in Hamburg sind online geschlossen und im Cockpit-Kalender als
+  „Feiertag“ beschriftet; von Hand darf das Team trotzdem buchen.
 - **Keine Gesundheitsangaben** abfragen; Notfall immer auf Telefon verweisen.
 - Absagen/Verschieben: Bestätigungsdialog, verständlicher Ausgang, Kalenderdatei aktualisiert.
 - Doctolib ist ein separater Weg und wird nie als synchronisiert dargestellt.

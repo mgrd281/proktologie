@@ -1,3 +1,5 @@
+import { CinemaBoundary } from "@/components/cinema/CinemaBoundary";
+import { CinemaStatic } from "@/components/cinema/CinemaStatic";
 import { MasterSequence } from "@/components/cinema/MasterSequence";
 import { Beschwerden } from "@/components/sections/Beschwerden";
 import { Diagnostik } from "@/components/sections/Diagnostik";
@@ -12,8 +14,19 @@ import { buildFaqJsonLd, buildPhysicianJsonLd } from "@/lib/jsonld";
 export default function HomePage() {
   return (
     <>
-      {/* Eine durchgehende Kamerafahrt: 01 Willkommen … 09 Termin */}
-      <MasterSequence />
+      {/* Eine durchgehende Kamerafahrt: 01 Willkommen … 09 Termin.
+          Bricht sie, steht an ihrer Stelle die ruhige Fassung (gleiche
+          Anker #hero und #team) – der Rest der Seite bleibt. */}
+      <CinemaBoundary
+        fallback={
+          <section id="hero" aria-label="Einführung" className="relative">
+            <span id="team" className="absolute top-[64%] left-0 block h-px w-px" />
+            <CinemaStatic />
+          </section>
+        }
+      >
+        <MasterSequence />
+      </CinemaBoundary>
 
       {/*
         * Der Auslauf der Fahrt landet farbgleich auf der Buchung – Zustand

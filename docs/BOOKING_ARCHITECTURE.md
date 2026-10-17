@@ -53,6 +53,14 @@ freier Text ohne Prüfregel; keine Übergangsregeln.
 - Belegt: aktive Termine (inkl. Puffer), `blocker`/`extern`-Ausnahmen; `closed`/`urlaub`
   schließt den ganzen Tag.
 - Frühestens jetzt + 24 h (Standard) → **kein Online-Termin am selben Tag**; spätestens + 56 Tage.
+- **Gesetzliche Feiertage in Hamburg** (`cockpit/lib/booking/holidays.ts`, Ostern berechnet,
+  Reformationstag seit 2018) schließen den Tag wie `closed`. Warteliste-Angebote prüfen vorher
+  Feiertag, Urlaub und Sperren (`repo.slotOpenInCalendar`); von Hand darf das Team trotzdem
+  buchen (Hinweis „außerhalb der Sprechzeiten"). Der Cockpit-Kalender zeigt „Feiertag · Name".
+- Die Verfügbarkeits-Antwort nennt zusätzlich `lastDate` (letzter buchbarer Tag der
+  Terminart): Die Website blättert im Kalender nur bis dorthin und nie in vergangene Monate.
+  Lädt etwas nicht, zeigt sie den Fehler mit „Erneut versuchen" und Telefon – nie einen
+  scheinbar ausgebuchten Monat.
 - Zeitzone: alles in **Europe/Berlin** gerechnet, UTC gespeichert (`cockpit/lib/time.ts`);
   Zeitumstellung getestet (`engine.test.mjs`). Kalenderdateien mit `TZID=Europe/Berlin`.
 

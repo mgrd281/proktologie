@@ -96,7 +96,11 @@ export async function publicAvailability(typeId: string, from: string | null, to
   if (end < start) end = start;
   if (end > addDays(start, MAX_RANGE_DAYS - 1)) end = addDays(start, MAX_RANGE_DAYS - 1);
   const days = await repo.availabilityRange(typeId, start, end, now);
-  return { typeId, from: start, to: end, days, formToken: issueFormToken(now.getTime()) };
+  // Letzter buchbarer Tag dieser Terminart – die Website begrenzt damit das
+  // Blättern im Kalender, statt leere Monate anzubieten.
+  const full = await repo.getType(typeId);
+  const lastDate = full ? addDays(today, full.maxAheadDays) : null;
+  return { typeId, from: start, to: end, days, lastDate, formToken: issueFormToken(now.getTime()) };
 }
 
 const bookingSchema = z.object({

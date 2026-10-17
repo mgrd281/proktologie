@@ -7,7 +7,7 @@ import { getDb } from "../db/client.ts";
 import * as t from "../db/schema.ts";
 import { makeRef } from "../ref.ts";
 import { addDays, dateKey, startOfDay, startOfWeek } from "../time.ts";
-import { findConflicts, generateSlots, withinOpeningHours, type BusySpan, type ExceptionSpan } from "./engine.ts";
+import { dayIsClosed, findConflicts, generateSlots, overlaps, withinOpeningHours, type BusySpan, type ExceptionSpan } from "./engine.ts";
 import {
   ACTIVE_STATUSES,
   type AppointmentSource,
@@ -245,6 +245,21 @@ export async function busySpans(from: Date, to: Date, exceptId?: string): Promis
 async function exceptionSpans(from: Date, to: Date): Promise<ExceptionSpan[]> {
   const rows = await listExceptions(from, to);
   return rows.map((r) => ({ kind: r.kind, startsAt: new Date(r.startsAt), endsAt: new Date(r.endsAt), allDay: r.allDay }));
+}
+
+/**
+ * Steht der Kalender einem Platz noch offen? Feiertag, Urlaub/geschlossen
+ * und Sperren (Blocker, extern) schließen ihn aus. Für Angebote, die ohne
+ * Menschen entstehen (Warteliste): Ein Platz, den die Absage frei macht,
+ * kann inzwischen im Urlaub liegen.
+ */
+export async function slotOpenInCalendar(startsAt: Date, endsAt: Date): Promise<boolean> {
+  const date = dateKey(startsAt);
+  const exceptions = await exceptionSpans(startOfDay(date), startOfDay(addDays(date, 1)));
+  if (dayIsClosed(date, exceptions)) return false;
+  return !exceptions.some(
+    (e) => (e.kind === "blocker" || e.kind === "extern") && overlaps(startsAt.getTime(), endsAt.getTime(), e.startsAt.getTime(), e.endsAt.getTime()),
+  );
 }
 
 export async function availability(typeId: string, date: string, now = new Date()) {

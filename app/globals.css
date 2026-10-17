@@ -10,6 +10,15 @@
 @source not "../*.md";
 
 /*
+ * Die Kamerafahrt läuft nur, wenn Bewegung erwünscht ist UND das Fenster
+ * hoch genug ist: Unter 450 px Höhe (200 % Zoom am Laptop, Handy quer)
+ * passen ihre Szenen nicht zwischen Kopf und Leiste – dort steht die
+ * ruhige Fassung, deren Inhalte frei untereinander fließen.
+ * Dieselbe Bedingung prüfen MasterSequence und SceneCanvas im Skript.
+ */
+@custom-variant film (@media (prefers-reduced-motion: no-preference) and (min-height: 450px));
+
+/*
  * Design-Tokens. --color-accent ist das echte Klinikgrün (#86BC23).
  * Kontrastregeln: Akzent auf Deep 7,0:1 ✓ · Deep-Text auf Akzent-Fläche
  * 7,0:1 ✓ · auf hellen Flächen nur 2,3:1 → Akzent NIE als Text/Icon auf
@@ -34,6 +43,18 @@
 html {
   /* Kein natives smooth-scrolling – Lenis übernimmt (Doppel-Smoothing vermeiden). */
   scroll-behavior: auto;
+  /*
+   * Fester Header oben (Handy 4rem, sonst 5rem), feste Leiste unten auf dem
+   * Handy: Anker-Sprünge ohne JavaScript und per Tab angesprungene Elemente
+   * landen nicht verdeckt darunter.
+   */
+  scroll-padding-top: 5rem;
+}
+@media (max-width: 47.99rem) {
+  html {
+    scroll-padding-top: 4rem;
+    scroll-padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+  }
 }
 
 body {
@@ -341,22 +362,6 @@ html.lenis body {
 }
 .cinema-panel[data-blur="2"] .cinema-panel-veil {
   opacity: 0.62;
-}
-
-/* Sanfte Endlos-Animation des Scroll-Cues */
-@keyframes scroll-cue {
-  0%,
-  100% {
-    transform: translateY(0);
-    opacity: 1;
-  }
-  50% {
-    transform: translateY(8px);
-    opacity: 0.4;
-  }
-}
-.animate-scroll-cue {
-  animation: scroll-cue 2.2s ease-in-out infinite;
 }
 
 /* Druckansicht: nichts darf durch Scroll-Reveals verborgen bleiben */

@@ -1,14 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ChatOffline, ChatTitle, chatCloseClass, chatHeaderClass } from "@/components/chat/frame";
 import { Icon } from "@/components/ui/Icon";
 import { chatCopy, hoursLine, type ChatLang, type ChatCopy } from "@/content/chat";
 import { site } from "@/content/site";
 import { sendChat, voiceSpeak, voiceToken, type ChatForm, type ChatQuick } from "@/lib/chat/api";
 import { LiveSession, type LiveReason, type LiveState } from "@/lib/voice/live";
 import { startMeter } from "@/lib/voice/meter";
-import { append, browserStore, clear, load, newSession, save, type SessionStore, type StoredSession } from "@/lib/chat/session";
-import { useLenis } from "@/providers/LenisProvider";
+import { append, browserStore, clear, isEmail, load, newSession, save, type SessionStore, type StoredSession } from "@/lib/chat/session";
 
 /**
  * Das Chat-Fenster.
@@ -25,6 +25,9 @@ import { useLenis } from "@/providers/LenisProvider";
  *    Schaltflächen da.
  *  - Kontaktdaten werden über beschriftete Formularfelder erfasst, nie
  *    aus dem Fließtext geraten. Sie gehen direkt an die Buchung.
+ *
+ * Den Rahmen (Dialog, Esc, Handy-Sperre) stellt der ChatWidget – er steht
+ * schon, während dieses Fenster noch lädt. Hier entsteht nur der Inhalt.
  */
 
 export interface ChatWindowProps {
@@ -39,6 +42,8 @@ export interface ChatWindowProps {
   checking: boolean;
   hours: string;
 }
+
+type TalkPayload = { message?: string; action?: Parameters<typeof sendChat>[1]["action"] };
 
 const EMERGENCY_NUMBERS = [
   { label: "112", href: "tel:112" },
@@ -55,6 +60,10 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
   const [emergency, setEmergency] = useState(false);
   const [langChosen, setLangChosen] = useState(false);
   const [pending, setPending] = useState(false);
+  /** Antwort lässt auf sich warten – dann sagt die Tipp-Blase das ehrlich. */
+  const [slow, setSlow] = useState(false);
+  /** Nach einem Netzfehler: dieselbe Nachricht noch einmal, ohne sie neu zu tippen. */
+  const [retry, setRetry] = useState<TalkPayload | null>(null);
   const [draft, setDraft] = useState("");
   const logRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -76,7 +85,6 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
   /** Die laufende Sitzungskennung, damit die Sprachsitzung nicht auf einer alten sitzt. */
   const sessionIdRef = useRef(session.sessionId);
   sessionIdRef.current = session.sessionId;
-  const { stop, start } = useLenis();
 
   // Verlauf aus dem Browser holen – oder begrüßen.
   useEffect(() => {
@@ -143,6 +151,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
     setLinks([]);
     setEmergency(false);
     setPending(false);
+    setRetry(null);
     setDraft("");
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }, [lang, closeVoice]);
@@ -166,28 +175,24 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
     setQuick((q) => (q.length === 0 || q.every((x) => chatCopy[lang].quickStart.some((s) => s.id === x.id)) ? chatCopy[next].quickStart : q));
   }, [lang, onLang]);
 
-  // Auf dem Telefon füllt das Fenster den Schirm – dann darf die Seite
-  // dahinter nicht mitscrollen.
-  useEffect(() => {
-    const mobile = typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches;
-    if (!mobile) return;
-    stop();
-    return () => start();
-  }, [stop, start]);
-
-  // Escape schließt – wie das Menü im Kopfbereich.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   // Neue Nachricht: ans Ende scrollen.
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
   }, [session.messages.length, pending]);
+
+  useEffect(() => {
+    if (!pending) return;
+    const id = window.setTimeout(() => setSlow(true), 8_000);
+    return () => window.clearTimeout(id);
+  }, [pending]);
+
+  // Ein angetippter Knopf verschwindet mit der Antwort – der Fokus fiele auf
+  // die (auf dem Handy gesperrte) Seite. Nur dann holt das Fenster ihn zurück.
+  useEffect(() => {
+    if (pending) return;
+    const dialog = logRef.current?.closest<HTMLElement>('[role="dialog"]');
+    if (dialog && document.activeElement === document.body) dialog.focus({ preventScroll: true });
+  }, [pending]);
 
   // Wer nicht weiß, dass man hier sprechen kann, tippt. Darum pulst der
   // Mikrofonknopf beim ersten Mal ein paar Sekunden – einmal je Tab, und
@@ -247,7 +252,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
   }, [draft]);
 
   const talk = useCallback(
-    async (payload: { message?: string; action?: Parameters<typeof sendChat>[1]["action"] }, echo?: string, opts: { spoken?: boolean } = {}) => {
+    async (payload: TalkPayload, echo?: string, opts: { spoken?: boolean } = {}) => {
       if (pending) return;
       // Drei Arten von Zügen, solange das Mikrofon offen ist:
       //  - gesprochen (aus dem Mikrofon): Sprachkanal, Echo erst nach der
@@ -264,11 +269,15 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
       spokenTurnRef.current = spoken;
       const keep = { quick, links };
       setPending(true);
+      setSlow(false);
+      setRetry(null);
       setQuick([]);
       // Ein stehendes Formular bleibt während eines gesprochenen Zugs stehen:
       // Ein Fetzen, der still übergangen wird, darf nicht löschen, was schon
       // eingetippt ist. Ein Aus- und Einblenden würde die Felder leeren.
-      if (!spoken) setForm(null);
+      // Ebenso beim Absenden des Formulars selbst: Scheitert es, stehen die
+      // Angaben noch da, statt neu getippt werden zu müssen.
+      if (!spoken && payload.action?.kind !== "form") setForm(null);
       setLinks([]);
       let next = session;
       // Gesprochenes wird erst gezeigt, wenn klar ist, dass es uns galt: Ein
@@ -287,6 +296,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
       if (!result.ok) {
         if (echo && spoken) next = append(next, "user", echo, Date.now());
         setSession(append(next, "assistant", copy.errors[result.error], Date.now()));
+        if (result.error === "network" && !spoken && payload.action?.kind !== "form") setRetry(payload);
         setQuick(copy.quickStart);
         setPending(false);
         liveRef.current?.answered();
@@ -436,32 +446,26 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
     };
   }, [closeVoice]);
 
-  const title = useMemo(() => `${copy.windowTitle} · ${copy.windowSubtitle}`, [copy]);
+  // „Neues Gespräch" erst, wenn es eines gibt: Vorher nimmt der Knopf dem
+  // Titel nur den Platz.
+  const started = session.messages.some((m) => m.role === "user");
 
-  // z-[60]: über dem festen Seitenkopf (z-50). Sonst deckt der Kopf auf
-  // niedrigen Bildschirmen die obere Leiste des Fensters ab, und
-  // „English“, „Neues Gespräch“ und „Schließen“ sind nicht anklickbar.
   return (
-    <div
-      id="site-chat-window"
-      role="dialog"
-      aria-label={title}
-      className="fixed inset-x-0 bottom-0 z-[60] flex max-h-[85dvh] flex-col overflow-hidden rounded-t-2xl border border-mist bg-cream shadow-2xl sm:inset-x-auto sm:bottom-24 sm:right-6 sm:h-[min(640px,80dvh)] sm:w-[400px] sm:rounded-2xl"
-    >
-      <header className="flex items-center justify-between gap-3 border-b border-mist bg-white/70 px-4 py-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-ink">{copy.windowTitle}</p>
-          <p className="truncate text-xs text-ink/70">{copy.windowSubtitle}</p>
-        </div>
+    <>
+      {/* Kein <header>: Im Dialog wäre das ein zweites „banner“ neben dem Seitenkopf */}
+      <div className={chatHeaderClass}>
+        <ChatTitle lang={lang} />
         <div className="flex shrink-0 items-center gap-1">
-          <button
-            type="button"
-            onClick={restart}
-            disabled={pending}
-            className="rounded-lg px-2 py-1 text-xs font-medium text-primary-deep hover:bg-mist disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent max-md:min-h-11"
-          >
-            {copy.restart}
-          </button>
+          {started && (
+            <button
+              type="button"
+              onClick={restart}
+              disabled={pending}
+              className="rounded-lg px-2 py-1 text-xs font-medium text-primary-deep hover:bg-mist disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent max-md:min-h-11"
+            >
+              {copy.restart}
+            </button>
+          )}
           <button
             type="button"
             onClick={switchLang}
@@ -471,16 +475,11 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
           >
             {copy.langSwitch}
           </button>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={copy.close}
-            className="rounded-lg p-1.5 text-ink/70 hover:bg-mist focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent max-md:flex max-md:size-11 max-md:items-center max-md:justify-center"
-          >
+          <button type="button" onClick={onClose} aria-label={copy.close} className={chatCloseClass}>
             <Icon name="close" size={18} />
           </button>
         </div>
-      </header>
+      </div>
 
       {!available && !checking ? (
         <ChatOffline lang={lang} hours={hours} />
@@ -489,7 +488,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
           {/* role="log" gehört auf die Hülle, nicht auf die Liste: Sonst
               verliert das <ol> seine Listenrolle und die Einträge stehen
               nach WCAG 1.3.1 elternlos da. */}
-          <div ref={logRef} role="log" aria-live="polite" aria-relevant="additions" aria-label={copy.logLabel} className="flex-1 overflow-y-auto px-4 py-4">
+          <div ref={logRef} role="log" aria-live="polite" aria-relevant="additions" aria-label={copy.logLabel} className="flex-1 overflow-y-auto overscroll-contain px-4 py-4">
             <ol className="space-y-3">
             {session.messages.map((m, i) => (
               <li key={`${m.at}-${i}`} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
@@ -522,7 +521,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
             ))}
               {pending && !spokenTurnRef.current && (
                 <li className="flex justify-start">
-                  <p className="rounded-2xl rounded-bl-sm bg-mist px-3.5 py-2.5 text-sm text-ink/70">{copy.typing}</p>
+                  <p className="rounded-2xl rounded-bl-sm bg-mist px-3.5 py-2.5 text-sm text-ink/70">{slow ? copy.slow : copy.typing}</p>
                 </li>
               )}
             </ol>
@@ -552,17 +551,29 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
             </div>
           )}
 
-          {!emergency && form && <ChatFormPanel form={form} lang={lang} pending={pending} onSubmit={(values) => void talk({ action: { kind: "form", formId: form.id, values } })} />}
+          {!emergency && form && (
+            <ChatFormPanel key={form.id} form={form} lang={lang} pending={pending} onSubmit={(values) => void talk({ action: { kind: "form", formId: form.id, values } })} />
+          )}
 
-          {!emergency && !form && (quick.length > 0 || links.length > 0) && (
+          {!emergency && !form && (quick.length > 0 || links.length > 0 || retry) && (
             <div className="flex flex-wrap gap-2 border-t border-mist px-4 py-3">
+              {retry && (
+                <button
+                  type="button"
+                  onClick={() => void talk(retry)}
+                  disabled={pending}
+                  className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-cream transition hover:bg-primary-deep disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent max-md:min-h-11"
+                >
+                  {copy.retry}
+                </button>
+              )}
               {quick.map((q) => (
                 <button
                   key={q.id}
                   type="button"
                   onClick={() => onQuick(q)}
                   disabled={pending}
-                  className="rounded-full border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary-deep transition hover:bg-mist disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                  className="rounded-full border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary-deep transition hover:bg-mist disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent max-md:min-h-11"
                 >
                   {q.label}
                 </button>
@@ -571,7 +582,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
                 <a
                   key={l.href}
                   href={l.href}
-                  className="rounded-full bg-mist px-3 py-1.5 text-xs font-medium text-primary-deep hover:bg-mist/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                  className="rounded-full bg-mist px-3 py-1.5 text-xs font-medium text-primary-deep hover:bg-mist/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent max-md:inline-flex max-md:min-h-11 max-md:items-center"
                 >
                   {l.label}
                 </a>
@@ -646,7 +657,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
                       }
                     }}
                     placeholder={voice ? copy.composerPlaceholderVoice : copy.composerPlaceholder}
-                    className="max-h-32 min-h-11 flex-1 resize-none rounded-xl border-2 border-primary/25 bg-white px-3 py-2.5 text-sm text-ink shadow-sm transition placeholder:text-ink/60 focus:border-primary/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+                    className="max-h-32 min-h-11 flex-1 resize-none rounded-xl border-2 border-primary/25 bg-white px-3 py-2.5 text-sm text-ink shadow-sm max-md:text-base transition placeholder:text-ink/60 focus:border-primary/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
                   />
                   <button
                     type="button"
@@ -663,7 +674,7 @@ export function ChatWindow({ lang, onLang, onClose, available, voice, checking, 
           )}
         </>
       )}
-    </div>
+    </>
   );
 }
 
@@ -719,24 +730,6 @@ function unlockAudio(ref: React.RefObject<HTMLAudioElement | null>): void {
   void audio.play().catch(() => {});
 }
 
-/** Ohne Cockpit oder mit abgeschaltetem Chat: nur Telefon und Sprechzeiten. */
-function ChatOffline({ lang, hours }: { lang: ChatLang; hours: string }) {
-  const copy = chatCopy[lang];
-  return (
-    <div className="flex-1 px-4 py-6">
-      <p className="text-sm font-semibold text-ink">{copy.offlineTitle}</p>
-      <p className="mt-2 text-sm text-ink/80">{copy.offline(hours)}</p>
-      <a
-        href={site.phoneHref}
-        className="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-cream hover:bg-primary-deep focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-      >
-        <Icon name="phone" size={16} />
-        {copy.callLabel}
-      </a>
-    </div>
-  );
-}
-
 /** Beschriftete Felder statt Raterei im Fließtext. */
 function ChatFormPanel({
   form,
@@ -754,18 +747,31 @@ function ChatFormPanel({
     Object.fromEntries(form.fields.map((f) => [f.name, f.type === "select" ? (f.options?.[0]?.value ?? "") : ""])),
   );
   const [missing, setMissing] = useState<string[]>([]);
+  const [invalid, setInvalid] = useState<string[]>([]);
   const set = (name: string, value: string) => setValues((v) => ({ ...v, [name]: value }));
+  const fieldId = (name: string) => `site-chat-${form.id}-${name}`;
 
   const submit = () => {
     const leer = form.fields.filter((f) => f.required && !values[f.name]?.trim()).map((f) => f.name);
+    // Eine vertippte Adresse fällt hier auf, nicht erst, wenn die Bestätigung nie ankommt
+    const falsch = form.fields
+      .filter((f) => f.type === "email" && values[f.name]?.trim() && !isEmail(values[f.name] ?? ""))
+      .map((f) => f.name);
     setMissing(leer);
-    if (leer.length > 0 || pending) return;
+    setInvalid(falsch);
+    const first = form.fields.find((f) => leer.includes(f.name) || falsch.includes(f.name));
+    if (first) {
+      document.getElementById(fieldId(first.name))?.focus();
+      return;
+    }
+    if (pending) return;
     onSubmit(values);
   };
 
   return (
     <form
-      className="max-h-[55dvh] space-y-3 overflow-y-auto border-t border-mist bg-white/70 px-4 py-4"
+      noValidate
+      className="max-h-[55dvh] space-y-3 overflow-y-auto overscroll-contain border-t border-mist bg-white/70 px-4 py-4"
       onSubmit={(e) => {
         e.preventDefault();
         submit();
@@ -773,11 +779,12 @@ function ChatFormPanel({
     >
       <p className="text-sm font-semibold text-ink">{form.title}</p>
       {form.fields.map((f) => {
-        const id = `site-chat-${form.id}-${f.name}`;
+        const id = fieldId(f.name);
         const fehlt = missing.includes(f.name);
+        const falsch = !fehlt && invalid.includes(f.name);
         const base =
-          "w-full rounded-lg border bg-white px-3 py-2 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent";
-        const border = fehlt ? "border-primary-deep" : "border-mist";
+          "w-full rounded-lg border bg-white px-3 py-2 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent max-md:text-base";
+        const border = fehlt || falsch ? "border-primary-deep" : "border-mist";
         if (f.type === "checkbox") {
           return (
             <div key={f.name} className="flex items-start gap-2">
@@ -825,11 +832,21 @@ function ChatFormPanel({
                 id={id}
                 type={f.type}
                 value={values[f.name] ?? ""}
-                aria-invalid={fehlt || undefined}
-                autoComplete={f.type === "email" ? "email" : f.type === "tel" ? "tel" : "off"}
-                onChange={(e) => set(f.name, e.target.value)}
+                aria-invalid={fehlt || falsch || undefined}
+                aria-describedby={falsch ? `${id}-fehler` : undefined}
+                autoComplete={autocompleteFor(f)}
+                autoCapitalize={f.name === "firstName" || f.name === "lastName" ? "words" : undefined}
+                onChange={(e) => {
+                  set(f.name, e.target.value);
+                  if (falsch) setInvalid((list) => list.filter((n) => n !== f.name));
+                }}
                 className={`${base} ${border}`}
               />
+            )}
+            {falsch && (
+              <p id={`${id}-fehler`} className="mt-1 text-xs text-primary-deep">
+                {copy.invalidEmail}
+              </p>
             )}
           </div>
         );
@@ -843,6 +860,16 @@ function ChatFormPanel({
       </button>
     </form>
   );
+}
+
+/** Autofill für die Felder, die das Cockpit schickt – Namen tippt niemand gern zweimal. */
+function autocompleteFor(f: ChatForm["fields"][number]): string {
+  if (f.name === "firstName") return "given-name";
+  if (f.name === "lastName") return "family-name";
+  if (f.name === "name") return "name";
+  if (f.type === "email") return "email";
+  if (f.type === "tel") return "tel";
+  return "off";
 }
 
 /**
