@@ -107,11 +107,11 @@ function CalendarCell({
       onKeyDown={(event) => onKeyDown(event, day.date)}
       onClick={() => day.selectable && onSelect(day.date)}
       className={cn(
-        "relative flex min-h-11 items-center justify-center rounded-lg text-sm tabular-nums transition-colors duration-200",
+        "relative flex min-h-11 items-center justify-center rounded-xl text-sm tabular-nums transition-colors duration-200 focus-visible:rounded-xl!",
         day.selectable
           ? isSelected
             ? "bg-accent font-semibold text-deep"
-            : "bg-white font-medium text-ink ring-1 ring-ink/8 hover:ring-primary/50"
+            : "bg-mist font-medium text-ink hover:bg-primary/15 active:bg-primary/20"
           : "text-ink/25",
       )}
     >
@@ -178,8 +178,8 @@ export function StepCalendar(props: StepCalendarProps) {
 
   // Platzhalter in den Maßen des Kalenders: Knopf, Monatszeile, Wochentage, Raster
   return (
-    <div className="max-md:-mx-4" aria-busy="true">
-      <div className="mb-4 min-h-14 max-md:mx-4" />
+    <div className="max-md:-mx-2" aria-busy="true">
+      <div className="mb-4 min-h-14 max-md:mx-2" />
       <div className="h-11" />
       <WeekdayRow />
       <div className={cn("relative", GRID_RESERVE)}>
@@ -347,16 +347,16 @@ function MonthCalendar({
       : (days?.find((d) => d.selectable)?.date ?? null);
   const leadingBlanks = (new Date(view.year, view.month, 1).getDay() + 6) % 7;
 
-  // Handy: Der Kalender nutzt einen Teil des Kartenrands mit, damit die
-  // Tagesfelder trotz sieben Spalten breit genug zum Tippen werden.
+  // Handy: Der Kalender nutzt einen Teil des Rands mit, damit die Tagesfelder
+  // trotz sieben Spalten breit genug zum Tippen werden (390 px: 49 px).
   return (
-    <div className="max-md:-mx-4">
+    <div className="max-md:-mx-2">
       {earliest && (
-        <div className="mb-4 max-md:mx-4">
+        <div className="mb-4 max-md:mx-2">
           <button
             type="button"
             onClick={() => onSelect(earliest)}
-            className="flex min-h-14 w-full items-center gap-3 rounded-xl border border-primary/30 bg-white px-4 py-2 text-left text-sm text-ink transition-colors duration-200 hover:border-primary active:bg-mist"
+            className="flex min-h-14 w-full items-center gap-3 rounded-2xl bg-mist px-4 py-2 text-left text-sm text-ink transition-colors duration-200 hover:bg-primary/15 active:bg-primary/20 focus-visible:rounded-2xl!"
           >
             <Icon name="calendar" size={18} className="shrink-0 text-primary-deep" />
             <span className="flex min-w-0 flex-1 flex-wrap gap-x-1.5">
@@ -376,8 +376,8 @@ function MonthCalendar({
           aria-label={bookingCopy.prevMonth}
           aria-disabled={!canPrev || undefined}
           className={cn(
-            "flex size-11 items-center justify-center rounded-full border border-ink/10 text-ink/70 transition-colors",
-            canPrev ? "hover:border-primary/50 hover:text-ink" : "cursor-default opacity-35",
+            "flex size-11 items-center justify-center rounded-full bg-mist text-ink/75 transition-colors focus-visible:rounded-full!",
+            canPrev ? "hover:bg-primary/15 hover:text-ink" : "cursor-default opacity-40",
           )}
         >
           <Icon name="arrow-right" size={16} className="rotate-180" />
@@ -391,8 +391,8 @@ function MonthCalendar({
           aria-label={bookingCopy.nextMonth}
           aria-disabled={!canNext || undefined}
           className={cn(
-            "flex size-11 items-center justify-center rounded-full border border-ink/10 text-ink/70 transition-colors",
-            canNext ? "hover:border-primary/50 hover:text-ink" : "cursor-default opacity-35",
+            "flex size-11 items-center justify-center rounded-full bg-mist text-ink/75 transition-colors focus-visible:rounded-full!",
+            canNext ? "hover:bg-primary/15 hover:text-ink" : "cursor-default opacity-40",
           )}
         >
           <Icon name="arrow-right" size={16} />
@@ -402,7 +402,7 @@ function MonthCalendar({
       <WeekdayRow />
 
       {failed ? (
-        <div className="max-md:mx-4">
+        <div className="max-md:mx-2">
           <LoadError onRetry={() => setAttempt((a) => a + 1)} />
         </div>
       ) : (
@@ -415,7 +415,7 @@ function MonthCalendar({
         // Während die freien Tage laden, ist Platz für fünf Wochen reserviert –
         // sonst schrumpft die Karte kurz und wächst dann wieder.
         className={cn(
-          "animate-step-in relative grid grid-cols-7 gap-1 max-md:gap-0.5",
+          "animate-step-in relative grid grid-cols-7 gap-1",
           days === null && GRID_RESERVE,
         )}
       >

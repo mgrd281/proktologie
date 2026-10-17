@@ -149,8 +149,15 @@ test("Termin-Knöpfe öffnen den Termin-Dialog – die Seite bleibt, wo sie war;
   }).toPass({ timeout: 30_000 });
   expect(await pageState(page)).toEqual({ y: 0, focusInDialog: true });
   await expect(dialog.getByRole("heading", { level: 3 })).toBeFocused();
-  // Vollbild am Handy
-  expect(await dialog.boundingBox()).toMatchObject({ x: 0, y: 0, width: 390, height: 844 });
+  // Handy: Bottom-Sheet – unten verankert, volle Breite, oben bleibt die abgedunkelte Seite sichtbar
+  await expect
+    .poll(async () => {
+      const b = (await dialog.boundingBox())!;
+      return { x: b.x, width: b.width, bottom: Math.round(b.y + b.height) };
+    })
+    .toEqual({ x: 0, width: 390, bottom: 844 });
+  expect((await dialog.boundingBox())!.y).toBeGreaterThanOrEqual(48);
+  await expect(page.locator("[data-booking-backdrop]")).toHaveCSS("opacity", "1");
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(cta).toBeFocused();
@@ -407,6 +414,49 @@ test("Handy-Tastatur: Der Fuß mit „Weiter“ bleibt über der Tastatur", asyn
   await page.evaluate(() => (window as unknown as { __keyboard: (h: number) => void }).__keyboard(330));
   await expect.poll(async () => Math.round((await weiter.boundingBox())!.y + (await weiter.boundingBox())!.height)).toBeLessThanOrEqual(844 - 330);
   await expect(card.getByLabel(/Telefon/)).toBeInViewport();
+  // Auch mit Tastatur bleibt oben ein Streifen der Seite sichtbar
+  expect((await card.boundingBox())!.y).toBeGreaterThanOrEqual(48);
+  await context.close();
+});
+
+test("Handy-Sheet: Tippen daneben schließt, kurz ziehen federt zurück, weit ziehen schließt", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: "reduce" });
+  const page = await context.newPage();
+  await page.goto(`${SITE}/#kontakt`, { waitUntil: "load" });
+  const sheet = await openFromCard(page);
+  const opener = page.locator("#kontakt").getByRole("link", { name: /Online-Termin buchen/ });
+  // Tippen auf den abgedunkelten Streifen oben
+  await page.touchscreen.tap(195, 20);
+  await expect(sheet).toBeHidden();
+  await expect(opener).toBeFocused();
+  expect(await page.evaluate(() => Boolean((history.state as { booking?: boolean } | null)?.booking))).toBe(false);
+
+  // Kurz am Kopf ziehen: folgt dem Zeiger und federt zurück
+  await opener.click();
+  await expect(sheet).toBeVisible();
+  const rest = (await sheet.boundingBox())!.y;
+  const title = sheet.getByRole("heading", { level: 2 });
+  const t = (await title.boundingBox())!;
+  await page.mouse.move(t.x + 20, t.y + 5);
+  await page.mouse.down();
+  await page.mouse.move(t.x + 20, t.y + 65, { steps: 6 });
+  expect(Math.round((await sheet.boundingBox())!.y - rest)).toBe(60);
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+  await expect.poll(async () => Math.round((await sheet.boundingBox())!.y)).toBe(Math.round(rest));
+  await expect(sheet).toBeVisible();
+
+  // Weit ziehen mit echtem Finger (CDP-Touch): schließt
+  const cdp = await context.newCDPSession(page);
+  const x = t.x + 20;
+  let y = t.y + 5;
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+  for (let i = 0; i < 8; i++) {
+    y += 30;
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y }] });
+  }
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await expect(sheet).toBeHidden();
   await context.close();
 });
 

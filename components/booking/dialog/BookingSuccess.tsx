@@ -29,7 +29,7 @@ const bookedTimeFormat = new Intl.DateTimeFormat("de-DE", {
 });
 
 const quietButton =
-  "inline-flex min-h-11 items-center gap-2.5 rounded-full border border-ink/25 px-4 text-sm font-medium text-ink transition-colors duration-300 hover:border-primary hover:text-primary active:bg-mist";
+  "inline-flex min-h-11 items-center gap-2.5 rounded-full bg-mist px-4 text-sm font-medium text-ink transition-colors duration-200 hover:bg-primary/15 active:bg-primary/20 focus-visible:rounded-full!";
 
 /** „In den Kalender“: Datei im Browser erzeugen und herunterladen – nichts geht an einen Dienst. */
 function downloadCalendar(booked: Booked) {
@@ -93,7 +93,7 @@ export function BookingSuccess({
       </h3>
 
       {send.method === "confirmed" && (
-        <ul className="mt-5 space-y-2.5 rounded-xl bg-mist/60 px-4 py-4 text-sm leading-relaxed text-ink">
+        <ul className="mt-5 space-y-2.5 rounded-2xl bg-mist/70 px-4 py-4 text-sm leading-relaxed text-ink">
           <li className="flex items-start gap-3">
             <Icon name="calendar" size={18} className="mt-0.5 shrink-0 text-primary-deep" />
             <span className="font-medium">{bookedDateFormat.format(new Date(send.booked.startsAt))}</span>
@@ -123,7 +123,7 @@ export function BookingSuccess({
 
       {send.method === "confirmed" && (
         <>
-          <p className="mt-4 inline-flex items-baseline gap-2 rounded-xl border border-ink/10 bg-mist/40 px-4 py-2.5 text-sm">
+          <p className="mt-4 inline-flex items-baseline gap-2 rounded-2xl bg-mist/70 px-4 py-2.5 text-sm">
             <span className="text-xs font-medium tracking-wide text-ink/70 uppercase">
               {bookingCopy.confirm.refLabel}
             </span>

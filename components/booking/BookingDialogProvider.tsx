@@ -96,6 +96,14 @@ export function BookingDialogProvider({ children }: { children: ReactNode }) {
     const onPop = (event: PopStateEvent) => {
       if (ownBack.current) {
         ownBack.current = false;
+        // Next.js nimmt beim Zurück den Fokus weg – war er schon wieder beim
+        // Öffner, kommt er dorthin zurück
+        const active = document.activeElement;
+        if (active instanceof HTMLElement && active !== document.body) {
+          window.setTimeout(() => {
+            if (document.activeElement === document.body && active.isConnected) active.focus({ preventScroll: true });
+          }, 50);
+        }
         return;
       }
       const left = onTop.current && !isBookingEntry(event.state);

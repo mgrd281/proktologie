@@ -36,7 +36,7 @@ interface Row {
 
 function Rows({ rows, onEdit, locked }: { rows: Row[]; onEdit: (step: number) => void; locked: boolean }) {
   return (
-    <dl className="divide-y divide-ink/8 rounded-xl border border-ink/10 bg-mist/40 px-4 md:px-5">
+    <dl className="divide-y divide-ink/8 rounded-2xl bg-mist/70 px-4 md:px-5">
       {rows.map((row) => (
         // dt/dd direkt in der Zeile (gültige Beschreibungsliste); „Ändern“ als zweites dd
         <div key={row.label} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-2.5">
@@ -50,7 +50,7 @@ function Rows({ rows, onEdit, locked }: { rows: Row[]; onEdit: (step: number) =>
                 aria-disabled={locked || undefined}
                 // „Uhrzeit ändern“ – der sichtbare Text steckt im Namen (WCAG 2.5.3)
                 aria-label={`${row.label} ${bookingDialog.change.toLowerCase()}`}
-                className="-mr-2 inline-flex min-h-11 items-center rounded-full px-3 text-sm font-medium text-primary-deep underline-offset-4 hover:underline aria-disabled:cursor-progress aria-disabled:opacity-50"
+                className="-mr-2 inline-flex min-h-11 items-center rounded-full px-3 text-sm font-medium text-primary-deep underline-offset-4 hover:underline focus-visible:rounded-full! aria-disabled:cursor-progress aria-disabled:opacity-50"
               >
                 {bookingDialog.change}
               </button>

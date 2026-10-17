@@ -81,8 +81,10 @@ export function StepDetails({ formId, draft, onChange, onContinue }: StepDetails
     cn(
       // Der globale Fokusring (app/globals.css, ohne Layer) setzt 2 px Radius
       // und schlägt damit jede Utility – das Feld würde beim Antippen eckig.
-      "w-full min-h-11 rounded-xl border bg-white px-4 py-2.5 text-ink transition-colors focus:border-primary focus-visible:rounded-xl!",
-      errors[key] ? "border-red-700" : "border-ink/12",
+      // Gefülltes Feld wie in Apps; der Rand (ink/50) erreicht 3:1 – so bleibt das
+      // Feld als Feld erkennbar (WCAG 1.4.11). Beim Tippen wird es weiß.
+      "w-full min-h-12 rounded-xl border bg-mist px-4 py-2.5 text-ink transition-colors focus:border-primary focus:bg-white focus-visible:rounded-xl!",
+      errors[key] ? "border-red-700" : "border-ink/50",
     );
 
   const field = (

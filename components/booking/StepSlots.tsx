@@ -1,4 +1,5 @@
 import { cn } from "@/lib/cn";
+import { Icon } from "@/components/ui/Icon";
 import { bookingCopy } from "@/content/booking";
 import type { BookingProviderMode, BookingSlot } from "@/lib/booking/types";
 
@@ -12,9 +13,10 @@ interface StepSlotsProps {
 }
 
 /**
- * Schritt 3: Uhrzeit. Gewählter Slot = Klinikgrün mit Deep-Text (7:1).
- * Schlichte Buttons (aria-pressed) statt listbox/option; weiter geht es mit
- * „Weiter“ im Fuß des Dialogs.
+ * Schritt 3: Uhrzeit als ruhige Pillen ohne Rahmen. Gewählter Slot =
+ * Klinikgrün mit Deep-Text (7:1) und Häkchen – nicht nur Farbe. Schlichte
+ * Buttons (aria-pressed) statt listbox/option; weiter geht es mit „Weiter“ im
+ * Fuß des Dialogs.
  * Nicht verfügbare Zeiten sind nicht interaktiv, bleiben aber für
  * Screenreader lesbar („nicht verfügbar").
  *
@@ -47,7 +49,7 @@ export function StepSlots({ slots, selected, dateLabel, onSelect, mode = "reques
       return (
         <span
           key={slot.id}
-          className="flex min-h-11 items-center justify-center rounded-lg border border-ink/5 bg-mist/60 text-sm text-ink/30 tabular-nums line-through"
+          className="flex min-h-11 items-center justify-center rounded-full text-sm text-ink/35 tabular-nums line-through"
         >
           {slot.time}
           <span className="sr-only"> – {bookingCopy.slotUnavailable}</span>
@@ -62,12 +64,13 @@ export function StepSlots({ slots, selected, dateLabel, onSelect, mode = "reques
         aria-pressed={isSelected}
         onClick={() => onSelect(slot)}
         className={cn(
-          "flex min-h-11 items-center justify-center rounded-lg border text-sm font-medium tabular-nums transition-colors duration-200",
+          "flex min-h-11 items-center justify-center gap-1 rounded-full text-sm tabular-nums transition-colors duration-200 focus-visible:rounded-full!",
           isSelected
-            ? "border-accent bg-accent text-deep"
-            : "border-ink/10 bg-white text-ink hover:border-primary/50 active:bg-mist",
+            ? "bg-accent font-semibold text-deep"
+            : "bg-mist font-medium text-ink hover:bg-primary/15 active:bg-primary/20",
         )}
       >
+        {isSelected && <Icon name="check" size={14} strokeWidth={2.4} />}
         {slot.time}
       </button>
     );
@@ -82,10 +85,7 @@ export function StepSlots({ slots, selected, dateLabel, onSelect, mode = "reques
         {groups.map((group) =>
           group.title ? (
             <div key={group.id} role="group" aria-labelledby={`slots-${group.id}`}>
-              <p
-                id={`slots-${group.id}`}
-                className="mb-2 text-xs font-semibold tracking-[0.14em] text-ink/70 uppercase"
-              >
+              <p id={`slots-${group.id}`} className="mb-2.5 text-sm font-medium text-ink/70">
                 {group.title}
               </p>
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">{group.slots.map(renderSlot)}</div>

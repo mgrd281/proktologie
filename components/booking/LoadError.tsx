@@ -9,7 +9,7 @@ import { site } from "@/content/site";
  */
 export function LoadError({ onRetry }: { onRetry: () => void }) {
   return (
-    <div role="alert" className="rounded-xl border border-ink/10 bg-mist/60 px-4 py-3 text-sm leading-relaxed text-ink">
+    <div role="alert" className="rounded-2xl bg-mist/70 px-4 py-3 text-sm leading-relaxed text-ink">
       <p>{bookingCopy.loadError}</p>
       <div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-1">
         <button

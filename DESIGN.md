@@ -67,6 +67,7 @@ rounded:
   lg: "8px"
   xl: "12px"
   2xl: "16px"
+  3xl: "24px"
   full: "9999px"
 spacing:
   gutter-mobile: "20px"
@@ -102,6 +103,9 @@ components:
     rounded: "{rounded.xl}"
     padding: "10px 16px"
     height: "44px"
+  bottom-sheet:
+    backgroundColor: "{colors.white}"
+    rounded: "24px 24px 0 0"
   mobile-action-bar:
     backgroundColor: "{colors.cream}"
     height: "64px"
@@ -230,6 +234,8 @@ diese Tokens**, nie über Rohwerte. Dunkelmodus über `data-theme="dark"` oder
 
 - Buttons, Chips, Icon-Knöpfe: **`rounded-full`**.
 - Karten, Dialoge, Tabellenrahmen: **`rounded-2xl`** (16 px).
+- Termin-Dialog: am Handy Bottom-Sheet mit **`rounded-t-3xl`** (24 px) und Griff (36×6 px,
+  `ink/20`), am Desktop `rounded-3xl`.
 - Eingabefelder (Website-Buchung, Rückruf und Cockpit), Listeneinträge, Navigationspunkte:
   `rounded-xl` (12 px).
 - Icons: eigene Linien-Icons (`components/ui/Icon.tsx`, 24er Raster, Strich 1,6, `currentColor`);
@@ -312,13 +318,22 @@ Symbol nicht sofort verständlich ist.
   Eingabefelder auf dem Handy 16 px (kein Zoom unter iOS).
 - **Termin-Dialog (Website):** Jeder Termin-Knopf (`data-open-booking`, `lib/booking/openers.ts`)
   öffnet ihn über der Seite – kein Sprung, keine Adressänderung; ohne JavaScript führen die Links
-  zur Termin-Sektion. Handy (unter `md`): Vollbild, Kopf fest (Kalender-Symbol, „Termin buchen“,
-  „Schritt n von 5“, Fortschrittsbalken, Schließen), nur der Inhalt scrollt, Fuß mit „Zurück“ /
-  „Weiter“ klebt über der Home-Leiste und folgt der Tastatur (`visualViewport`). Ab `md`: zentriert,
-  `max-w-[640px]`, `max-h-[min(90dvh,820px)]`, `rounded-2xl`, Hintergrund `deep/40` +
+  zur Termin-Sektion. Handy (unter `md`): **Bottom-Sheet** – die Seite bleibt oben abgedunkelt
+  sichtbar (Streifen ≥ 48 px), das Sheet ist so hoch wie sein Inhalt (höchstens bis zum Streifen,
+  dann scrollt nur der Inhalt). Kopf: Griff, „Termin buchen“ mit „Schritt n von 5“, runder
+  Schließen-Knopf (32 px graue Scheibe, 44 px Tippfläche), fünf Fortschritts-Segmente; die große
+  Überschrift ist die Frage des Schritts (Fraunces). Schließen: Griff nach unten ziehen
+  (`useSheetDrag`), Tippen auf den Streifen, Schließen-Knopf, Esc, Zurück-Geste. Fuß: ruhiges
+  „Zurück“ ohne Rahmen, breite grüne Pille; er folgt der Tastatur (`visualViewport`). Trennlinien
+  unter dem Kopf/über dem Fuß nur, wenn gescrollt ist bzw. Inhalt folgt. Ab `md`: zentriert,
+  `max-w-[640px]`, `max-h-[min(90dvh,820px)]`, `rounded-3xl`, Hintergrund `deep/40` +
   `backdrop-blur-[2px]`, Klick daneben schließt. Hintergrund `inert`, Seite gesperrt (Platz der
-  Scrollleiste bleibt), Fokus auf der Schritt-Überschrift, Esc schließt, Fokus zurück zum Öffner.
-  Eine grüne Aktion im Fuß; fehlt eine Wahl, sagt „Weiter“ was fehlt (`aria-disabled`, nicht gesperrt).
+  Scrollleiste bleibt), Fokus auf der Schritt-Überschrift, Fokus zurück zum Öffner.
+  Inhalt im Listen-Stil: Terminarten als rahmenlose Zeilen (≥ 56 px) mit Kreis rechts (leer
+  `ink/50`, gewählt accent + Häkchen), Zeiten/Tage als `mist`-Flächen (gewählt accent + Häkchen
+  bzw. fett), Felder `mist` mit Rand `ink/50` (3:1), weiß beim Fokus; Gruppen als rahmenlose
+  `mist`-Flächen `rounded-2xl`. Runde Flächen brauchen `focus-visible:rounded-…!` (der globale
+  Fokusring setzt sonst 2 px Radius). Fehlt eine Wahl, sagt „Weiter“ was fehlt (`aria-disabled`).
 - Kopf-Knöpfe in Sheets/Dialogen ≥ 44 px.
 
 ### Icons
@@ -352,7 +367,7 @@ Symbol nicht sofort verständlich ist.
 - Solange die Website nicht weiß, ob sie bucht oder nur anfragt (Antwort des Cockpits),
   bleiben Kartentitel und Modus-Hinweis unsichtbar – nie kurz das falsche Wort zeigen.
 - **Handy:** Der Modus-Hinweis steht nur im ersten Schritt; der Kalender nutzt einen Teil des
-  Rands, damit die Tagesfelder breit genug sind (390 px: 46 px).
+  Rands, damit die Tagesfelder breit genug sind (390 px: 49 px).
 - Freie Zeiten als Liste/Knöpfe (≥ 44 px), belegte nicht anklickbar und nicht nur farblich
   markiert; leere Tage sagen den nächsten freien Tag.
 - **Ladefehler nie als „ausgebucht“ tarnen:** Hinweis, „Erneut versuchen“ und Telefon

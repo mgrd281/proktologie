@@ -3,6 +3,7 @@
 import { BookingDialogHeader } from "@/components/booking/dialog/BookingDialogHeader";
 import { BookingNavigation } from "@/components/booking/dialog/BookingNavigation";
 import { BookingSuccess } from "@/components/booking/dialog/BookingSuccess";
+import { useSheetDrag } from "@/components/booking/dialog/useSheetDrag";
 import { LoadError } from "@/components/booking/LoadError";
 import { StepCalendar } from "@/components/booking/StepCalendar";
 import { StepConfirm } from "@/components/booking/StepConfirm";
@@ -40,14 +41,17 @@ import {
 /**
  * Der Termin-Dialog – über der Seite, die exakt an ihrer Stelle bleibt.
  *
- * Handy (unter md): Vollbild wie eine App-Ansicht. Kopf fest, nur der Inhalt
- * scrollt, der Fuß mit „Zurück“/„Weiter“ klebt unten über der Home-Leiste.
- * Öffnet sich die Tastatur, folgt der Dialog dem sichtbaren Bereich
- * (visualViewport) – der Fuß bleibt über der Tastatur.
- * Ab md: zentriert, höchstens 640 px breit und 90 % der Höhe, weicher
- * Schatten; dahinter die Seite abgedunkelt. Ein Klick daneben schließt
- * (nur wenn Drücken UND Loslassen daneben waren – kein Schließen beim
- * Markieren von Text).
+ * Handy (unter md): ein Bottom-Sheet wie in Apps. Die Seite bleibt oben
+ * abgedunkelt sichtbar (Streifen von mindestens 48 px), das Sheet kommt von
+ * unten, mit runden oberen Ecken und einem Griff. Es ist so hoch wie sein
+ * Inhalt – beim Schrittwechsel gleitet die Oberkante mit (StepFrame) – und
+ * höchstens bis zum Streifen; dann scrollt nur der Inhalt. Schließen: Griff
+ * nach unten ziehen, auf den Streifen tippen, Schließen-Knopf, Esc oder
+ * Zurück-Geste. Öffnet sich die Tastatur, folgt das Sheet dem sichtbaren
+ * Bereich (visualViewport) – der Fuß bleibt über der Tastatur.
+ * Ab md: zentriert, höchstens 640 px breit und 90 % der Höhe, dieselbe
+ * Formensprache; ein Klick daneben schließt (nur wenn Drücken UND Loslassen
+ * daneben waren – kein Schließen beim Markieren von Text).
  *
  * Zugänglich: role="dialog" mit aria-modal, Name aus dem Kopf, Fokusfalle,
  * Esc schließt, der Fokus geht auf die Überschrift des Schritts (mit
@@ -56,8 +60,9 @@ import {
  * scrollt nicht mit (Lenis gestoppt, overflow gesperrt, Scrollleisten-Platz
  * bleibt – nichts verrutscht).
  *
- * Bewegung (MOTION_SYSTEM.md): Handy 280 ms von unten (24 px), Desktop
- * 240 ms mit 12 px; Schließen 180 ms; Schrittwechsel über StepFrame;
+ * Bewegung (MOTION_SYSTEM.md): Handy 320 ms von unten herein (ganze Höhe),
+ * 220 ms hinaus – nach dem Ziehen von dort, wo der Finger losließ; Desktop
+ * 240 ms mit 12 px, 180 ms hinaus; Schrittwechsel über StepFrame;
  * reduzierte Bewegung → sofort.
  */
 
@@ -100,7 +105,9 @@ function DialogLayer({ flow, opener, onClose }: AppointmentBookingDialogProps) {
   );
   const isPresent = useIsPresent();
   const root = useRef<HTMLDivElement>(null);
-  const panel = useRef<HTMLDivElement>(null);
+  // Die Fläche des Sheets: folgt beim Ziehen dem Finger (nur Handy) und ist
+  // der Rahmen der Fokusfalle
+  const { ref: panel, handlers: dragHandlers, reset: resetDrag } = useSheetDrag<HTMLDivElement>(!desktop, onClose);
   const content = useRef<HTMLDivElement>(null);
   const headingRef = useRef<HTMLHeadingElement | null>(null);
   const errorRef = useRef<HTMLDivElement>(null);
@@ -110,7 +117,12 @@ function DialogLayer({ flow, opener, onClose }: AppointmentBookingDialogProps) {
   const router = useRouter();
   /** „Weiter“ ohne Wahl angetippt – in diesem Schritt: dann steht daneben, was fehlt */
   const [hintStep, setHintStep] = useState<number | null>(null);
-  const pointerDownOutside = useRef(false);
+  /** Tippen auf den Streifen (bzw. daneben): wo der Zeiger aufsetzte */
+  const backdropPress = useRef<{ id: number; x: number; y: number } | null>(null);
+  /** Was nach dem Schließen statt „Fokus zum Öffner“ passieren soll (etwa „Anfahrt“) */
+  const afterClose = useRef<(() => void) | null>(null);
+  const topEdge = useRef<HTMLDivElement>(null);
+  const bottomEdge = useRef<HTMLDivElement>(null);
   // Die Tastatur am Handy: sichtbare Höhe und Versatz (sonst die volle Höhe)
   const [viewport, setViewport] = useState<{ height: number; top: number } | null>(null);
 
@@ -135,17 +147,39 @@ function DialogLayer({ flow, opener, onClose }: AppointmentBookingDialogProps) {
     silenced.forEach((el) => (el.inert = true));
     const overflow = html.style.overflow;
     const gutter = html.style.scrollbarGutter;
+    const overscroll = html.style.overscrollBehavior;
     // Platz der Scrollleiste behalten: Sonst rückte die Seite am Desktop zur Seite.
     // Nur, wo die Leiste Platz belegt – schwebende Leisten (Handy, macOS) brauchen keinen.
     if (window.innerWidth - html.clientWidth > 0) html.style.scrollbarGutter = "stable";
     html.style.overflow = "hidden";
+    // iOS: kein Nachfedern der Seite hinter dem Sheet
+    html.style.overscrollBehavior = "none";
     stop();
     const openerEl = opener.current;
     return () => {
       silenced.forEach((el) => (el.inert = false));
       html.style.overflow = overflow;
       html.style.scrollbarGutter = gutter;
+      html.style.overscrollBehavior = overscroll;
       start();
+      const action = afterClose.current;
+      if (action) {
+        // Erst wenn das Zurück im Verlauf durch ist – sonst stellt Next.js die
+        // alte Scrollposition wieder her und die Fahrt zur Praxis verpufft
+        const run = () => window.setTimeout(action, 50);
+        if ((window.history.state as { booking?: unknown } | null)?.booking) {
+          const fallback = window.setTimeout(action, 400);
+          window.addEventListener(
+            "popstate",
+            () => {
+              window.clearTimeout(fallback);
+              run();
+            },
+            { once: true },
+          );
+        } else run();
+        return;
+      }
       // Öffner weg (etwa der Knopf im Handy-Menü)? Dann der Menü-Knopf
       const visible = (el: HTMLElement | null) => el && el.isConnected && el.getClientRects().length > 0;
       const target = visible(openerEl)
@@ -168,7 +202,7 @@ function DialogLayer({ flow, opener, onClose }: AppointmentBookingDialogProps) {
 
   // Scheitert das Absenden, rückt die Meldung ins Bild (der Fokus bleibt am Knopf)
   useEffect(() => {
-    if (send.kind === "error") errorRef.current?.scrollIntoView({ block: "nearest" });
+    if (send.kind === "error" && errorRef.current) revealInside(content.current, errorRef.current);
   }, [send.kind]);
 
   // Sobald gewählt ist (oder der Schritt wechselt), verschwindet der Hinweis
@@ -180,6 +214,8 @@ function DialogLayer({ flow, opener, onClose }: AppointmentBookingDialogProps) {
     const vv = window.visualViewport;
     if (desktop || !vv) return;
     const update = () => {
+      // Hineingezoomt (zwei Finger) ist keine Tastatur – das Sheet bleibt, wie es ist
+      if (vv.scale > 1.01) return;
       const covered = window.innerHeight - vv.height > 80;
       setViewport(covered ? { height: vv.height, top: vv.offsetTop } : null);
     };
@@ -197,12 +233,38 @@ function DialogLayer({ flow, opener, onClose }: AppointmentBookingDialogProps) {
     if (!viewport) return;
     const frame = requestAnimationFrame(() => {
       const active = document.activeElement;
-      if (active instanceof HTMLElement && content.current?.contains(active)) {
-        active.scrollIntoView({ block: "nearest" });
-      }
+      if (active instanceof HTMLElement && content.current?.contains(active)) revealInside(content.current, active);
     });
     return () => cancelAnimationFrame(frame);
   }, [viewport]);
+
+  // Ziehen zum Schließen (nur Handy); öffnet das Sheet wieder, während es noch
+  // hinausfährt, steht es wieder an seinem Platz
+  useEffect(() => {
+    if (isPresent) resetDrag();
+  }, [isPresent, resetDrag]);
+
+  // Trennlinien nur bei Bedarf: unter dem Kopf, sobald der Inhalt gescrollt
+  // ist; über dem Fuß, solange noch Inhalt folgt. Zwei 1-px-Marker im Inhalt,
+  // Attribute am Sheet – ohne neues Rendern.
+  useEffect(() => {
+    const box = content.current;
+    const sheet = panel.current;
+    const top = topEdge.current;
+    const bottom = bottomEdge.current;
+    if (!box || !sheet || !top || !bottom) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          sheet.toggleAttribute(entry.target === top ? "data-scrolled" : "data-more", !entry.isIntersecting);
+        }
+      },
+      { root: box },
+    );
+    observer.observe(top);
+    observer.observe(bottom);
+    return () => observer.disconnect();
+  }, [panel]);
 
   // Esc schließt; Tab bleibt im Dialog. Am Dokument statt am Dialog: Auch wenn
   // der Fokus kurz auf <body> fällt (der geklickte Knopf wurde ersetzt), greift beides.
@@ -240,7 +302,7 @@ function DialogLayer({ flow, opener, onClose }: AppointmentBookingDialogProps) {
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [panel]);
 
   // Richtung für die Bewegung (StepFrame): Weiter = +1, Zurück und „Ändern“ = −1.
   const paneIndex = done ? STEP_COUNT : step;
@@ -277,48 +339,71 @@ function DialogLayer({ flow, opener, onClose }: AppointmentBookingDialogProps) {
     duration: reduced ? 0 : duration,
     ease: EASE_OUT_SOFT,
   });
-  const shift = desktop ? 12 : 24;
 
   return (
-    <m.div
+    <div
       ref={root}
       inert={!isPresent}
-      className="fixed inset-0 z-[70] flex justify-center md:items-center md:p-6"
+      className="fixed inset-0 z-[70] flex flex-col justify-end pt-[max(3rem,env(safe-area-inset-top)_+_1rem)] md:items-center md:justify-center md:p-6"
       style={!desktop && viewport ? { top: viewport.top, bottom: "auto", height: viewport.height } : undefined}
-      onPointerDown={(event) => {
-        pointerDownOutside.current = desktop && event.target === event.currentTarget;
-      }}
-      onClick={(event) => {
-        if (pointerDownOutside.current && event.target === event.currentTarget) onClose();
-        pointerDownOutside.current = false;
-      }}
     >
+      {/* Abgedunkelte Seite: Tippen darauf schließt (auch am Handy, oben im Streifen) */}
       <m.div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-deep/40 md:backdrop-blur-[2px]"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1, transition: transition(0.24) }}
-        exit={{ opacity: 0, transition: transition(0.18) }}
+        data-booking-backdrop
+        className="absolute inset-0 touch-none bg-deep/40 md:backdrop-blur-[2px]"
+        initial={reduced ? false : { opacity: 0 }}
+        animate={{ opacity: 1, transition: transition(desktop ? 0.24 : 0.32) }}
+        exit={{ opacity: 0, transition: transition(desktop ? 0.18 : 0.22) }}
+        onPointerDown={(event) => {
+          backdropPress.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+        }}
+        // Erst beim click schließen (nicht schon beim Loslassen): Sonst träfe der
+        // click desselben Tippens die Seite, die dann schon wieder bedienbar ist.
+        // React hängt an Elemente mit onClick den Leer-Handler, den iOS dafür braucht.
+        onClick={(event) => {
+          const press = backdropPress.current;
+          backdropPress.current = null;
+          if (press && Math.hypot(event.clientX - press.x, event.clientY - press.y) < 10) onClose();
+        }}
+        onPointerCancel={() => {
+          backdropPress.current = null;
+        }}
       />
       <m.div
-        ref={panel}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-busy={sending || undefined}
-        className="relative flex h-full w-full flex-col overflow-hidden bg-white md:h-auto md:max-h-[min(90dvh,820px)] md:max-w-[640px] md:rounded-2xl md:shadow-[0_30px_80px_-30px_rgba(23,37,27,0.45)]"
-        initial={{ opacity: 0, y: shift }}
-        animate={{ opacity: 1, y: 0, transition: transition(desktop ? 0.24 : 0.28) }}
-        exit={{ opacity: 0, y: shift, transition: transition(0.18) }}
+        className="relative flex max-h-full min-h-0 w-full flex-col md:max-h-[min(90dvh,820px)] md:max-w-[640px]"
+        initial={reduced ? false : desktop ? { opacity: 0, y: 12 } : { y: "100%" }}
+        animate={
+          desktop ? { opacity: 1, y: 0, transition: transition(0.24) } : { y: "0%", transition: transition(0.32) }
+        }
+        exit={
+          desktop ? { opacity: 0, y: 12, transition: transition(0.18) } : { y: "100%", transition: transition(0.22) }
+        }
       >
-        <BookingDialogHeader titleId={titleId} title={title} step={step} done={done} onClose={onClose} />
-
         <div
-          ref={content}
-          data-lenis-prevent
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+          ref={panel}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          aria-busy={sending || undefined}
+          className="group/sheet flex min-h-0 flex-col overflow-hidden rounded-t-3xl bg-white shadow-[0_-16px_40px_-20px_rgba(23,37,27,0.35)] md:rounded-3xl md:shadow-[0_30px_80px_-30px_rgba(23,37,27,0.45)]"
         >
-          <StepFrame paneKey={paneIndex} direction={direction} className="px-5 py-6 md:px-8 md:py-7">
+          <BookingDialogHeader
+            titleId={titleId}
+            title={title}
+            step={step}
+            done={done}
+            onClose={onClose}
+            dragHandlers={desktop ? undefined : dragHandlers}
+          />
+
+          <div
+            ref={content}
+            data-lenis-prevent
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+          >
+            <div ref={topEdge} aria-hidden="true" className="-mb-px h-px" />
+            <StepFrame paneKey={paneIndex} direction={direction} className="px-5 pt-2 pb-6 md:px-8 md:pt-3 md:pb-7">
             {done ? (
               <BookingSuccess
                 send={send}
@@ -327,9 +412,9 @@ function DialogLayer({ flow, opener, onClose }: AppointmentBookingDialogProps) {
                 onCalendarSaved={() => flow.setCalendarSaved(true)}
                 onAgain={flow.reset}
                 onDirections={() => {
-                  onClose();
-                  // Erst wenn der Dialog zu ist und die Seite wieder scrollt, zur Praxis
-                  window.setTimeout(() => {
+                  // Erst wenn der Dialog zu ist und die Seite wieder scrollt, zur Praxis –
+                  // ausgeführt beim Aushängen, statt den Fokus zum Öffner zu schicken
+                  afterClose.current = () => {
                     const target = document.getElementById("praxis");
                     if (!target) {
                       router.push("/#praxis");
@@ -339,7 +424,8 @@ function DialogLayer({ flow, opener, onClose }: AppointmentBookingDialogProps) {
                     scrollTo(target, 0, far);
                     if (!target.hasAttribute("tabindex")) target.tabIndex = -1;
                     target.focus({ preventScroll: true });
-                  }, 260);
+                  };
+                  onClose();
                 }}
               />
             ) : (
@@ -351,10 +437,11 @@ function DialogLayer({ flow, opener, onClose }: AppointmentBookingDialogProps) {
                 modePending={modePending}
               />
             )}
-          </StepFrame>
-        </div>
+            </StepFrame>
+            <div ref={bottomEdge} aria-hidden="true" className="-mt-px h-px" />
+          </div>
 
-        <BookingNavigation
+          <BookingNavigation
           canGoBack={!done && step > 0}
           backLabel={bookingDialog.back}
           onBack={flow.back}
@@ -366,9 +453,10 @@ function DialogLayer({ flow, opener, onClose }: AppointmentBookingDialogProps) {
           loadingLabel={primary.loadingLabel}
           withArrow={primary.arrow}
           hint={hint}
-        />
+          />
+        </div>
       </m.div>
-    </m.div>
+    </div>
   );
 }
 
@@ -444,7 +532,7 @@ function StepBody({ flow, headingRef, formId, errorRef, modePending }: StepBodyP
           <div
             ref={errorRef}
             role="alert"
-            className="mt-5 rounded-xl border border-ink/10 bg-mist/60 px-4 py-3 text-sm leading-relaxed"
+            className="mt-5 rounded-2xl bg-mist/70 px-4 py-3 text-sm leading-relaxed"
           >
             <p className="font-medium text-red-800">{send.text}</p>
             <div className="mt-1 flex flex-wrap items-center gap-x-6">
@@ -473,7 +561,7 @@ function StepBody({ flow, headingRef, formId, errorRef, modePending }: StepBodyP
 
   return (
     <div>
-      <h3 ref={headingRef} tabIndex={-1} className="font-display text-xl font-medium text-ink outline-none! md:text-2xl">
+      <h3 ref={headingRef} tabIndex={-1} className="font-display text-2xl leading-tight font-medium text-ink outline-none! md:text-[1.75rem]">
         <span className="sr-only">{bookingDialog.stepOf(step + 1, STEP_COUNT)}: </span>
         {meta.title}
       </h3>
@@ -483,7 +571,7 @@ function StepBody({ flow, headingRef, formId, errorRef, modePending }: StepBodyP
       {provider?.notice && (
         <p
           role="note"
-          className="mt-4 flex items-start gap-2 rounded-lg bg-mist px-3.5 py-2.5 text-xs leading-relaxed text-ink/75"
+          className="mt-4 flex items-start gap-2 rounded-2xl bg-mist px-3.5 py-2.5 text-xs leading-relaxed text-ink/75"
         >
           <Icon name="phone" size={14} className="mt-0.5 shrink-0 text-primary" />
           <span>{provider.notice}</span>
@@ -521,4 +609,17 @@ function dateLabel(date: string | null): string {
   if (!date) return "";
   const [y, m, d] = date.split("-").map(Number);
   return slotDateFormat.format(new Date(y, m - 1, d));
+}
+
+/**
+ * Ein Element innerhalb des scrollenden Inhalts sichtbar machen – ohne
+ * `scrollIntoView`, das auf iOS auch die gesperrte Seite dahinter verschiebt.
+ */
+function revealInside(box: HTMLElement | null, el: HTMLElement) {
+  if (!box) return;
+  const r = el.getBoundingClientRect();
+  const c = box.getBoundingClientRect();
+  const gap = 12;
+  if (r.bottom > c.bottom - gap) box.scrollTop += r.bottom - c.bottom + gap;
+  else if (r.top < c.top + gap) box.scrollTop -= c.top + gap - r.top;
 }

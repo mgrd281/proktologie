@@ -9,14 +9,15 @@ interface StepTypesProps {
 }
 
 /**
- * Schritt 1: Terminart – ruhige, klar wählbare Karten. Gewählt heißt:
- * grüner Rand, zarter Grund und ein Häkchen (nicht nur Farbe); weiter geht
- * es mit „Weiter“ im Fuß des Dialogs. Schlichte Buttons (aria-pressed) –
- * jede Karte ist ein eigener Tab-Halt, ohne Pfeiltasten-Widget.
+ * Schritt 1: Terminart – eine ruhige, rahmenlose Liste wie in den
+ * Einstellungen eines Telefons. Rechts ein Kreis: leer (Rand 3:1) oder, wenn
+ * gewählt, grün mit Häkchen – nicht nur Farbe. Weiter geht es mit „Weiter“ im
+ * Fuß des Dialogs. Schlichte Buttons (aria-pressed) – jede Zeile ist ein
+ * eigener Tab-Halt, ohne Pfeiltasten-Widget.
  */
 export function StepTypes({ types, selected, onSelect }: StepTypesProps) {
   return (
-    <div role="group" aria-label="Terminart" className="grid gap-2.5 sm:grid-cols-2">
+    <div role="group" aria-label="Terminart" className="-mx-3 grid gap-0.5 md:grid-cols-2 md:gap-x-2">
       {types.map((type) => {
         const isSelected = selected === type.id;
         return (
@@ -26,33 +27,22 @@ export function StepTypes({ types, selected, onSelect }: StepTypesProps) {
             data-type={type.id}
             aria-pressed={isSelected}
             onClick={() => onSelect(type.id)}
-            className={cn(
-              "flex min-h-13 items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors duration-200",
-              isSelected
-                ? "border-primary bg-primary/5"
-                : "border-ink/10 bg-white hover:border-ink/25",
-            )}
+            className="flex min-h-14 w-full items-center gap-4 rounded-2xl px-3 py-2.5 text-left transition-colors duration-200 hover:bg-mist/70 active:bg-mist focus-visible:rounded-2xl!"
           >
-            <span>
-              <span className="block text-sm font-medium text-ink">
+            <span className="min-w-0 flex-1">
+              <span className={cn("block text-base text-ink", isSelected ? "font-semibold" : "font-medium")}>
                 {type.label}
               </span>
-              {type.note && (
-                <span className="mt-0.5 block text-xs text-ink/70">
-                  {type.note}
-                </span>
-              )}
+              {type.note && <span className="mt-0.5 block text-sm text-ink/70">{type.note}</span>}
             </span>
             <span
               aria-hidden="true"
               className={cn(
-                "flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors duration-200",
-                isSelected
-                  ? "border-primary bg-primary text-white"
-                  : "border-ink/20 text-transparent",
+                "flex size-6 shrink-0 items-center justify-center rounded-full transition-colors duration-200",
+                isSelected ? "bg-accent text-deep" : "border-[1.5px] border-ink/50 text-transparent",
               )}
             >
-              <Icon name="check" size={11} />
+              <Icon name="check" size={15} strokeWidth={2.4} />
             </span>
           </button>
         );

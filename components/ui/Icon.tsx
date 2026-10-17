@@ -17,6 +17,7 @@ export type IconName =
   | "arrow-right"
   | "arrow-down"
   | "chevrons-down"
+  | "chevron-left"
   | "info"
   | "pin"
   | "clock"
@@ -57,6 +58,7 @@ const paths: Record<IconName, ReactPath> = {
   "arrow-right": <path d="M4 12h16m-6-6 6 6-6 6" />,
   "arrow-down": <path d="M12 4v16m-6-6 6 6 6-6" />,
   "chevrons-down": <path d="m7 6 5 5 5-5m-10 7 5 5 5-5" />,
+  "chevron-left": <path d="m15 18-6-6 6-6" />,
   info: (
     <>
       <circle cx="12" cy="12" r="10" />
