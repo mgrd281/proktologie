@@ -468,10 +468,21 @@ test("Abmeldung mit Ausweg: Hinweis vorher, danach „Neu anmelden“ im neuen T
   await tab.getByLabel("E-Mail-Adresse").fill(TEAM.email);
   await tab.getByLabel("Passwort").fill(TEAM.password);
   await tab.getByRole("button", { name: "Anmelden" }).click();
-  await tab.waitForTimeout(31_000 - (Date.now() % 30_000));
-  await tab.getByLabel("6-stelliger Code").fill(totp(totpSecret));
-  await tab.getByRole("button", { name: "Bestätigen" }).click();
-  await expect(tab).toHaveURL(new RegExp(`/termine\\?d=${DAY}`), { timeout: 20_000 });
+  // Dieses Gerät gilt nach dem ersten zweiten Faktor als vertraut – dann fragt
+  // die Anmeldung nicht erneut nach dem Code und springt gleich zurück
+  const target = new RegExp(`/termine\\?d=${DAY}`);
+  const code = tab.getByLabel("6-stelliger Code");
+  const step = await Promise.race([
+    tab.waitForURL(target, { timeout: 30_000 }).then(() => "zurück" as const, () => null),
+    code.waitFor({ timeout: 30_000 }).then(() => "code" as const, () => null),
+  ]);
+  expect(step, "Anmeldung kommt weiter").toBeTruthy();
+  if (step === "code") {
+    await tab.waitForTimeout(31_000 - (Date.now() % 30_000));
+    await code.fill(totp(totpSecret));
+    await tab.getByRole("button", { name: "Bestätigen" }).click();
+  }
+  await expect(tab).toHaveURL(target, { timeout: 20_000 });
 
   // Zurück im ersten Tab: Der Hinweis verschwindet, die Eingabe ist noch da und lässt sich speichern
   await page.bringToFront();
